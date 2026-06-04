@@ -125,6 +125,7 @@ const APP = (() => {
       $('club-selector-panel').classList.remove('hidden');
     });
     $('btn-start-game').addEventListener('click', () => { if (selectedClubId) startGame(selectedClubId); });
+    refreshContinueBar();
   }
 
   function renderClubGrid(league, search) {
@@ -208,6 +209,18 @@ const APP = (() => {
       $('btn-fast-sim').addEventListener('click', () => runSimulation(true));
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
       $('btn-exit-match').addEventListener('click', exitMatch);
+
+      // Save / Main-menu controls injected into the sidebar footer
+      const sb = document.querySelector('.sidebar-bottom');
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:6px;margin-top:4px';
+      actions.innerHTML = `
+        <button id="sb-save" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">💾 Save</button>
+        <button id="sb-menu" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">☰ Menu</button>`;
+      sb.appendChild(actions);
+      $('sb-save').addEventListener('click', () => openSaves('save'));
+      $('sb-menu').addEventListener('click', goToMenu);
+
       chromeReady = true;
     }
     const c = gameState.myClub;
@@ -514,6 +527,7 @@ const APP = (() => {
     const zone = (i) => {
       if (i < league.championsLeague) return 'championsleague';
       if (i < league.championsLeague + league.europaLeague) return 'europe';
+      if (i < league.championsLeague + league.europaLeague + (league.conferenceLeague || 0)) return 'conference';
       if (i >= table.length - league.relegation) return 'relegation';
       return '';
     };
@@ -528,7 +542,7 @@ const APP = (() => {
           const t = c.tableStats;
           return `<tr class="${c.id===gameState.myClubId?'my-club':''}" data-club="${c.id}">
             <td><span class="table-pos ${zone(i)}">${i + 1}</span></td>
-            <td><div class="table-club">${badge(c,'table-badge')}<span class="table-club-name">${esc(c.shortName)}</span></div></td>
+            <td><div class="table-club">${badge(c,'table-badge')}<span class="table-club-name">${esc(c.name)}</span></div></td>
             <td>${t.played}</td><td>${t.won}</td><td>${t.drawn}</td><td>${t.lost}</td>
             <td>${t.gf}</td><td>${t.ga}</td><td>${gd(t) >= 0 ? '+' : ''}${gd(t)}</td>
             <td class="pts-cell">${t.points}</td></tr>`;
@@ -537,6 +551,7 @@ const APP = (() => {
       <div class="table-zone-indicator">
         ${league.championsLeague ? `<div class="tz"><span class="tz-dot cl"></span>Champions League</div>` : ''}
         ${league.europaLeague ? `<div class="tz"><span class="tz-dot el"></span>Europa League</div>` : ''}
+        ${league.conferenceLeague ? `<div class="tz"><span class="tz-dot conf"></span>Conference League</div>` : ''}
         <div class="tz"><span class="tz-dot rel"></span>Relegation</div>
       </div>`;
 
@@ -947,6 +962,7 @@ const APP = (() => {
     showScreen('game');
     updateSidebar();
     renderView(ui.view === 'tactics' ? 'dashboard' : ui.view);
+    autoSave();
   }
 
   /* =============================================
@@ -1084,6 +1100,7 @@ const APP = (() => {
     if (pos === 1) outcome = `🏆 Champions of the ${league.name}!`;
     else if (pos <= league.championsLeague) outcome = '⭐ Qualified for the Champions League!';
     else if (pos <= league.championsLeague + league.europaLeague) outcome = '🌟 Qualified for the Europa League!';
+    else if (pos <= league.championsLeague + league.europaLeague + (league.conferenceLeague || 0)) outcome = '✨ Qualified for the Conference League!';
     else if (pos > table.length - league.relegation) outcome = '⚠️ Relegated!';
     else outcome = 'A solid mid-table finish.';
 
@@ -1136,6 +1153,7 @@ const APP = (() => {
     notify(`Welcome to Season ${gameState.season}!`, 'success');
     updateSidebar();
     renderView('dashboard');
+    autoSave();
   }
 
   /* ---------------------------------------------
@@ -1143,6 +1161,256 @@ const APP = (() => {
      --------------------------------------------- */
   function fmtDate(d) {
     return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  }
+
+  /* =============================================
+     SAVE / LOAD  (localStorage)
+     ============================================= */
+  const SAVE_INDEX = 'fm_saves_v1';
+  const SLOT_PREFIX = 'fm_slot_';
+
+  // Dates serialise to ISO strings by default; tag + revive them so the engine
+  // keeps real Date objects. `this[k]` is the raw value (pre-toJSON). We also
+  // drop fixture `events` (full player-object copies) — they're only consumed
+  // at play-time and are never re-read after a save is loaded, so omitting them
+  // hugely shrinks the payload.
+  function saveReplacer(k, v) {
+    if (k === 'events') return undefined;
+    return this[k] instanceof Date ? { __d: this[k].getTime() } : v;
+  }
+  function dateReviver(k, v) { return (v && typeof v === 'object' && v.__d != null) ? new Date(v.__d) : v; }
+
+  // Inlined LZ-string (UTF-16) codec — compresses JSON ~6-8x so multiple
+  // saves fit inside the localStorage quota. (pieroxy/lz-string, MIT.)
+  const LZString = (function () {
+    const f = String.fromCharCode;
+    function _compress(uncompressed, bitsPerChar, getCharFromInt) {
+      if (uncompressed == null) return '';
+      let i, value, context_dictionary = {}, context_dictionaryToCreate = {}, context_c = '',
+          context_wc = '', context_w = '', context_enlargeIn = 2, context_dictSize = 3,
+          context_numBits = 2, context_data = [], context_data_val = 0, context_data_position = 0, ii;
+      for (ii = 0; ii < uncompressed.length; ii += 1) {
+        context_c = uncompressed.charAt(ii);
+        if (!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)) { context_dictionary[context_c] = context_dictSize++; context_dictionaryToCreate[context_c] = true; }
+        context_wc = context_w + context_c;
+        if (Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)) { context_w = context_wc; }
+        else {
+          if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+            if (context_w.charCodeAt(0) < 256) {
+              for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; }
+              value = context_w.charCodeAt(0);
+              for (i = 0; i < 8; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+            } else {
+              value = 1;
+              for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | value; if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = 0; }
+              value = context_w.charCodeAt(0);
+              for (i = 0; i < 16; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+            }
+            context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+            delete context_dictionaryToCreate[context_w];
+          } else {
+            value = context_dictionary[context_w];
+            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+          }
+          context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+          context_dictionary[context_wc] = context_dictSize++; context_w = String(context_c);
+        }
+      }
+      if (context_w !== '') {
+        if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+          if (context_w.charCodeAt(0) < 256) {
+            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; }
+            value = context_w.charCodeAt(0);
+            for (i = 0; i < 8; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+          } else {
+            value = 1;
+            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | value; if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = 0; }
+            value = context_w.charCodeAt(0);
+            for (i = 0; i < 16; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+          }
+          context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+          delete context_dictionaryToCreate[context_w];
+        } else {
+          value = context_dictionary[context_w];
+          for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+        }
+        context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
+      }
+      value = 2;
+      for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else context_data_position++; value = value >> 1; }
+      while (true) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data.push(getCharFromInt(context_data_val)); break; } else context_data_position++; }
+      return context_data.join('');
+    }
+    function _decompress(length, resetValue, getNextValue) {
+      let dictionary = [], enlargeIn = 4, dictSize = 4, numBits = 3, entry = '', result = [], i, w,
+          bits, resb, maxpower, power, c, data = { val: getNextValue(0), position: resetValue, index: 1 }, next;
+      for (i = 0; i < 3; i += 1) dictionary[i] = i;
+      bits = 0; maxpower = Math.pow(2, 2); power = 1;
+      while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+      switch (next = bits) {
+        case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } c = f(bits); break;
+        case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } c = f(bits); break;
+        case 2: return '';
+      }
+      dictionary[3] = c; w = c; result.push(c);
+      while (true) {
+        if (data.index > length) return '';
+        bits = 0; maxpower = Math.pow(2, numBits); power = 1;
+        while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+        switch (c = bits) {
+          case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+          case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+          case 2: return result.join('');
+        }
+        if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
+        if (dictionary[c]) entry = dictionary[c];
+        else { if (c === dictSize) entry = w + w.charAt(0); else return null; }
+        result.push(entry);
+        dictionary[dictSize++] = w + entry.charAt(0); enlargeIn--;
+        w = entry;
+        if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
+      }
+    }
+    return {
+      compressToUTF16: (input) => input == null ? '' : _compress(input, 15, (a) => f(a + 32)) + ' ',
+      decompressFromUTF16: (compressed) => compressed == null ? '' : compressed == '' ? null
+        : _decompress(compressed.length, 16384, (index) => compressed.charCodeAt(index) - 32),
+    };
+  })();
+
+  function readIndex() { try { return JSON.parse(localStorage.getItem(SAVE_INDEX)) || {}; } catch (e) { return {}; } }
+  function writeIndex(idx) { try { localStorage.setItem(SAVE_INDEX, JSON.stringify(idx)); } catch (e) {} }
+  function listSaves() {
+    const idx = readIndex();
+    return Object.keys(idx).map(id => ({ id, ...idx[id] })).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  }
+
+  function saveMeta(label) {
+    return {
+      label,
+      clubName: gameState.myClub.name,
+      leagueName: DATA.LEAGUES[gameState.myClub.league].name,
+      season: gameState.season,
+      gameDate: MONTHS_SHORT[gameState.currentDate.getMonth()] + ' ' + gameState.currentDate.getFullYear(),
+      pos: ENGINE.getMyPosition(gameState),
+      savedAt: Date.now(),
+    };
+  }
+  function writeSave(slotId, label) {
+    try {
+      const payload = LZString.compressToUTF16(JSON.stringify(gameState, saveReplacer));
+      localStorage.setItem(SLOT_PREFIX + slotId, payload);
+      const idx = readIndex(); idx[slotId] = saveMeta(label); writeIndex(idx);
+      return true;
+    } catch (e) {
+      notify('Save failed — storage is full. Delete an old save and retry.', 'error');
+      return false;
+    }
+  }
+  function autoSave() { if (gameState) writeSave('auto', 'Autosave'); }
+  function deleteSave(slotId) {
+    try { localStorage.removeItem(SLOT_PREFIX + slotId); } catch (e) {}
+    const idx = readIndex(); delete idx[slotId]; writeIndex(idx);
+  }
+
+  function loadSave(slotId) {
+    let raw = null;
+    try { raw = localStorage.getItem(SLOT_PREFIX + slotId); } catch (e) {}
+    if (!raw) { notify('Save not found.', 'error'); return; }
+    let state;
+    try {
+      state = JSON.parse(LZString.decompressFromUTF16(raw), dateReviver);
+      state.myClub = state.clubs[state.myClubId];                 // re-link reference identity
+      state.fixtures.forEach(fx => { if (!fx.events) fx.events = []; });   // events stripped on save
+    } catch (e) { notify('Save file is corrupted.', 'error'); return; }
+    if (!state.myClub) { notify('Save file is invalid.', 'error'); return; }
+    gameState = state;
+    running = false;
+    ui.match = null;
+    ui.view = 'dashboard';
+    ui.squadFilter = 'all'; ui.squadSort = 'ovr';
+    ui.transferTab = 'market'; ui.transferSearch = ''; ui.transferPos = 'all';
+    ui.tableLeague = gameState.myClub.league;
+    ui.euroTab = gameState.myEuropeanComp || 'champions_league';
+    closeModal();
+    initGameChrome();
+    showScreen('game');
+    updateSidebar();
+    renderView('dashboard');
+    notify('Game loaded.', 'success');
+  }
+
+  function fmtSavedAt(ts) {
+    if (!ts) return 'unknown';
+    const d = new Date(ts);
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  function defaultLabel() { return gameState.myClub.shortName + ' · S' + gameState.season; }
+
+  const MAX_SLOTS = 5;   // manual save slots (the 'auto' slot is separate)
+
+  function openSaves(mode) {
+    const slots = listSaves();
+    const manualCount = slots.filter(s => s.id !== 'auto').length;
+    let html = `<div class="player-modal"><h2 style="margin-bottom:6px">${mode === 'save' ? '💾 Save Game' : '📂 Load Game'}</h2>`;
+    html += `<p class="text-muted" style="font-size:11px;margin-bottom:12px">${manualCount}/${MAX_SLOTS} save slots used</p>`;
+    if (mode === 'save') {
+      html += manualCount < MAX_SLOTS
+        ? `<button class="btn-primary" id="save-new" style="width:100%;margin-bottom:12px">＋ New Save Slot</button>`
+        : `<p class="text-gold" style="font-size:11px;margin-bottom:12px">All ${MAX_SLOTS} slots full — overwrite or delete one below.</p>`;
+    }
+    if (!slots.length) {
+      html += `<div class="empty-state"><div class="empty-state-icon">💾</div><div class="empty-state-text">No saved games yet.</div></div>`;
+    } else {
+      html += slots.map(s => `
+        <div class="inbox-item">
+          <div class="inbox-icon">${s.id === 'auto' ? '⏱️' : '🎮'}</div>
+          <div class="inbox-content">
+            <div class="inbox-subject">${esc(s.label || s.clubName)}</div>
+            <div class="inbox-preview">${esc(s.clubName)} · ${esc(s.leagueName)} · Season ${s.season} · ${esc(s.gameDate)}${s.pos ? ' · ' + ordinal(s.pos) : ''}<br>Saved ${fmtSavedAt(s.savedAt)}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+            <button class="${mode === 'save' ? 'btn-gold' : 'btn-primary'}" data-act="${mode}" data-slot="${s.id}" style="padding:5px 10px;font-size:11px">${mode === 'save' ? 'Overwrite' : 'Load'}</button>
+            <button class="btn-danger" data-act="delete" data-slot="${s.id}" style="padding:5px 10px;font-size:11px">Delete</button>
+          </div>
+        </div>`).join('');
+    }
+    html += `</div>`;
+    showModal(html);
+
+    const nb = $('save-new');
+    if (nb) nb.addEventListener('click', () => { if (writeSave('s' + Date.now(), defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); } });
+    document.querySelectorAll('#modal-content [data-act]').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.slot, act = b.dataset.act;
+      if (act === 'delete') { deleteSave(id); openSaves(mode); }
+      else if (act === 'save') { const idx = readIndex(); if (writeSave(id, (idx[id] && idx[id].label) || defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); } }
+      else if (act === 'load') { loadSave(id); }
+    }));
+  }
+
+  function refreshContinueBar() {
+    const old = document.getElementById('continue-bar'); if (old) old.remove();
+    const slots = listSaves(); if (!slots.length) return;
+    const top = slots[0];
+    const sc = document.querySelector('.start-content');
+    const selector = document.getElementById('club-selector-panel');
+    const bar = document.createElement('div');
+    bar.id = 'continue-bar';
+    bar.style.cssText = 'display:flex;gap:10px;width:100%;max-width:900px;align-items:center;justify-content:center;flex-wrap:wrap';
+    bar.innerHTML = `
+      <button class="btn-primary btn-lg" id="cb-continue">▶ Continue — ${esc(top.clubName)} (S${top.season})</button>
+      <button class="btn-secondary btn-lg" id="cb-load">📂 Load Game</button>`;
+    sc.insertBefore(bar, selector);
+    $('cb-continue').addEventListener('click', () => loadSave(top.id));
+    $('cb-load').addEventListener('click', () => openSaves('load'));
+  }
+
+  function goToMenu() {
+    showScreen('start');
+    document.getElementById('club-confirm-panel').classList.add('hidden');
+    document.getElementById('club-selector-panel').classList.remove('hidden');
+    refreshContinueBar();
   }
 
   /* ---------------------------------------------
