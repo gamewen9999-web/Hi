@@ -264,7 +264,7 @@ const ENGINE = (() => {
     if (myLeague) {
       if (myRank <= (myLeague.championsLeague||0)) myEuropean = 'champions_league';
       else if (myRank <= (myLeague.championsLeague||0)+(myLeague.europaLeague||0)) myEuropean = 'europa_league';
-      else if (myRank <= (myLeague.championsLeague||0)+(myLeague.europaLeague||0)+1) myEuropean = 'conference_league';
+      else if (myRank <= (myLeague.championsLeague||0)+(myLeague.europaLeague||0)+(myLeague.conferenceLeague||0)) myEuropean = 'conference_league';
     }
     gameState.myEuropeanComp = myEuropean;
 

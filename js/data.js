@@ -3,15 +3,15 @@
    ============================================= */
 
 const LEAGUES = {
-  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 4, europaLeague: 2, relegation: 3 },
-  championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, relegation: 3 },
-  league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, relegation: 4 },
-  league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, relegation: 2 },
-  national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, relegation: 3 },
-  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 2, relegation: 3 },
-  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 2, relegation: 3 },
-  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 2, relegation: 3 },
-  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, relegation: 3 },
+  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
+  league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4 },
+  league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2 },
+  national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
+  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
 };
 
 const CLUBS_DATA = [
