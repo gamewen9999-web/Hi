@@ -727,7 +727,7 @@ const APP = (() => {
       <table class="group-table"><thead><tr><th>#</th><th>Club</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
       <tbody>${sorted.map((id, i) => {
         const c = gameState.clubs[id], s = comp.groupStats[id] || {};
-        return `<tr class="${id===gameState.myClubId?'my-club':''}"><td>${i + 1}</td><td>${c ? esc(c.shortName) : '?'}</td>
+        return `<tr class="${id===gameState.myClubId?'my-club':''}"><td>${i + 1}</td><td>${c ? esc(c.name) : '?'}</td>
           <td>${s.p || 0}</td><td>${euGd(comp, id) >= 0 ? '+' : ''}${euGd(comp, id)}</td><td>${s.pts || 0}</td></tr>`;
       }).join('')}</tbody></table></div>`;
   }
