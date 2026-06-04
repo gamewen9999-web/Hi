@@ -722,7 +722,7 @@ const APP = (() => {
   function noEuro() { return `<div class="view-header"><div class="view-title">European Competitions</div></div><div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">No European competitions configured.</div></div>`; }
   function leaguePhaseTable(comp) {
     const sorted = euTable(comp);
-    let R = 16; while (R > sorted.length) R /= 2;
+    const R = euBracketSize(comp);
     const directCut = R / 2, playoffCut = R / 2 + R;     // top R/2 direct, next R into playoff
     const rows = sorted.map((id, i) => {
       const c = gameState.clubs[id], s = comp.groupStats[id] || {};
@@ -1027,9 +1027,12 @@ const APP = (() => {
   }
   // New-format qualification: top R/2 go straight to the bracket, the next R
   // teams meet in a knockout playoff for the remaining spots, the rest are out.
+  // Knockout bracket size: largest power of two (≤16) the pool can cleanly fill,
+  // needing the top R/2 seeds plus a playoff field of R teams (so N ≥ 1.5·R).
   function euBracketSize(comp) {
-    let R = 16; while (R > comp.clubs.length) R /= 2;   // scale down for small pools
-    return Math.max(2, R);
+    const N = comp.clubs.length;
+    let R = 16; while (R > 2 && R * 1.5 > N) R /= 2;
+    return R;
   }
 
   function startEuroKnockout(comp) {
