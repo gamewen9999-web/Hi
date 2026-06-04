@@ -1693,6 +1693,42 @@ html, body {
   color: var(--accent-red);
 }
 
+/* Transfer negotiation modal */
+.negotiation { width: 100%; max-width: 460px; text-align: left; }
+.neg-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.neg-head .neg-id { flex: 1; }
+.neg-head .neg-id h2 { font-size: 19px; font-weight: 800; margin: 0; }
+.neg-head .neg-id p { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+.neg-ovr {
+  width: 40px; height: 40px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 800; color: #000; background: var(--accent);
+}
+.neg-steps { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; font-size: 11px; }
+.neg-step { color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.neg-step.active { color: var(--accent); }
+.neg-step.done { color: var(--text-muted); }
+.neg-arrow { color: var(--text-dim); }
+.neg-msg {
+  background: var(--bg3); border-left: 3px solid var(--text-dim);
+  border-radius: var(--r-sm); padding: 10px 12px; font-size: 13px; margin-bottom: 16px; line-height: 1.4;
+}
+.neg-msg.good { border-left-color: var(--accent); background: rgba(0,208,132,0.08); }
+.neg-msg.bad { border-left-color: var(--accent-red); background: rgba(255,77,77,0.07); }
+.neg-msg.info { border-left-color: var(--accent-gold); background: rgba(245,166,35,0.06); }
+.neg-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+.neg-row span:first-child { color: var(--text-muted); }
+.neg-row .red { color: var(--accent-red); }
+.neg-field { margin: 14px 0; }
+.neg-field label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.neg-field input {
+  width: 100%; padding: 10px 12px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r); color: var(--text);
+  font-size: 16px; font-weight: 700; font-family: inherit; outline: none;
+}
+.neg-field input:focus { border-color: var(--accent); }
+.neg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+
 /* Progress bar */
 .progress-track { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.5s ease; }

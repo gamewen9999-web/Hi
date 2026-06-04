@@ -632,24 +632,129 @@ const APP = (() => {
     if (search) search.addEventListener('input', (e) => { ui.transferSearch = e.target.value.trim().toLowerCase(); renderTransfers(m); search.focus(); });
     const sel = $('tr-pos');
     if (sel) sel.addEventListener('change', (e) => { ui.transferPos = e.target.value; renderTransfers(m); });
-    m.querySelectorAll('[data-buy]').forEach(el => el.addEventListener('click', () => buyPlayer(el.dataset.buy, el.dataset.club)));
+    m.querySelectorAll('[data-buy]').forEach(el => el.addEventListener('click', () => openNegotiation(el.dataset.buy, el.dataset.club)));
     m.querySelectorAll('[data-sell]').forEach(el => el.addEventListener('click', () => confirmSell(el.dataset.sell)));
   }
   function emptyList(text) { return `<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">${text}</div></div>`; }
 
-  function buyPlayer(playerId, clubId) {
+  /* ---- TRANSFER NEGOTIATION ---- */
+  function openNegotiation(playerId, clubId) {
     if (!ENGINE.isTransferWindowOpen(gameState)) return notify('Transfer window is closed.', 'error');
+    if (clubId === gameState.myClubId) return;
     const seller = gameState.clubs[clubId];
     const p = seller && seller.players.find(x => x.id === playerId);
     if (!p) return;
-    const fee = Math.round(p.value * (1 + rand(0, 25) / 100) * 10) / 10;
-    if (fee > gameState.myClub.budget) return notify(`Can't afford ${p.name} (${money(fee)}).`, 'error');
-    seller.players = seller.players.filter(x => x.id !== playerId);
+    ui.negotiation = {
+      playerId, clubId, stage: 'fee',
+      neg: ENGINE.startNegotiation(p, seller),
+      agreedFee: null, agreedWage: null, lastFee: null, lastWage: null,
+      msg: `${seller.shortName} are willing to listen to offers for ${p.name}.`,
+      tone: 'info',
+    };
+    renderNegotiation();
+  }
+
+  function renderNegotiation() {
+    const N = ui.negotiation; if (!N) return;
+    const seller = gameState.clubs[N.clubId];
+    const p = seller.players.find(x => x.id === N.playerId);
+    if (!p) { ui.negotiation = null; return closeModal(); }
+    const neg = N.neg;
+    const budget = gameState.myClub.budget;
+    const steps = ['fee', 'terms', 'done'];
+    const labels = { fee: 'Transfer Fee', terms: 'Personal Terms', done: 'Done' };
+    const stepBar = steps.map((s, i) =>
+      `<span class="neg-step ${N.stage === s ? 'active' : ''} ${i < steps.indexOf(N.stage) ? 'done' : ''}">${labels[s]}</span>`
+    ).join('<span class="neg-arrow">›</span>');
+
+    let body = '';
+    if (N.stage === 'fee') {
+      body = `
+        <div class="neg-row"><span>Club asking price</span><span class="fw-700 text-gold">${money(neg.asking)}</span></div>
+        <div class="neg-row"><span>Your transfer budget</span><span class="${budget >= neg.minFee ? '' : 'red'}">${money(budget)}</span></div>
+        <div class="neg-field"><label>Your bid (£m)</label>
+          <input id="neg-input" type="number" step="0.5" min="0" value="${N.lastFee != null ? N.lastFee : Math.min(budget, Math.round(p.value * 10) / 10)}"></div>
+        <div class="neg-actions">
+          <button class="btn-secondary" id="neg-walk">Walk Away</button>
+          <button class="btn-primary" id="neg-submit">Submit Bid</button>
+        </div>`;
+    } else if (N.stage === 'terms') {
+      body = `
+        <div class="neg-row"><span>Agreed fee</span><span class="fw-700 text-accent">${money(N.agreedFee)}</span></div>
+        <div class="neg-row"><span>Player wants</span><span class="fw-700 text-gold">${money(neg.wageDemand / 1000)}/wk</span></div>
+        <div class="neg-field"><label>Your wage offer (£k/wk)</label>
+          <input id="neg-input" type="number" step="5" min="0" value="${N.lastWage != null ? N.lastWage : p.wage}"></div>
+        <div class="neg-actions">
+          <button class="btn-secondary" id="neg-walk">Walk Away</button>
+          <button class="btn-primary" id="neg-submit">Offer Contract</button>
+        </div>`;
+    }
+
+    showModal(`
+      <div class="negotiation">
+        <div class="neg-head">
+          <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
+          <div class="neg-id"><h2>${esc(p.name)}</h2><p>${esc(seller.name)} · Age ${p.age} · ${money(p.value)} value</p></div>
+          <span class="neg-ovr">${p.ovr}</span>
+        </div>
+        <div class="neg-steps">${stepBar}</div>
+        <div class="neg-msg ${N.tone}">${N.msg}</div>
+        ${body}
+      </div>`);
+
+    const submit = $('neg-submit'), walk = $('neg-walk'), input = $('neg-input');
+    if (walk) walk.addEventListener('click', () => { ui.negotiation = null; closeModal(); notify('You walked away from the table.', 'info'); });
+    if (submit) submit.addEventListener('click', () => {
+      const val = parseFloat(input.value);
+      if (isNaN(val) || val < 0) return notify('Enter a valid amount.', 'error');
+      if (N.stage === 'fee') handleFeeOffer(val); else handleWageOffer(val);
+    });
+    if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && submit) submit.click(); });
+  }
+
+  function handleFeeOffer(offer) {
+    const N = ui.negotiation, seller = gameState.clubs[N.clubId];
+    N.lastFee = offer;
+    if (offer > gameState.myClub.budget) {
+      N.msg = `You can't afford a ${money(offer)} bid — budget is ${money(gameState.myClub.budget)}.`; N.tone = 'bad';
+      return renderNegotiation();
+    }
+    const r = ENGINE.evaluateFeeOffer(N.neg, offer);
+    if (r.decision === 'accept') { N.agreedFee = offer; N.stage = 'terms'; N.msg = `${seller.shortName} accept ${money(offer)}! Now agree personal terms with the player.`; N.tone = 'good'; }
+    else if (r.decision === 'counter') { N.msg = `${seller.shortName} reject ${money(offer)}, but would accept ${money(r.counter)}.`; N.tone = 'info'; }
+    else if (r.decision === 'reject') { N.msg = `${seller.shortName} dismiss your ${money(offer)} bid as far too low.`; N.tone = 'bad'; }
+    else { ui.negotiation = null; closeModal(); return notify(`${seller.shortName} have ended negotiations.`, 'warning'); }
+    renderNegotiation();
+  }
+
+  function handleWageOffer(offer) {
+    const N = ui.negotiation, seller = gameState.clubs[N.clubId];
+    const p = seller.players.find(x => x.id === N.playerId);
+    N.lastWage = offer;
+    const r = ENGINE.evaluateWageOffer(N.neg, offer);
+    if (r.decision === 'accept') { N.agreedWage = offer; return completeTransfer(); }
+    else if (r.decision === 'counter') { N.msg = `${p.name} rejects ${money(offer / 1000)}/wk but would sign for ${money(N.neg.wageDemand / 1000)}/wk.`; N.tone = 'info'; }
+    else if (r.decision === 'reject') { N.msg = `${p.name} is insulted by an offer of just ${money(offer / 1000)}/wk.`; N.tone = 'bad'; }
+    else { ui.negotiation = null; closeModal(); return notify(`${p.name} rejected your contract terms.`, 'warning'); }
+    renderNegotiation();
+  }
+
+  function completeTransfer() {
+    const N = ui.negotiation; if (!N) return;
+    const seller = gameState.clubs[N.clubId];
+    const p = seller.players.find(x => x.id === N.playerId);
+    if (!p) { ui.negotiation = null; return closeModal(); }
+    if (N.agreedFee > gameState.myClub.budget) { ui.negotiation = null; closeModal(); return notify(`Can't afford the ${money(N.agreedFee)} fee.`, 'error'); }
+    seller.players = seller.players.filter(x => x.id !== N.playerId);
+    p.wage = N.agreedWage;
+    p.contract = rand(3, 5);
     gameState.myClub.players.push(p);
-    gameState.myClub.budget = Math.round((gameState.myClub.budget - fee) * 10) / 10;
-    gameState.market = (gameState.market || []).filter(x => x.id !== playerId);
-    gameState.transferLog.unshift({ in: true, name: p.name, fee });
-    notify(`Signed ${p.name} for ${money(fee)}!`, 'success');
+    gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
+    gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
+    gameState.transferLog.unshift({ in: true, name: p.name, fee: N.agreedFee });
+    notify(`✍️ Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
+    ui.negotiation = null;
+    closeModal();
     updateSidebar();
     renderTransfers($('main-content'));
   }
