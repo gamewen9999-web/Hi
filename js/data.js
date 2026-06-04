@@ -282,10 +282,10 @@ const CLUBS_DATA = [
   { id:'lech_poznan', name:'Lech Poznań',         league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:11, wage:0.55,sqRating:71 },
   { id:'jagiellonia', name:'Jagiellonia',         league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:10, wage:0.5, sqRating:71 },
   { id:'rakow',       name:'Raków',               league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:11, wage:0.55,sqRating:71 },
-  { id:'astana',      name:'FC Astana',           league:'european', country:'Kazakhstan',     european:true, europeanComp:'conference_league', rep:1, color:'#FFD200', budget:6,  wage:0.35,sqRating:68 },
-  { id:'ballkani',    name:'KF Ballkani',         league:'european', country:'Kosovo',         european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:66 },
-  { id:'paksi',       name:'Paksi FC',            league:'european', country:'Hungary',        european:true, europeanComp:'conference_league', rep:1, color:'#00843D', budget:5,  wage:0.3, sqRating:67 },
-  { id:'arda',        name:'Arda Kardzhali',      league:'european', country:'Bulgaria',       european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:66 },
+  { id:'hibernian',   name:'Hibernian',           league:'european', country:'Scotland',       european:true, europeanComp:'conference_league', rep:2, color:'#00843D', budget:8,  wage:0.45,sqRating:70 },
+  { id:'rosenborg',   name:'Rosenborg',           league:'european', country:'Norway',         european:true, europeanComp:'conference_league', rep:2, color:'#FFFFFF', budget:7,  wage:0.4, sqRating:69 },
+  { id:'santa_clara', name:'Santa Clara',         league:'european', country:'Portugal',       european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:7,  wage:0.4, sqRating:69 },
+  { id:'brondby',     name:'Brøndby',             league:'european', country:'Denmark',        european:true, europeanComp:'conference_league', rep:2, color:'#FFD200', budget:9,  wage:0.45,sqRating:70 },
   { id:'shelbourne',  name:'Shelbourne',          league:'european', country:'Ireland',        european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:67 },
 ];
 
