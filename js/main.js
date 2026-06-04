@@ -131,6 +131,7 @@ const APP = (() => {
   function renderClubGrid(league, search) {
     const grid = $('clubs-grid');
     const clubs = DATA.CLUBS_DATA
+      .filter(c => !c.european)
       .filter(c => (league === 'all' || c.league === league))
       .filter(c => !search || c.name.toLowerCase().includes(search))
       .sort((a, b) => b.rep - a.rep || b.sqRating - a.sqRating);

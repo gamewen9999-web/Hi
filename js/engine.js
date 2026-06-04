@@ -254,6 +254,11 @@ const ENGINE = (() => {
         .forEach(c => { if (!uecl.includes(c.id)) uecl.push(c.id); });
     });
 
+    // Non-big-5 European clubs enter the Champions League directly
+    Object.values(gameState.clubs)
+      .filter(c => c.european)
+      .forEach(c => { if (!ucl.includes(c.id)) ucl.push(c.id); });
+
     // Determine player's European competition
     const myLeague = DATA.LEAGUES[gameState.myClub.league];
     const myLeagueRanked = Object.values(gameState.clubs)
@@ -297,7 +302,7 @@ const ENGINE = (() => {
       return fixtures;
     };
 
-    const uclGroups = makeGroups(ucl, 8);
+    const uclGroups = makeGroups(ucl, 9);
     const uelGroups = makeGroups(uel, 8);
     const ueclGroups = makeGroups(uecl, 6);
 

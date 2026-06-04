@@ -3,7 +3,7 @@
    ============================================= */
 
 const LEAGUES = {
-  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 5, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
   championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
   league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4 },
   league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2 },
@@ -164,6 +164,23 @@ const CLUBS_DATA = [
   { id:'havre',       name:'Le Havre',           league:'ligue_1',        rep:2, color:'#003DA5', budget:10,  wage:0.5, sqRating:64 },
   { id:'saint_etienne',name:"Saint-Étienne",     league:'ligue_1',        rep:3, color:'#007A4D', budget:15,  wage:0.7, sqRating:67 },
   { id:'metz',        name:'FC Metz',            league:'ligue_1',        rep:2, color:'#6B0E1E', budget:10,  wage:0.5, sqRating:64 },
+  // European clubs (outside the big 5) — Champions League only, not playable
+  { id:'benfica',     name:'Benfica',            league:'european', country:'Portugal',    european:true, rep:4, color:'#E20E0E', budget:45, wage:1.8, sqRating:81 },
+  { id:'sporting_cp', name:'Sporting CP',        league:'european', country:'Portugal',    european:true, rep:4, color:'#008057', budget:40, wage:1.6, sqRating:80 },
+  { id:'porto',       name:'FC Porto',           league:'european', country:'Portugal',    european:true, rep:4, color:'#00428C', budget:40, wage:1.6, sqRating:80 },
+  { id:'ajax',        name:'Ajax',               league:'european', country:'Netherlands', european:true, rep:4, color:'#D2122E', budget:35, wage:1.5, sqRating:78 },
+  { id:'psv',         name:'PSV Eindhoven',      league:'european', country:'Netherlands', european:true, rep:3, color:'#ED1C24', budget:30, wage:1.3, sqRating:78 },
+  { id:'feyenoord',   name:'Feyenoord',          league:'european', country:'Netherlands', european:true, rep:3, color:'#E30613', budget:28, wage:1.2, sqRating:77 },
+  { id:'galatasaray', name:'Galatasaray',        league:'european', country:'Turkey',      european:true, rep:3, color:'#A90432', budget:30, wage:1.3, sqRating:77 },
+  { id:'fenerbahce',  name:'Fenerbahçe',         league:'european', country:'Turkey',      european:true, rep:3, color:'#154284', budget:30, wage:1.3, sqRating:77 },
+  { id:'celtic',      name:'Celtic',             league:'european', country:'Scotland',    european:true, rep:3, color:'#018749', budget:25, wage:1.1, sqRating:76 },
+  { id:'rangers',     name:'Rangers',            league:'european', country:'Scotland',    european:true, rep:3, color:'#1B458F', budget:22, wage:1.0, sqRating:75 },
+  { id:'salzburg',    name:'RB Salzburg',        league:'european', country:'Austria',     european:true, rep:3, color:'#D40026', budget:25, wage:1.1, sqRating:76 },
+  { id:'club_brugge', name:'Club Brugge',        league:'european', country:'Belgium',     european:true, rep:3, color:'#005BAA', budget:22, wage:1.0, sqRating:75 },
+  { id:'shakhtar',    name:'Shakhtar Donetsk',   league:'european', country:'Ukraine',     european:true, rep:3, color:'#F47B20', budget:20, wage:0.9, sqRating:75 },
+  { id:'olympiacos',  name:'Olympiacos',         league:'european', country:'Greece',      european:true, rep:3, color:'#C8102E', budget:20, wage:0.9, sqRating:75 },
+  { id:'dinamo_zagreb',name:'Dinamo Zagreb',     league:'european', country:'Croatia',     european:true, rep:2, color:'#1067B1', budget:15, wage:0.7, sqRating:73 },
+  { id:'young_boys',  name:'BSC Young Boys',     league:'european', country:'Switzerland', european:true, rep:2, color:'#FFD500', budget:15, wage:0.7, sqRating:73 },
 ];
 
 const FORMATIONS = {
