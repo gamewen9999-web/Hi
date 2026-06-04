@@ -1102,11 +1102,10 @@ html, body {
 .lp-table th:nth-child(2) { text-align: left; }
 .lp-table td { padding: 7px 8px; text-align: center; background: var(--bg-card); }
 .lp-table tbody tr.my-club td { background: rgba(0,208,132,0.08); }
-.lp-pos { position: relative; font-weight: 700; color: var(--text-muted); width: 34px; padding-left: 14px !important; border-radius: 5px 0 0 5px; }
-.lp-pos::before { content: ''; position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 3px; height: 18px; border-radius: 2px; background: transparent; }
-.lp-pos.ko-direct::before { background: var(--accent); }
-.lp-pos.ko-playoff::before { background: var(--accent-blue); }
-.lp-pos.ko-out::before { background: var(--accent-red); }
+.lp-pos { font-weight: 700; color: var(--text-muted); width: 34px; padding-left: 11px !important; border-radius: 5px 0 0 5px; border-left: 3px solid transparent; }
+.lp-pos.ko-direct { border-left-color: var(--accent); }
+.lp-pos.ko-playoff { border-left-color: var(--accent-blue); }
+.lp-pos.ko-out { border-left-color: var(--accent-red); }
 .lp-club { text-align: left !important; font-weight: 600; }
 .lp-table td:last-child { border-radius: 0 5px 5px 0; }
 
