@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Manager</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+
+    <!-- START SCREEN -->
+    <div id="screen-start" class="screen active">
+      <div class="start-bg">
+        <div class="start-bg-overlay"></div>
+        <div class="floating-balls">
+          <div class="ball b1">⚽</div>
+          <div class="ball b2">⚽</div>
+          <div class="ball b3">⚽</div>
+        </div>
+      </div>
+      <div class="start-content">
+        <div class="game-logo">
+          <div class="logo-emblem">⚽</div>
+          <h1 class="game-title">FOOTBALL<span>MANAGER</span></h1>
+          <p class="game-subtitle">2024 / 25</p>
+        </div>
+        <div id="club-selector-panel" class="club-selector-panel">
+          <h2 class="selector-title">Choose Your Club</h2>
+          <div class="league-tabs" id="league-tabs">
+            <button class="ltab active" data-league="all">All</button>
+            <button class="ltab" data-league="premier_league">Premier League</button>
+            <button class="ltab" data-league="championship">Championship</button>
+            <button class="ltab" data-league="league_one">League One</button>
+            <button class="ltab" data-league="league_two">League Two</button>
+            <button class="ltab" data-league="national_league">National League</button>
+            <button class="ltab" data-league="la_liga">La Liga</button>
+            <button class="ltab" data-league="bundesliga">Bundesliga</button>
+            <button class="ltab" data-league="serie_a">Serie A</button>
+            <button class="ltab" data-league="ligue_1">Ligue 1</button>
+          </div>
+          <div class="search-bar">
+            <input type="text" id="club-search" placeholder="Search clubs..." autocomplete="off">
+            <span class="search-icon">🔍</span>
+          </div>
+          <div id="clubs-grid" class="clubs-grid"></div>
+        </div>
+        <div id="club-confirm-panel" class="club-confirm-panel hidden">
+          <div id="confirm-badge" class="confirm-badge"></div>
+          <div class="confirm-info">
+            <h2 id="confirm-name"></h2>
+            <p id="confirm-league"></p>
+          </div>
+          <div class="confirm-stats">
+            <div class="cstat"><span class="cstat-label">Reputation</span><span class="cstat-val" id="confirm-rep"></span></div>
+            <div class="cstat"><span class="cstat-label">Transfer Budget</span><span class="cstat-val" id="confirm-budget"></span></div>
+            <div class="cstat"><span class="cstat-label">Wage Budget</span><span class="cstat-val" id="confirm-wage"></span></div>
+            <div class="cstat"><span class="cstat-label">Squad Rating</span><span class="cstat-val" id="confirm-rating"></span></div>
+          </div>
+          <div class="confirm-actions">
+            <button class="btn-secondary" id="btn-back-select">← Change Club</button>
+            <button class="btn-primary" id="btn-start-game">Start Career ➔</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAME SCREEN -->
+    <div id="screen-game" class="screen hidden">
+      <aside id="sidebar">
+        <div class="sidebar-club">
+          <div id="sb-badge" class="sb-badge">⚽</div>
+          <div class="sb-club-info">
+            <span id="sb-club-name" class="sb-name">Club</span>
+            <span id="sb-league-name" class="sb-league">League</span>
+          </div>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="snav-btn active" data-view="dashboard">
+            <span class="snav-icon">🏠</span><span>Dashboard</span>
+          </button>
+          <button class="snav-btn" data-view="squad">
+            <span class="snav-icon">👥</span><span>Squad</span>
+          </button>
+          <button class="snav-btn" data-view="tactics">
+            <span class="snav-icon">📋</span><span>Tactics</span>
+          </button>
+          <button class="snav-btn" data-view="fixtures">
+            <span class="snav-icon">📅</span><span>Fixtures</span>
+          </button>
+          <button class="snav-btn" data-view="table">
+            <span class="snav-icon">🏆</span><span>League Table</span>
+          </button>
+          <button class="snav-btn" data-view="transfers">
+            <span class="snav-icon">💰</span><span>Transfers</span>
+          </button>
+          <button class="snav-btn" data-view="european">
+            <span class="snav-icon">⭐</span><span>European</span>
+          </button>
+          <button class="snav-btn" data-view="finances">
+            <span class="snav-icon">📊</span><span>Finances</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sb-date-block">
+            <span class="sb-date-label">Date</span>
+            <span id="sb-date" class="sb-date-val">Aug 2024</span>
+          </div>
+          <div class="sb-budget-block">
+            <span class="sb-budget-label">Transfer Budget</span>
+            <span id="sb-budget" class="sb-budget-val">£0m</span>
+          </div>
+          <div class="sb-position-block">
+            <span class="sb-pos-label">Position</span>
+            <span id="sb-position" class="sb-pos-val">—</span>
+          </div>
+        </div>
+      </aside>
+
+      <main id="main-content">
+        <!-- Views injected here by JS -->
+      </main>
+    </div>
+
+    <!-- MATCH SCREEN -->
+    <div id="screen-match" class="screen hidden">
+      <div id="match-wrapper">
+        <div id="match-header">
+          <button id="btn-exit-match" class="btn-exit-match">✕ Exit</button>
+          <div class="match-teams">
+            <div class="match-team home">
+              <div id="match-home-badge" class="match-badge"></div>
+              <span id="match-home-name">Home</span>
+            </div>
+            <div class="match-scoreboard">
+              <div id="match-score" class="match-score">0 – 0</div>
+              <div id="match-time" class="match-time">0'</div>
+              <div id="match-status" class="match-status">PRE-MATCH</div>
+            </div>
+            <div class="match-team away">
+              <span id="match-away-name">Away</span>
+              <div id="match-away-badge" class="match-badge"></div>
+            </div>
+          </div>
+        </div>
+        <div id="match-body">
+          <div id="match-pitch-side">
+            <div id="match-pitch">
+              <div class="pitch-markings">
+                <div class="center-circle"></div>
+                <div class="center-line"></div>
+                <div class="penalty-box top"></div>
+                <div class="penalty-box bottom"></div>
+                <div class="goal-box top"></div>
+                <div class="goal-box bottom"></div>
+              </div>
+              <div id="pitch-events"></div>
+            </div>
+            <div id="match-stats-bar">
+              <div class="stat-row"><span id="s-possession-h">50%</span><div class="stat-bar-wrap"><div class="stat-bar-fill" id="stat-possession" style="width:50%"></div></div><span id="s-possession-a">50%</span><label>Possession</label></div>
+              <div class="stat-row"><span id="s-shots-h">0</span><div class="stat-bar-wrap"><div class="stat-bar-fill" id="stat-shots" style="width:50%"></div></div><span id="s-shots-a">0</span><label>Shots</label></div>
+              <div class="stat-row"><span id="s-sot-h">0</span><div class="stat-bar-wrap"><div class="stat-bar-fill" id="stat-sot" style="width:50%"></div></div><span id="s-sot-a">0</span><label>Shots on Target</label></div>
+            </div>
+          </div>
+          <div id="match-events-panel">
+            <h3>Match Events</h3>
+            <div id="match-events-list"></div>
+          </div>
+        </div>
+        <div id="match-controls">
+          <button id="btn-simulate" class="btn-primary btn-lg">▶ Simulate</button>
+          <button id="btn-fast-sim" class="btn-secondary btn-lg">⏩ Fast Simulate</button>
+        </div>
+        <div id="match-result-overlay" class="hidden">
+          <div class="result-box">
+            <h2>Full Time</h2>
+            <div class="result-score-big" id="result-score-big"></div>
+            <div class="result-teams" id="result-teams"></div>
+            <div id="result-scorers" class="result-scorers"></div>
+            <div id="player-ratings-section" class="player-ratings-section"></div>
+            <button class="btn-primary btn-lg" id="btn-continue-after-match">Continue ➔</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div id="modal-box" class="modal-box">
+        <button id="modal-close" class="modal-close">✕</button>
+        <div id="modal-content"></div>
+      </div>
+    </div>
+
+    <!-- NOTIFICATION TOAST -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
