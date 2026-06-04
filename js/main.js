@@ -693,8 +693,8 @@ const APP = (() => {
     const comp = gameState.european[tab];
 
     let body;
-    if (comp.stage === 'group') {
-      body = `<div class="group-grid">${comp.groups.map((g, gi) => groupCard(comp, g, gi)).join('')}</div>`;
+    if (comp.stage !== 'knockout' && comp.stage !== 'done') {
+      body = leaguePhaseTable(comp);
     } else {
       body = `<div class="knockout-bracket">${(comp.knockout?.rounds || []).map(r => `
         <div class="knockout-round"><div class="knockout-round-title">${r.name}</div>
@@ -720,16 +720,27 @@ const APP = (() => {
     m.querySelectorAll('[data-e]').forEach(b => b.addEventListener('click', () => { ui.euroTab = b.dataset.e; renderEuropean(m); }));
   }
   function noEuro() { return `<div class="view-header"><div class="view-title">European Competitions</div></div><div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">No European competitions configured.</div></div>`; }
-  function groupCard(comp, g, gi) {
-    const ids = [...new Set(g)];
-    const sorted = ids.slice().sort((a, b) => euPts(comp, b) - euPts(comp, a) || euGd(comp, b) - euGd(comp, a));
-    return `<div class="group-card"><div class="group-title">Group ${String.fromCharCode(65 + gi)}</div>
-      <table class="group-table"><thead><tr><th>#</th><th>Club</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
-      <tbody>${sorted.map((id, i) => {
-        const c = gameState.clubs[id], s = comp.groupStats[id] || {};
-        return `<tr class="${id===gameState.myClubId?'my-club':''}"><td>${i + 1}</td><td>${c ? esc(c.name) : '?'}</td>
-          <td>${s.p || 0}</td><td>${euGd(comp, id) >= 0 ? '+' : ''}${euGd(comp, id)}</td><td>${s.pts || 0}</td></tr>`;
-      }).join('')}</tbody></table></div>`;
+  function leaguePhaseTable(comp) {
+    const sorted = euTable(comp);
+    let R = 16; while (R > sorted.length) R /= 2;
+    const directCut = R / 2, playoffCut = R / 2 + R;     // top R/2 direct, next R into playoff
+    const rows = sorted.map((id, i) => {
+      const c = gameState.clubs[id], s = comp.groupStats[id] || {};
+      const zone = i < directCut ? 'ko-direct' : i < playoffCut ? 'ko-playoff' : 'ko-out';
+      const gd = euGd(comp, id);
+      return `<tr class="${id===gameState.myClubId?'my-club':''}">
+        <td class="lp-pos ${zone}">${i + 1}</td>
+        <td class="lp-club">${c ? esc(c.name) : '?'}</td>
+        <td>${s.p || 0}</td><td>${s.w || 0}</td><td>${s.d || 0}</td><td>${s.l || 0}</td>
+        <td>${gd >= 0 ? '+' : ''}${gd}</td><td class="fw-700">${s.pts || 0}</td></tr>`;
+    }).join('');
+    return `<div class="lp-legend">
+        <span class="lp-key"><span class="lp-dot ko-direct"></span>Round of 16</span>
+        <span class="lp-key"><span class="lp-dot ko-playoff"></span>Knockout playoff</span>
+        <span class="lp-key"><span class="lp-dot ko-out"></span>Eliminated</span>
+      </div>
+      <table class="lp-table"><thead><tr><th>#</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
   }
   function euPts(comp, id) { return comp.groupStats[id]?.pts || 0; }
   function euGd(comp, id) { const s = comp.groupStats[id]; return s ? s.gf - s.ga : 0; }
@@ -972,7 +983,7 @@ const APP = (() => {
   function simulateCompetitionsUpTo(date) {
     if (gameState.european) {
       Object.values(gameState.european).forEach(comp => {
-        if (comp.stage === 'group') {
+        if (comp.stage === 'league') {
           comp.fixtures.filter(f => !f.played && f.date <= date).forEach(f => simEuroFixture(comp, f));
           if (comp.fixtures.every(f => f.played)) startEuroKnockout(comp);
         }
@@ -1007,24 +1018,54 @@ const APP = (() => {
     if (gf > ga) { s.w++; s.pts += 3; } else if (gf === ga) { s.d++; s.pts++; } else s.l++;
   }
 
+  // Sort the league-phase table (points, then goal difference, then squad rating).
+  function euTable(comp) {
+    return comp.clubs.slice().sort((a, b) =>
+      euPts(comp, b) - euPts(comp, a) ||
+      euGd(comp, b) - euGd(comp, a) ||
+      (gameState.clubs[b]?.sqRating || 0) - (gameState.clubs[a]?.sqRating || 0));
+  }
+  // New-format qualification: top R/2 go straight to the bracket, the next R
+  // teams meet in a knockout playoff for the remaining spots, the rest are out.
+  function euBracketSize(comp) {
+    let R = 16; while (R > comp.clubs.length) R /= 2;   // scale down for small pools
+    return Math.max(2, R);
+  }
+
   function startEuroKnockout(comp) {
-    const winners = [], runners = [];
-    comp.groups.forEach(g => {
-      const ids = [...new Set(g)].sort((a, b) => euPts(comp, b) - euPts(comp, a) || euGd(comp, b) - euGd(comp, a));
-      if (ids[0]) winners.push(ids[0]);
-      if (ids[1]) runners.push(ids[1]);
-    });
-    let teams = [...new Set([...winners, ...runners])];
-    let size = 1; while (size * 2 <= teams.length) size *= 2;
-    comp.knockout = { teams: teams.slice(0, Math.max(2, size)), rounds: [] };
+    const table = euTable(comp);
+    const R = euBracketSize(comp);
+    const direct = table.slice(0, R / 2);                 // top 8 → straight to Round of 16
+    const playoffField = table.slice(R / 2, R / 2 + R);   // 9th–24th → knockout playoff
+    comp.knockout = { direct, playoffField, rounds: [] };
     comp.stage = 'knockout';
   }
 
   function resolveKnockout(comp) {
-    let teams = comp.knockout.teams.slice();
-    const rounds = [];
     const myId = gameState.myClubId;
-    const myIn = teams.includes(myId);
+    const k = comp.knockout;
+    const rounds = [];
+
+    // Knockout playoff round: contested for the last bracket spots.
+    let playoffWinners = [];
+    if (k.playoffField && k.playoffField.length) {
+      const ties = [], pf = k.playoffField.slice();
+      for (let i = 0; i + 1 < pf.length; i += 2) {
+        const tie = simKO(pf[i], pf[i + 1]);
+        ties.push(tie); playoffWinners.push(tie.winner);
+      }
+      if (pf.length % 2 === 1) playoffWinners.push(pf[pf.length - 1]);
+      if (ties.length) rounds.push({ name: 'Knockout Playoff', ties });
+    }
+
+    // Seed the bracket: each top-8 club faces a playoff winner where possible.
+    let teams = [];
+    const seeded = k.direct.slice(), n = Math.max(seeded.length, playoffWinners.length);
+    for (let i = 0; i < n; i++) {
+      if (seeded[i]) teams.push(seeded[i]);
+      if (playoffWinners[i]) teams.push(playoffWinners[i]);
+    }
+
     while (teams.length > 1) {
       const ties = [], next = [];
       for (let i = 0; i + 1 < teams.length; i += 2) {
@@ -1038,7 +1079,7 @@ const APP = (() => {
     comp.knockout.rounds = rounds;
     comp.winner = teams[0];
     comp.stage = 'done';
-    if (myIn) {
+    if (comp.clubs.includes(myId)) {
       if (comp.winner === myId) notify(`🏆 You won the ${comp.name}!`, 'success');
       else notify(`${comp.name}: your European run has ended.`, 'info');
     }
@@ -1087,7 +1128,7 @@ const APP = (() => {
     });
     // wrap up competitions
     if (gameState.european) Object.values(gameState.european).forEach(comp => {
-      if (comp.stage === 'group') { comp.fixtures.filter(f => !f.played).forEach(f => simEuroFixture(comp, f)); startEuroKnockout(comp); }
+      if (comp.stage === 'league') { comp.fixtures.filter(f => !f.played).forEach(f => simEuroFixture(comp, f)); startEuroKnockout(comp); }
       if (comp.stage === 'knockout') resolveKnockout(comp);
     });
     if (gameState.cups) Object.values(gameState.cups).forEach(cup => { if (!cup.winner) resolveCup(cup); });

@@ -254,10 +254,16 @@ const ENGINE = (() => {
         .forEach(c => { if (!uecl.includes(c.id)) uecl.push(c.id); });
     });
 
-    // Non-big-5 European clubs enter the Champions League directly
+    // Non-big-5 European clubs enter their assigned competition directly
+    // (default Champions League if unspecified).
     Object.values(gameState.clubs)
       .filter(c => c.european)
-      .forEach(c => { if (!ucl.includes(c.id)) ucl.push(c.id); });
+      .forEach(c => {
+        const comp = c.europeanComp || 'champions_league';
+        if (comp === 'europa_league') { if (!uel.includes(c.id)) uel.push(c.id); }
+        else if (comp === 'conference_league') { if (!uecl.includes(c.id)) uecl.push(c.id); }
+        else { if (!ucl.includes(c.id)) ucl.push(c.id); }
+      });
 
     // Determine player's European competition
     const myLeague = DATA.LEAGUES[gameState.myClub.league];
@@ -273,43 +279,39 @@ const ENGINE = (() => {
     }
     gameState.myEuropeanComp = myEuropean;
 
-    const makeGroups = (clubs, n) => {
-      const s = [...clubs].sort(() => Math.random()-0.5);
-      while (s.length < n * 4) s.push(...s.slice(0, Math.min(4, n*4-s.length)));
-      return Array.from({ length: n }, (_, i) => s.slice(i*4, i*4+4));
-    };
-
+    // New UEFA format: a single "league phase" — every club sits in one table and
+    // plays a fixed number of matches against different opponents (no groups).
     const euDates = [
-      new Date(2025,8,17), new Date(2025,9,1), new Date(2025,9,22),
-      new Date(2025,10,5), new Date(2025,10,26), new Date(2025,11,10),
+      new Date(2025,8,16), new Date(2025,8,30), new Date(2025,9,21),
+      new Date(2025,10,4), new Date(2025,10,25), new Date(2025,11,9),
+      new Date(2026,0,20),  new Date(2026,0,28),
     ];
     let eid = 100000;
 
-    const genEuFixtures = (comp, clubIds, groups) => {
+    // Take the first `matchdays` rounds of a round-robin so each club faces a
+    // distinct set of opponents (the Swiss-model league phase).
+    const genLeaguePhase = (comp, clubIds, matchdays) => {
       const fixtures = [];
-      groups.forEach((group, gi) => {
-        if (group.length < 2) return;
-        const rr = roundRobin(group.map(id => ({ id })));
-        rr.forEach((round, ri) => {
-          const date = euDates[ri] || euDates[5];
-          round.forEach(m => {
-            fixtures.push({ id: eid++, comp, group: gi, home: m.home, away: m.away,
-              date: new Date(date), played: false, homeScore: null, awayScore: null,
-              type: 'european', stage: 'group' });
-          });
+      if (clubIds.length < 2) return fixtures;
+      const rounds = roundRobin(clubIds.map(id => ({ id }))).slice(0, matchdays);
+      rounds.forEach((round, ri) => {
+        const date = euDates[ri] || euDates[euDates.length - 1];
+        // Alternate home/away each matchday to keep things roughly balanced.
+        round.forEach(m => {
+          const flip = ri % 2 === 1;
+          fixtures.push({ id: eid++, comp,
+            home: flip ? m.away : m.home, away: flip ? m.home : m.away,
+            date: new Date(date), played: false, homeScore: null, awayScore: null,
+            type: 'european', stage: 'league' });
         });
       });
       return fixtures;
     };
 
-    const uclGroups = makeGroups(ucl, 9);
-    const uelGroups = makeGroups(uel, 8);
-    const ueclGroups = makeGroups(uecl, 6);
-
     gameState.european = {
-      champions_league: { name:'Champions League', short:'UCL', clubs: ucl, groups: uclGroups, fixtures: genEuFixtures('champions_league', ucl, uclGroups), stage:'group', groupStats:{} },
-      europa_league:    { name:'Europa League',    short:'UEL', clubs: uel, groups: uelGroups, fixtures: genEuFixtures('europa_league', uel, uelGroups), stage:'group', groupStats:{} },
-      conference_league:{ name:'Conference League',short:'UECL',clubs: uecl, groups: ueclGroups, fixtures: genEuFixtures('conference_league', uecl, ueclGroups), stage:'group', groupStats:{} },
+      champions_league: { name:'Champions League', short:'UCL', clubs: ucl, matchdays: 8, fixtures: genLeaguePhase('champions_league', ucl, 8), stage:'league', groupStats:{} },
+      europa_league:    { name:'Europa League',    short:'UEL', clubs: uel, matchdays: 8, fixtures: genLeaguePhase('europa_league', uel, 8), stage:'league', groupStats:{} },
+      conference_league:{ name:'Conference League',short:'UECL',clubs: uecl, matchdays: 6, fixtures: genLeaguePhase('conference_league', uecl, 6), stage:'league', groupStats:{} },
     };
   }
 

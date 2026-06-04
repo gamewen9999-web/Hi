@@ -8,9 +8,9 @@ const LEAGUES = {
   league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4 },
   league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2 },
   national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
-  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
-  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
-  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
+  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
   ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
 };
 
@@ -181,6 +181,29 @@ const CLUBS_DATA = [
   { id:'olympiacos',  name:'Olympiacos',         league:'european', country:'Greece',      european:true, rep:3, color:'#C8102E', budget:20, wage:0.9, sqRating:75 },
   { id:'dinamo_zagreb',name:'Dinamo Zagreb',     league:'european', country:'Croatia',     european:true, rep:2, color:'#1067B1', budget:15, wage:0.7, sqRating:73 },
   { id:'young_boys',  name:'BSC Young Boys',     league:'european', country:'Switzerland', european:true, rep:2, color:'#FFD500', budget:15, wage:0.7, sqRating:73 },
+  // Europa League clubs (outside the big 5) — 22 clubs, not playable
+  { id:'braga',        name:'SC Braga',            league:'european', country:'Portugal',   european:true, europeanComp:'europa_league', rep:3, color:'#E2001A', budget:22, wage:1.0, sqRating:75 },
+  { id:'paok',         name:'PAOK',                league:'european', country:'Greece',      european:true, europeanComp:'europa_league', rep:3, color:'#000000', budget:18, wage:0.85,sqRating:74 },
+  { id:'anderlecht',   name:'Anderlecht',          league:'european', country:'Belgium',     european:true, europeanComp:'europa_league', rep:3, color:'#582C83', budget:18, wage:0.85,sqRating:74 },
+  { id:'union_sg',     name:'Union Saint-Gilloise',league:'european', country:'Belgium',     european:true, europeanComp:'europa_league', rep:3, color:'#FFE600', budget:16, wage:0.8, sqRating:74 },
+  { id:'besiktas',     name:'Beşiktaş',            league:'european', country:'Turkey',      european:true, europeanComp:'europa_league', rep:3, color:'#000000', budget:20, wage:0.9, sqRating:74 },
+  { id:'slavia_prague',name:'Slavia Prague',       league:'european', country:'Czechia',     european:true, europeanComp:'europa_league', rep:3, color:'#D7141A', budget:15, wage:0.7, sqRating:73 },
+  { id:'sparta_prague',name:'Sparta Prague',       league:'european', country:'Czechia',     european:true, europeanComp:'europa_league', rep:2, color:'#8B1A1A', budget:14, wage:0.68,sqRating:73 },
+  { id:'viktoria_plzen',name:'Viktoria Plzeň',     league:'european', country:'Czechia',     european:true, europeanComp:'europa_league', rep:2, color:'#0046AD', budget:12, wage:0.6, sqRating:72 },
+  { id:'ferencvaros',  name:'Ferencváros',         league:'european', country:'Hungary',     european:true, europeanComp:'europa_league', rep:2, color:'#0A9648', budget:13, wage:0.62,sqRating:72 },
+  { id:'fcsb',         name:'FCSB',                league:'european', country:'Romania',     european:true, europeanComp:'europa_league', rep:2, color:'#D5001C', budget:12, wage:0.6, sqRating:72 },
+  { id:'dynamo_kyiv',  name:'Dynamo Kyiv',         league:'european', country:'Ukraine',     european:true, europeanComp:'europa_league', rep:3, color:'#005BAC', budget:15, wage:0.7, sqRating:73 },
+  { id:'red_star',     name:'Red Star Belgrade',   league:'european', country:'Serbia',      european:true, europeanComp:'europa_league', rep:3, color:'#D7141A', budget:15, wage:0.7, sqRating:73 },
+  { id:'ludogorets',   name:'Ludogorets Razgrad',  league:'european', country:'Bulgaria',    european:true, europeanComp:'europa_league', rep:2, color:'#006C3B', budget:11, wage:0.55,sqRating:72 },
+  { id:'qarabag',      name:'Qarabağ',             league:'european', country:'Azerbaijan',  european:true, europeanComp:'europa_league', rep:2, color:'#000000', budget:11, wage:0.55,sqRating:72 },
+  { id:'midtjylland',  name:'FC Midtjylland',      league:'european', country:'Denmark',     european:true, europeanComp:'europa_league', rep:2, color:'#000000', budget:13, wage:0.62,sqRating:72 },
+  { id:'malmo',        name:'Malmö FF',            league:'european', country:'Sweden',      european:true, europeanComp:'europa_league', rep:2, color:'#0099D8', budget:12, wage:0.6, sqRating:72 },
+  { id:'elfsborg',     name:'IF Elfsborg',         league:'european', country:'Sweden',      european:true, europeanComp:'europa_league', rep:2, color:'#FFCD00', budget:10, wage:0.5, sqRating:71 },
+  { id:'bodo_glimt',   name:'Bodø/Glimt',          league:'european', country:'Norway',      european:true, europeanComp:'europa_league', rep:2, color:'#FFD200', budget:11, wage:0.55,sqRating:72 },
+  { id:'twente',       name:'FC Twente',           league:'european', country:'Netherlands', european:true, europeanComp:'europa_league', rep:2, color:'#E1001A', budget:13, wage:0.62,sqRating:72 },
+  { id:'az_alkmaar',   name:'AZ Alkmaar',          league:'european', country:'Netherlands', european:true, europeanComp:'europa_league', rep:3, color:'#E1001A', budget:15, wage:0.7, sqRating:73 },
+  { id:'rapid_wien',   name:'Rapid Wien',          league:'european', country:'Austria',     european:true, europeanComp:'europa_league', rep:2, color:'#008C45', budget:11, wage:0.55,sqRating:72 },
+  { id:'maccabi_tel_aviv',name:'Maccabi Tel Aviv', league:'european', country:'Israel',      european:true, europeanComp:'europa_league', rep:2, color:'#FCD800', budget:11, wage:0.55,sqRating:72 },
 ];
 
 const FORMATIONS = {
