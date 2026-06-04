@@ -926,22 +926,11 @@ html, body {
 .league-table tbody td:first-child { border-radius: 5px 0 0 5px; padding-left: 16px; position: relative; }
 .league-table tbody td:last-child { border-radius: 0 5px 5px 0; }
 
-.table-pos { font-weight: 700; color: var(--text-muted); font-size: 13px; }
-.table-pos::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 18px;
-  border-radius: 2px;
-  background: transparent;
-}
-.table-pos.championsleague::before { background: var(--accent-blue); }
-.table-pos.europe::before { background: var(--accent-gold); }
-.table-pos.conference::before { background: var(--accent); }
-.table-pos.relegation::before { background: var(--accent-red); }
+.table-pos { display: inline-block; font-weight: 700; color: var(--text-muted); font-size: 13px; border-left: 3px solid transparent; padding-left: 9px; margin-left: -11px; }
+.table-pos.championsleague { border-left-color: var(--accent-blue); }
+.table-pos.europe { border-left-color: var(--accent-gold); }
+.table-pos.conference { border-left-color: var(--accent); }
+.table-pos.relegation { border-left-color: var(--accent-red); }
 
 .table-club { display: flex; align-items: center; gap: 8px; }
 .table-badge { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; color: #fff; flex-shrink: 0; }
