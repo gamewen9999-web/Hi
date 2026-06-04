@@ -250,7 +250,7 @@ const ENGINE = (() => {
       clubs.slice(league.championsLeague || 0, (league.championsLeague||0) + (league.europaLeague||0))
         .forEach(c => { if (!uel.includes(c.id)) uel.push(c.id); });
       clubs.slice((league.championsLeague||0) + (league.europaLeague||0),
-                  (league.championsLeague||0) + (league.europaLeague||0) + 2)
+                  (league.championsLeague||0) + (league.europaLeague||0) + (league.conferenceLeague||0))
         .forEach(c => { if (!uecl.includes(c.id)) uecl.push(c.id); });
     });
 
@@ -366,12 +366,59 @@ const ENGINE = (() => {
     return m === 6 || m === 7 || m === 0; // Jul, Aug, Jan
   }
 
+  /* ---- TRANSFER NEGOTIATION ----
+     A negotiation has two phases: agree a fee with the selling club, then
+     agree personal terms (wages) with the player. Fees are in £m, wages £k/wk. */
+  function startNegotiation(player, sellerClub) {
+    // Clubs price players above market value; more for youth and high potential.
+    const youngBoost = player.age <= 23 ? 0.18 : player.age >= 31 ? -0.1 : 0;
+    const potBoost = (player.pot - player.ovr) >= 6 ? 0.12 : 0;
+    // Bigger clubs are more reluctant to sell their stars.
+    const repBoost = (sellerClub.rep >= 4 && player.ovr >= 80) ? 0.1 : 0;
+    const mult = 1.2 + youngBoost + potBoost + repBoost + rand(0, 18) / 100;
+    const asking = Math.max(0.2, Math.round(player.value * mult * 10) / 10);
+    const wageDemand = Math.max(5, Math.round(player.wage * (1.15 + rand(5, 30) / 100)));
+    return {
+      asking,
+      minFee: Math.max(0.1, Math.round(asking * 0.82 * 10) / 10),
+      wageDemand,
+      minWage: Math.max(5, Math.round(wageDemand * 0.9)),
+      feeRound: 0,
+      wageRound: 0,
+    };
+  }
+
+  function evaluateFeeOffer(neg, offer) {
+    neg.feeRound++;
+    if (offer >= neg.minFee) return { decision: 'accept' };
+    if (neg.feeRound >= 5) return { decision: 'walk' };
+    if (offer >= neg.minFee * 0.7) {
+      const counter = Math.round(((offer + neg.asking) / 2) * 10) / 10;
+      neg.asking = Math.max(neg.minFee, counter);
+      return { decision: 'counter', counter: neg.asking };
+    }
+    return { decision: 'reject' };   // insultingly low — burns a round but no walkout yet
+  }
+
+  function evaluateWageOffer(neg, offer) {
+    neg.wageRound++;
+    if (offer >= neg.minWage) return { decision: 'accept' };
+    if (neg.wageRound >= 5) return { decision: 'walk' };
+    if (offer >= neg.minWage * 0.75) {
+      const counter = Math.round((offer + neg.wageDemand) / 2);
+      neg.wageDemand = Math.max(neg.minWage, counter);
+      return { decision: 'counter', counter: neg.wageDemand };
+    }
+    return { decision: 'reject' };
+  }
+
   return {
     generateSchedule, simulateMatch, recordResult,
     simulateSameDay, continueToNextFixture,
     getNextFixture, getLeagueTable, getMyPosition,
     setupEuropean, setupCups,
     getTransferMarket, isTransferWindowOpen,
+    startNegotiation, evaluateFeeOffer, evaluateWageOffer,
   };
 
 })();

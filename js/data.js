@@ -11,7 +11,7 @@ const LEAGUES = {
   la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
   bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
   serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
-  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, conferenceLeague: 2, relegation: 3 },
 };
 
 const CLUBS_DATA = [
@@ -256,6 +256,37 @@ const CLUBS_DATA = [
   { id:'az_alkmaar',   name:'AZ Alkmaar',          league:'european', country:'Netherlands', european:true, europeanComp:'europa_league', rep:3, color:'#E1001A', budget:15, wage:0.7, sqRating:73 },
   { id:'rapid_wien',   name:'Rapid Wien',          league:'european', country:'Austria',     european:true, europeanComp:'europa_league', rep:2, color:'#008C45', budget:11, wage:0.55,sqRating:72 },
   { id:'maccabi_tel_aviv',name:'Maccabi Tel Aviv', league:'european', country:'Israel',      european:true, europeanComp:'europa_league', rep:2, color:'#FCD800', budget:11, wage:0.55,sqRating:72 },
+  // Conference League clubs (outside the big 5) — 30 clubs, not playable
+  { id:'aek_athens',  name:'AEK Athens',          league:'european', country:'Greece',         european:true, europeanComp:'conference_league', rep:3, color:'#FFD200', budget:20, wage:0.9, sqRating:74 },
+  { id:'samsunspor',  name:'Samsunspor',          league:'european', country:'Turkey',         european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:16, wage:0.8, sqRating:72 },
+  { id:'legia',       name:'Legia Warsaw',        league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:3, color:'#006847', budget:16, wage:0.8, sqRating:73 },
+  { id:'rijeka',      name:'HNK Rijeka',          league:'european', country:'Croatia',        european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:13, wage:0.62,sqRating:72 },
+  { id:'aberdeen',    name:'Aberdeen',            league:'european', country:'Scotland',       european:true, europeanComp:'conference_league', rep:2, color:'#E03A3E', budget:14, wage:0.7, sqRating:72 },
+  { id:'omonia',      name:'Omonia Nicosia',      league:'european', country:'Cyprus',         european:true, europeanComp:'conference_league', rep:2, color:'#00843D', budget:11, wage:0.55,sqRating:71 },
+  { id:'craiova',     name:'Universitatea Craiova',league:'european',country:'Romania',        european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:11, wage:0.55,sqRating:71 },
+  { id:'celje',       name:'NK Celje',            league:'european', country:'Slovenia',       european:true, europeanComp:'conference_league', rep:2, color:'#FFD200', budget:9,  wage:0.45,sqRating:70 },
+  { id:'lausanne',    name:'Lausanne-Sport',      league:'european', country:'Switzerland',    european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:10, wage:0.5, sqRating:70 },
+  { id:'sigma',       name:'Sigma Olomouc',       league:'european', country:'Czechia',        european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:9,  wage:0.45,sqRating:70 },
+  { id:'shamrock',    name:'Shamrock Rovers',     league:'european', country:'Ireland',        european:true, europeanComp:'conference_league', rep:2, color:'#00843D', budget:7,  wage:0.4, sqRating:69 },
+  { id:'drita',       name:'FC Drita',            league:'european', country:'Kosovo',         european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:5,  wage:0.3, sqRating:67 },
+  { id:'breidablik',  name:'Breiðablik',          league:'european', country:'Iceland',        european:true, europeanComp:'conference_league', rep:1, color:'#00843D', budget:5,  wage:0.3, sqRating:67 },
+  { id:'kups',        name:'KuPS',                league:'european', country:'Finland',        european:true, europeanComp:'conference_league', rep:1, color:'#FFD200', budget:6,  wage:0.35,sqRating:68 },
+  { id:'hacken',      name:'BK Häcken',           league:'european', country:'Sweden',         european:true, europeanComp:'conference_league', rep:2, color:'#FFD200', budget:9,  wage:0.45,sqRating:70 },
+  { id:'hamrun',      name:'Hamrun Spartans',     league:'european', country:'Malta',          european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:66 },
+  { id:'lincoln_ri',  name:'Lincoln Red Imps',    league:'european', country:'Gibraltar',      european:true, europeanComp:'conference_league', rep:1, color:'#000000', budget:3,  wage:0.2, sqRating:64 },
+  { id:'shkendija',   name:'Shkëndija',           league:'european', country:'North Macedonia',european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:5,  wage:0.3, sqRating:67 },
+  { id:'zrinjski',    name:'Zrinjski Mostar',     league:'european', country:'Bosnia',         european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:6,  wage:0.35,sqRating:68 },
+  { id:'noah',        name:'FC Noah',             league:'european', country:'Armenia',        european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:5,  wage:0.3, sqRating:67 },
+  { id:'slovan',      name:'Slovan Bratislava',   league:'european', country:'Slovakia',       european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:10, wage:0.5, sqRating:71 },
+  { id:'aek_larnaca', name:'AEK Larnaca',         league:'european', country:'Cyprus',         european:true, europeanComp:'conference_league', rep:2, color:'#FFD200', budget:9,  wage:0.45,sqRating:70 },
+  { id:'lech_poznan', name:'Lech Poznań',         league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#0046AD', budget:11, wage:0.55,sqRating:71 },
+  { id:'jagiellonia', name:'Jagiellonia',         league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:10, wage:0.5, sqRating:71 },
+  { id:'rakow',       name:'Raków',               league:'european', country:'Poland',         european:true, europeanComp:'conference_league', rep:2, color:'#D6001C', budget:11, wage:0.55,sqRating:71 },
+  { id:'astana',      name:'FC Astana',           league:'european', country:'Kazakhstan',     european:true, europeanComp:'conference_league', rep:1, color:'#FFD200', budget:6,  wage:0.35,sqRating:68 },
+  { id:'ballkani',    name:'KF Ballkani',         league:'european', country:'Kosovo',         european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:66 },
+  { id:'paksi',       name:'Paksi FC',            league:'european', country:'Hungary',        european:true, europeanComp:'conference_league', rep:1, color:'#00843D', budget:5,  wage:0.3, sqRating:67 },
+  { id:'arda',        name:'Arda Kardzhali',      league:'european', country:'Bulgaria',       european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:66 },
+  { id:'shelbourne',  name:'Shelbourne',          league:'european', country:'Ireland',        european:true, europeanComp:'conference_league', rep:1, color:'#D6001C', budget:4,  wage:0.25,sqRating:67 },
 ];
 
 const FORMATIONS = {
