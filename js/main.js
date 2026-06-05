@@ -229,6 +229,13 @@ const APP = (() => {
       $('modal-overlay').addEventListener('click', (e) => { if (e.target === $('modal-overlay')) closeModal(); });
       $('btn-simulate').addEventListener('click', () => runSimulation(false));
       $('btn-fast-sim').addEventListener('click', () => runSimulation(true));
+      const halftimeBtn = $('btn-halftime');
+      if (halftimeBtn) halftimeBtn.addEventListener('click', () => {
+        if (!ui.match) return;
+        halftimeBtn.classList.add('hidden');
+        running = false;
+        runSimulation(false);
+      });
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
       $('btn-exit-match').addEventListener('click', exitMatch);
 
@@ -321,7 +328,7 @@ const APP = (() => {
       nextHtml = `
         <div class="next-match-card">
           <div class="next-match-header">
-            <span class="next-match-comp">${DATA.LEAGUES[next.leagueId].name}</span>
+            <span class="next-match-comp">${compName(next)}</span>
             <span class="next-match-date">${fmtDate(next.date)}</span>
           </div>
           <div class="next-match-teams">
@@ -494,7 +501,17 @@ const APP = (() => {
      --------------------------------------------- */
   function renderFixtures(m) {
     const myId = gameState.myClubId;
-    const mine = gameState.fixtures.filter(f => f.home === myId || f.away === myId);
+    let mine = gameState.fixtures.filter(f => f.home === myId || f.away === myId);
+    // Include European league-phase fixtures
+    if (gameState.european) {
+      Object.values(gameState.european).forEach(comp => {
+        comp.fixtures.forEach(f => {
+          if ((f.home === myId || f.away === myId) && !mine.find(x => x.id === f.id))
+            mine.push(f);
+        });
+      });
+    }
+    mine.sort((a, b) => a.date - b.date);
     const next = ENGINE.getNextFixture(gameState);
     const byMonth = {};
     mine.forEach(f => {
@@ -508,7 +525,6 @@ const APP = (() => {
       byMonth[month].forEach(f => {
         const home = gameState.clubs[f.home], away = gameState.clubs[f.away];
         const myIsHome = f.home === myId;
-        const opp = myIsHome ? away : home;
         const isNext = next && f.id === next.id;
         let scoreCls = 'fixture-score upcoming', scoreTxt = 'v';
         if (f.played) {
@@ -518,9 +534,10 @@ const APP = (() => {
           scoreCls = `fixture-score played ${res}`;
           scoreTxt = `${f.homeScore} – ${f.awayScore}`;
         }
-        html += `<div class="fixture-row ${isNext ? 'next-fixture' : ''} ${f.played ? 'played' : ''}" ${isNext ? 'data-play="1"' : ''}>
+        const isEuro = f.type === 'european';
+        html += `<div class="fixture-row ${isNext ? 'next-fixture' : ''} ${f.played ? 'played' : ''} ${isEuro ? 'euro-fixture' : ''}" ${isNext ? 'data-play="1"' : ''}>
           <div class="fixture-date">${fmtDate(f.date)}</div>
-          <div class="fixture-comp">${DATA.LEAGUES[f.leagueId].name}</div>
+          <div class="fixture-comp">${compName(f)}</div>
           <div class="fixture-teams">
             <span class="fixture-team-name">${esc(home.shortName)}</span>
             <span class="${scoreCls}">${scoreTxt}</span>
@@ -952,10 +969,13 @@ const APP = (() => {
     if (!fixture) return;
     const home = gameState.clubs[fixture.home], away = gameState.clubs[fixture.away];
     const myIsHome = fixture.home === gameState.myClubId;
-    const homeXI = myIsHome ? gameState.tactics.lineup : autoPickXI(home, '4-3-3');
-    const awayXI = myIsHome ? autoPickXI(away, '4-3-3') : gameState.tactics.lineup;
+    const homeFormation = myIsHome ? gameState.tactics.formation : '4-3-3';
+    const awayFormation = myIsHome ? '4-3-3' : gameState.tactics.formation;
+    const homeXI = myIsHome ? gameState.tactics.lineup : autoPickXI(home, homeFormation);
+    const awayXI = myIsHome ? autoPickXI(away, awayFormation) : gameState.tactics.lineup;
     const result = ENGINE.simulateMatch(home, away, { homeXI, awayXI });
-    ui.match = { fixture, home, away, myIsHome, result };
+    ui.match = { fixture, home, away, myIsHome, result, homeFormation, awayFormation,
+                 sim: { min: 0, idx: 0, hs: 0, as: 0 }, simTimer: null };
 
     // setup match screen
     $('match-home-name').textContent = home.shortName;
@@ -971,46 +991,173 @@ const APP = (() => {
     ['s-shots-h','s-shots-a','s-sot-h','s-sot-a'].forEach(id => $(id).textContent = '0');
     ['stat-possession','stat-shots','stat-sot'].forEach(id => $(id).style.width = '50%');
     $('match-result-overlay').classList.add('hidden');
+    $('btn-halftime').classList.add('hidden');
     $('btn-simulate').disabled = false;
-    $('btn-fast-sim').disabled = false;
     running = false;
+    initPlayerDots();
+    resetBall();
     showScreen('match');
   }
   function setBadge(id, club) {
     setBadgeEl($(id), club);
   }
 
-  function runSimulation(fast) {
+  /* ---- PLAYER DOTS, BALL & COMMENTARY ---- */
+  function colorDist(c1, c2) {
+    const p = c => { const h = hex(c).slice(1); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; };
+    const [r1,g1,b1] = p(c1), [r2,g2,b2] = p(c2);
+    return Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2);
+  }
+  function teamDotColor(club, vsClub) {
+    const primary = hex(club.color);
+    if (!vsClub) return primary;
+    if (colorDist(primary, hex(vsClub.color)) < 70) return club.color2 ? hex(club.color2) : '#ffffff';
+    return primary;
+  }
+  function initPlayerDots() {
+    const container = $('pitch-players');
+    if (!container) return;
+    container.innerHTML = '';
+    const m = ui.match;
+    const homeColor = teamDotColor(m.home, null);
+    const awayColor = teamDotColor(m.away, m.home);
+    const homeSlots = (DATA.FORMATIONS[m.homeFormation] || DATA.FORMATIONS['4-3-3']).positions;
+    const awaySlots = (DATA.FORMATIONS[m.awayFormation] || DATA.FORMATIONS['4-3-3']).positions;
+    homeSlots.forEach(slot => {
+      const d = document.createElement('div');
+      d.className = 'player-dot';
+      d.style.cssText = `background:${homeColor};left:${slot.x}%;top:${3 + (slot.y / 100) * 44}%`;
+      container.appendChild(d);
+    });
+    awaySlots.forEach(slot => {
+      const d = document.createElement('div');
+      d.className = 'player-dot';
+      d.style.cssText = `background:${awayColor};left:${100 - slot.x}%;top:${97 - (slot.y / 100) * 44}%`;
+      container.appendChild(d);
+    });
+  }
+  function resetBall() {
+    const b = $('pitch-ball');
+    if (!b) return;
+    b.style.transition = 'none';
+    b.style.left = '50%';
+    b.style.top = '50%';
+    setTimeout(() => { b.style.transition = ''; }, 60);
+  }
+  function moveBall(min, events) {
+    const b = $('pitch-ball');
+    if (!b) return;
+    const goalEv = events.find(e => e.type === 'goal');
+    let x, y;
+    if (goalEv) {
+      x = 30 + Math.random() * 40;
+      y = goalEv.team === 'home' ? 50 + Math.random() * 8 : 42 + Math.random() * 8;
+    } else if (events.length) {
+      x = 20 + Math.random() * 60;
+      y = events[0].team === 'home' ? 10 + Math.random() * 35 : 55 + Math.random() * 35;
+    } else {
+      x = 15 + Math.random() * 70;
+      y = Math.max(10, Math.min(90, (0.5 + (Math.random() - 0.5) * 0.55) * 100));
+    }
+    b.style.left = x + '%';
+    b.style.top = y + '%';
+  }
+
+  const CMNT_QUIET = [
+    'Play continues in midfield.', 'Possession changes hands.',
+    'Patient build-up from the back.', 'A long ball is headed clear.',
+    'The keeper collects with ease.', 'Midfield battle in the centre.',
+    'Both teams probing for an opening.', 'A foul out near the touchline.',
+    'The crowd urges their team forward.', 'Nothing clear-cut from either side.',
+    'A corner is cleared at the near post.', 'Comfortable passing in midfield.',
+    'The referee waves play on.', 'A throw-in in the middle third.',
+  ];
+  const CMNT_PRESS = [
+    'Great save from the keeper!', 'Off the post! So close!',
+    'A thunderous shot — just over the bar!', 'The striker fires wide!',
+    'Powerful header — straight at the keeper!', 'Chance! Not taken!',
+    'A dangerous cross is headed out for a corner!',
+  ];
+  function addCommentary(min, events, hs, as) {
+    if (events.length > 0) {
+      events.forEach(e => {
+        const club = e.team === 'home' ? ui.match.home : ui.match.away;
+        let text = '';
+        if (e.type === 'goal') {
+          const shouts = ['GOAL! What a finish!','GOAL! Back of the net!','GOAL! The keeper had no chance!','GOAL! Unstoppable!'];
+          text = shouts[rand(0, shouts.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.shortName)}!` : '');
+        } else if (e.type === 'yellow') {
+          text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.shortName) + ')' : esc(club.shortName)} shown a yellow card.`;
+        } else if (e.type === 'red') {
+          text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is sent off! ${esc(club.shortName)} down to ten men!`;
+        }
+        if (!text) return;
+        const div = document.createElement('div');
+        div.className = 'match-event commentary ' + e.type;
+        div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
+        $('match-events-list').prepend(div);
+      });
+    } else if (min % 3 === 0) {
+      const pool = Math.random() < 0.25 ? CMNT_PRESS : CMNT_QUIET;
+      const text = pool[rand(0, pool.length - 1)];
+      const div = document.createElement('div');
+      div.className = 'match-event commentary';
+      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
+      $('match-events-list').prepend(div);
+    }
+  }
+
+  function runSimulation() {
     if (running || !ui.match) return;
     running = true;
     $('btn-simulate').disabled = true;
-    $('btn-fast-sim').disabled = true;
     $('match-status').textContent = 'LIVE';
-    const ev = ui.match.result.events;
-    let idx = 0, hs = 0, as = 0, min = 0;
 
-    const applyMin = (toMin) => {
-      while (idx < ev.length && ev[idx].min <= toMin) {
-        const e = ev[idx++];
-        if (e.type === 'goal') { if (e.team === 'home') hs++; else as++; }
+    const ev = ui.match.result.events;
+    const sim = ui.match.sim;
+    let pauseUntil = 0;
+
+    function tick() {
+      if (!running) return;
+      const now = Date.now();
+      if (now < pauseUntil) return;
+
+      sim.min++;
+      const eventsThisMin = [];
+      while (sim.idx < ev.length && ev[sim.idx].min <= sim.min) {
+        const e = ev[sim.idx++];
+        if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
         addMatchEvent(e);
         addPitchDot(e);
+        eventsThisMin.push(e);
       }
-      $('match-score').textContent = `${hs} – ${as}`;
-      $('match-time').textContent = Math.min(90, toMin) + "'";
-    };
 
-    if (fast) {
-      applyMin(90);
-      finishMatch();
-      return;
+      $('match-score').textContent = `${sim.hs} – ${sim.as}`;
+      $('match-time').textContent = sim.min + "'";
+      moveBall(sim.min, eventsThisMin);
+      addCommentary(sim.min, eventsThisMin, sim.hs, sim.as);
+
+      if (eventsThisMin.length > 0) {
+        pauseUntil = now + (eventsThisMin.some(e => e.type === 'goal' || e.type === 'red') ? 2500 : 1200);
+      }
+
+      if (sim.min === 45) {
+        clearInterval(ui.match.simTimer);
+        ui.match.simTimer = null;
+        running = false;
+        $('match-status').textContent = 'HALF TIME';
+        $('match-time').textContent = "45'";
+        $('btn-halftime').classList.remove('hidden');
+        return;
+      }
+      if (sim.min >= 90) {
+        clearInterval(ui.match.simTimer);
+        ui.match.simTimer = null;
+        finishMatch();
+      }
     }
-    const timer = setInterval(() => {
-      min += 2;
-      applyMin(min);
-      if (min >= 90) { clearInterval(timer); finishMatch(); }
-    }, 80);
-    ui.match.timer = timer;
+
+    ui.match.simTimer = setInterval(tick, 1000);
   }
 
   function addMatchEvent(e) {
@@ -1104,6 +1251,7 @@ const APP = (() => {
     if (gameState.european) {
       Object.values(gameState.european).forEach(comp => {
         if (comp.stage === 'league') {
+          // Any fixtures still unplayed up to date (safety net — engine handles most)
           comp.fixtures.filter(f => !f.played && f.date <= date).forEach(f => simEuroFixture(comp, f));
           if (comp.fixtures.every(f => f.played)) startEuroKnockout(comp);
         }
@@ -1119,23 +1267,18 @@ const APP = (() => {
   }
 
   function simEuroFixture(comp, f) {
+    if (f.played) return;
     const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
     if (!h || !a) { f.played = true; return; }
     const r = ENGINE.simulateMatch(h, a);
-    f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore;
-    updEuroStats(comp, f.home, r.homeScore, r.awayScore);
-    updEuroStats(comp, f.away, r.awayScore, r.homeScore);
+    f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
+    ENGINE.recordResult(gameState, f, r.homeScore, r.awayScore);
     if (f.home === gameState.myClubId || f.away === gameState.myClubId) {
       const opp = f.home === gameState.myClubId ? a : h;
       const my = f.home === gameState.myClubId ? r.homeScore : r.awayScore;
       const og = f.home === gameState.myClubId ? r.awayScore : r.homeScore;
       notify(`${comp.short}: ${gameState.myClub.shortName} ${my}–${og} ${opp.shortName}`, my > og ? 'success' : my === og ? 'info' : 'warning');
     }
-  }
-  function updEuroStats(comp, id, gf, ga) {
-    const s = comp.groupStats[id] || (comp.groupStats[id] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 });
-    s.p++; s.gf += gf; s.ga += ga;
-    if (gf > ga) { s.w++; s.pts += 3; } else if (gf === ga) { s.d++; s.pts++; } else s.l++;
   }
 
   // Sort the league-phase table (points, then goal difference, then squad rating).
@@ -1326,6 +1469,12 @@ const APP = (() => {
      --------------------------------------------- */
   function fmtDate(d) {
     return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  }
+  function compName(f) {
+    if (f.type === 'european' && f.comp && gameState.european && gameState.european[f.comp])
+      return gameState.european[f.comp].name;
+    if (f.leagueId && DATA.LEAGUES[f.leagueId]) return DATA.LEAGUES[f.leagueId].name;
+    return '';
   }
 
   /* =============================================
