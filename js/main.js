@@ -290,7 +290,6 @@ const APP = (() => {
       $('modal-close').addEventListener('click', closeModal);
       $('modal-overlay').addEventListener('click', (e) => { if (e.target === $('modal-overlay')) closeModal(); });
       $('btn-simulate').addEventListener('click', () => runSimulation());
-      $('btn-pause').addEventListener('click', togglePause);
       $('btn-halftime').addEventListener('click', () => {
         if (!ui.match) return;
         $('btn-halftime').classList.add('hidden');
@@ -1097,10 +1096,13 @@ const APP = (() => {
     const homeMentality = myIsHome ? gameState.tactics.mentality : 'balanced';
     const awayMentality = myIsHome ? 'balanced' : gameState.tactics.mentality;
     const result = ENGINE.simulateMatch(home, away, { homeXI, awayXI, homeMentality, awayMentality });
-    ui.match = { fixture, home, away, myIsHome, result, homeFormation, awayFormation,
-                 sim: { min: 0, idx: 0, hs: 0, as: 0 }, simTimer: null };
+    ui.match = {
+      fixture, home, away, myIsHome, result, homeFormation, awayFormation,
+      homeXI, awayXI,
+      sim: { min: 0, idx: 0, hs: 0, as: 0, swapped: false },
+      simTimer: null, players: []
+    };
 
-    // setup match screen
     $('match-home-name').textContent = home.shortName;
     $('match-away-name').textContent = away.shortName;
     setBadge('match-home-badge', home);
@@ -1115,19 +1117,16 @@ const APP = (() => {
     ['stat-possession','stat-shots','stat-sot'].forEach(id => $(id).style.width = '50%');
     $('match-result-overlay').classList.add('hidden');
     $('btn-halftime').classList.add('hidden');
-    $('btn-pause').classList.add('hidden');
-    $('btn-pause').textContent = '⏸ Pause';
     $('btn-simulate').disabled = false;
     running = false;
     initPlayerDots();
     resetBall();
     showScreen('match');
   }
-  function setBadge(id, club) {
-    setBadgeEl($(id), club);
-  }
+  function setBadge(id, club) { setBadgeEl($(id), club); }
 
-  /* ---- PLAYER DOTS, BALL & COMMENTARY ---- */
+  /* ============ PITCH: PLAYERS, BALL, CARDS ============ */
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function colorDist(c1, c2) {
     const p = c => { const h = hex(c).slice(1); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; };
     const [r1,g1,b1] = p(c1), [r2,g2,b2] = p(c2);
@@ -1139,82 +1138,178 @@ const APP = (() => {
     if (colorDist(primary, hex(vsClub.color)) < 70) return club.color2 ? hex(club.color2) : '#ffffff';
     return primary;
   }
+  function shortName(name) {
+    if (!name) return '';
+    const parts = name.trim().split(' ');
+    const last = parts[parts.length - 1];
+    return last.length <= 10 ? last : parts[0].charAt(0) + '. ' + last;
+  }
+
+  /* Map a formation slot to pitch % coords on a horizontal pitch.
+     isHome=true  → attacks right (GK near x≈5%, strikers near x≈47%)
+     isHome=false → attacks left  (GK near x≈95%, strikers near x≈53%)
+     slot.y=0 = GK depth end, slot.y=100 = striker end
+     slot.x=0..100 = width across pitch */
+  function slotToXY(slot, isHome) {
+    const depth = slot.y / 100;
+    const width = slot.x / 100;
+    if (isHome) {
+      return { bx: 5 + depth * 42, by: 8 + width * 84 };
+    } else {
+      return { bx: 95 - depth * 42, by: 8 + (1 - width) * 84 };
+    }
+  }
+
   function initPlayerDots() {
     const container = $('pitch-players');
     if (!container) return;
     container.innerHTML = '';
+    ui.match.players = [];
     const m = ui.match;
     const homeColor = teamDotColor(m.home, null);
     const awayColor = teamDotColor(m.away, m.home);
     const homeSlots = (DATA.FORMATIONS[m.homeFormation] || DATA.FORMATIONS['4-3-3']).positions;
     const awaySlots = (DATA.FORMATIONS[m.awayFormation] || DATA.FORMATIONS['4-3-3']).positions;
-    homeSlots.forEach(slot => {
-      const d = document.createElement('div');
-      d.className = 'player-dot';
-      d.style.cssText = `background:${homeColor};left:${slot.x}%;top:${3 + (slot.y / 100) * 44}%`;
-      container.appendChild(d);
-    });
-    awaySlots.forEach(slot => {
-      const d = document.createElement('div');
-      d.className = 'player-dot';
-      d.style.cssText = `background:${awayColor};left:${100 - slot.x}%;top:${97 - (slot.y / 100) * 44}%`;
-      container.appendChild(d);
+
+    const lblHome = $('pitch-team-label-home');
+    const lblAway = $('pitch-team-label-away');
+    if (lblHome) lblHome.textContent = m.home.shortName;
+    if (lblAway) lblAway.textContent = m.away.shortName;
+
+    const addDots = (slots, xi, club, color, isHome) => {
+      slots.forEach((slot, i) => {
+        const pid = xi ? xi[i] : null;
+        const player = pid ? club.players.find(p => p.id === pid) : null;
+        const name = player ? shortName(player.name) : '';
+        const pos = slotToXY(slot, isHome);
+
+        const el = document.createElement('div');
+        el.className = 'player-dot';
+        el.innerHTML = `<div class="dot-circle" style="background:${color}"></div><div class="dot-name">${esc(name)}</div>`;
+        el.style.left = pos.bx + '%';
+        el.style.top  = pos.by + '%';
+        container.appendChild(el);
+
+        ui.match.players.push({ el, bx: pos.bx, by: pos.by, slot, slotIdx: i, isHome });
+      });
+    };
+
+    addDots(homeSlots, m.homeXI, m.home, homeColor, true);
+    addDots(awaySlots, m.awayXI, m.away, awayColor, false);
+  }
+
+  function updatePlayerDots(tickMs) {
+    if (!ui.match?.players?.length) return;
+    const mag  = tickMs <= 1200 ? 7 : tickMs <= 2000 ? 4 : 2;
+    const tSec = (tickMs * 0.85 / 1000).toFixed(2);
+    ui.match.players.forEach(p => {
+      const tx = clamp(p.bx + (Math.random() - 0.5) * mag * 2, 5, 95);
+      const ty = clamp(p.by + (Math.random() - 0.5) * mag,     5, 95);
+      p.el.style.transition = `left ${tSec}s ease, top ${tSec}s ease`;
+      p.el.style.left = tx + '%';
+      p.el.style.top  = ty + '%';
     });
   }
+
+  function swapSides() {
+    if (!ui.match?.players) return;
+    ui.match.sim.swapped = true;
+    const lblHome = $('pitch-team-label-home');
+    const lblAway = $('pitch-team-label-away');
+    if (lblHome) lblHome.textContent = ui.match.away.shortName;
+    if (lblAway) lblAway.textContent = ui.match.home.shortName;
+
+    const homeSlots = (DATA.FORMATIONS[ui.match.homeFormation] || DATA.FORMATIONS['4-3-3']).positions;
+    const awaySlots = (DATA.FORMATIONS[ui.match.awayFormation] || DATA.FORMATIONS['4-3-3']).positions;
+    ui.match.players.forEach(p => {
+      const slots = p.isHome ? homeSlots : awaySlots;
+      const newPos = slotToXY(slots[p.slotIdx], !p.isHome);
+      p.bx = newPos.bx; p.by = newPos.by;
+      p.el.style.transition = 'left 2s ease, top 2s ease';
+      p.el.style.left = newPos.bx + '%';
+      p.el.style.top  = newPos.by + '%';
+    });
+  }
+
   function resetBall() {
     const b = $('pitch-ball');
     if (!b) return;
     b.style.transition = 'none';
-    b.style.left = '50%';
-    b.style.top = '50%';
+    b.style.left = '50%'; b.style.top = '50%';
     setTimeout(() => { b.style.transition = ''; }, 60);
   }
-  function moveBall(min, events) {
+
+  function moveBall(events, tickMs) {
     const b = $('pitch-ball');
     if (!b) return;
+    const tSec = (tickMs * 0.8 / 1000).toFixed(2);
+    b.style.transition = `left ${tSec}s ease, top ${tSec}s ease`;
+    const swapped = ui.match.sim.swapped;
     const goalEv = events.find(e => e.type === 'goal');
     let x, y;
     if (goalEv) {
-      x = 30 + Math.random() * 40;
-      y = goalEv.team === 'home' ? 50 + Math.random() * 8 : 42 + Math.random() * 8;
-    } else if (events.length) {
-      x = 20 + Math.random() * 60;
-      y = events[0].team === 'home' ? 10 + Math.random() * 35 : 55 + Math.random() * 35;
+      const homeScored = goalEv.team === 'home';
+      const attacksRight = homeScored ? !swapped : swapped;
+      x = attacksRight ? 90 + Math.random() * 5 : 5 + Math.random() * 5;
+      y = 35 + Math.random() * 30;
     } else {
-      x = 15 + Math.random() * 70;
-      y = Math.max(10, Math.min(90, (0.5 + (Math.random() - 0.5) * 0.55) * 100));
+      x = 20 + Math.random() * 60;
+      y = 15 + Math.random() * 70;
     }
-    b.style.left = x + '%';
-    b.style.top = y + '%';
+    b.style.left = x + '%'; b.style.top = y + '%';
   }
 
+  function showCard(events) {
+    const cardEv = events.find(e => e.type === 'yellow' || e.type === 'red');
+    if (!cardEv) return;
+    const card = $('pitch-card');
+    if (!card) return;
+    const swapped = ui.match.sim.swapped;
+    const homeLeft = !swapped;
+    const x = (cardEv.team === 'home') === homeLeft ? 15 + Math.random() * 30 : 55 + Math.random() * 30;
+    const y = 15 + Math.random() * 70;
+    card.style.left = x + '%'; card.style.top = y + '%';
+    card.className = '';
+    card.offsetHeight;
+    card.className = 'card-visible card-' + cardEv.type;
+    setTimeout(() => {
+      card.style.transition = 'opacity 0.5s ease'; card.style.opacity = '0';
+      setTimeout(() => { card.className = ''; card.style.opacity = ''; card.style.transition = ''; }, 500);
+    }, 2200);
+  }
+
+  /* ============ COMMENTARY ============ */
   const CMNT_QUIET = [
-    'Play continues in midfield.', 'Possession changes hands.',
-    'Patient build-up from the back.', 'A long ball is headed clear.',
-    'The keeper collects with ease.', 'Midfield battle in the centre.',
-    'Both teams probing for an opening.', 'A foul out near the touchline.',
-    'The crowd urges their team forward.', 'Nothing clear-cut from either side.',
-    'A corner is cleared at the near post.', 'Comfortable passing in midfield.',
-    'The referee waves play on.', 'A throw-in in the middle third.',
+    'Play continues in midfield.','Possession changes hands.',
+    'Patient build-up from the back.','A long ball is headed clear.',
+    'The keeper collects with ease.','Midfield battle in the centre.',
+    'Both teams probing for an opening.','A foul out near the touchline.',
+    'The crowd urges their team forward.','Nothing clear-cut from either side.',
+    'A corner cleared at the near post.','The referee waves play on.',
+    'Comfortable passing in midfield.','A throw-in in the middle third.',
   ];
   const CMNT_PRESS = [
-    'Great save from the keeper!', 'Off the post! So close!',
-    'A thunderous shot — just over the bar!', 'The striker fires wide!',
-    'Powerful header — straight at the keeper!', 'Chance! Not taken!',
-    'A dangerous cross is headed out for a corner!',
+    'Great save from the keeper!','Off the post! So close!',
+    'A thunderous shot — just over the bar!','The striker fires wide!',
+    'Powerful header — straight at the keeper!','Chance! Not taken!',
+    'A dangerous cross headed out for a corner!',
   ];
-  function addCommentary(min, events, hs, as) {
+  const CMNT_BUILD = [
+    'Things are getting exciting here...','Tension building in the stadium!',
+    'The crowd can sense something is coming!','Both benches are on their feet!',
+  ];
+  function addCommentary(min, events) {
     if (events.length > 0) {
       events.forEach(e => {
         const club = e.team === 'home' ? ui.match.home : ui.match.away;
         let text = '';
         if (e.type === 'goal') {
-          const shouts = ['GOAL! What a finish!','GOAL! Back of the net!','GOAL! The keeper had no chance!','GOAL! Unstoppable!'];
-          text = shouts[rand(0, shouts.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.shortName)}!` : '');
+          const s = ['GOAL! What a finish!','GOAL! Back of the net!','GOAL! The keeper had no chance!','GOAL! Unstoppable!'];
+          text = s[rand(0, s.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.shortName)}!` : '');
         } else if (e.type === 'yellow') {
-          text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.shortName) + ')' : esc(club.shortName)} shown a yellow card.`;
+          text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.shortName) + ')' : esc(club.shortName)} is shown a yellow card.`;
         } else if (e.type === 'red') {
-          text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is sent off! ${esc(club.shortName)} down to ten men!`;
+          text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is off! ${esc(club.shortName)} down to ten men!`;
         }
         if (!text) return;
         const div = document.createElement('div');
@@ -1223,32 +1318,46 @@ const APP = (() => {
         $('match-events-list').prepend(div);
       });
     } else if (min % 3 === 0) {
-      const pool = Math.random() < 0.25 ? CMNT_PRESS : CMNT_QUIET;
-      const text = pool[rand(0, pool.length - 1)];
+      const pool = Math.random() < 0.22 ? CMNT_PRESS : CMNT_QUIET;
       const div = document.createElement('div');
       div.className = 'match-event commentary';
-      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
+      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${pool[rand(0, pool.length - 1)]}</span>`;
       $('match-events-list').prepend(div);
     }
   }
+  function addBuildUp(min) {
+    const div = document.createElement('div');
+    div.className = 'match-event commentary';
+    div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${CMNT_BUILD[rand(0, CMNT_BUILD.length - 1)]}</span>`;
+    $('match-events-list').prepend(div);
+  }
 
+  /* ============ SIMULATION LOOP ============ */
   function runSimulation() {
     if (running || !ui.match) return;
     running = true;
-    ui.match.simStarted = true;
     $('btn-simulate').disabled = true;
-    $('btn-pause').classList.remove('hidden');
-    $('btn-pause').textContent = '⏸ Pause';
     $('match-status').textContent = 'LIVE';
 
     const ev = ui.match.result.events;
     const sim = ui.match.sim;
-    let pauseUntil = 0;
+
+    function minsToNextEvent() {
+      for (let i = sim.idx; i < ev.length; i++) {
+        if (ev[i].min > sim.min) return ev[i].min - sim.min;
+      }
+      return 999;
+    }
+
+    function getDelay() {
+      const m = minsToNextEvent();
+      if (m <= 1) return 3000;
+      if (m <= 2) return 1800;
+      return 1000;
+    }
 
     function tick() {
-      if (!running) return;
-      const now = Date.now();
-      if (now < pauseUntil) return;
+      if (!running || !ui.match) return;
 
       sim.min++;
       const eventsThisMin = [];
@@ -1256,57 +1365,45 @@ const APP = (() => {
         const e = ev[sim.idx++];
         if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
         addMatchEvent(e);
-        addPitchDot(e);
         eventsThisMin.push(e);
       }
 
       $('match-score').textContent = `${sim.hs} – ${sim.as}`;
       $('match-time').textContent = sim.min + "'";
-      moveBall(sim.min, eventsThisMin);
-      addCommentary(sim.min, eventsThisMin, sim.hs, sim.as);
 
-      if (eventsThisMin.length > 0) {
-        pauseUntil = now + (eventsThisMin.some(e => e.type === 'goal' || e.type === 'red') ? 2500 : 1200);
-      }
+      eventsThisMin.forEach(e => addPitchDot(e));
+      if (eventsThisMin.some(e => e.type === 'yellow' || e.type === 'red')) showCard(eventsThisMin);
+      addCommentary(sim.min, eventsThisMin);
+
+      let bonus = 0;
+      if (eventsThisMin.some(e => e.type === 'goal')) bonus = 2500;
+      else if (eventsThisMin.some(e => e.type === 'red')) bonus = 1800;
+      else if (eventsThisMin.some(e => e.type === 'yellow')) bonus = 1000;
+
+      const nextDelay = getDelay();
+      moveBall(eventsThisMin, nextDelay);
+      updatePlayerDots(nextDelay);
+
+      if (eventsThisMin.length === 0 && minsToNextEvent() === 1) addBuildUp(sim.min);
 
       if (sim.min === 45) {
-        clearInterval(ui.match.simTimer);
-        ui.match.simTimer = null;
         running = false;
+        ui.match.simTimer = null;
         $('match-status').textContent = 'HALF TIME';
         $('match-time').textContent = "45'";
-        $('btn-pause').classList.add('hidden');
         $('btn-halftime').classList.remove('hidden');
+        setTimeout(swapSides, 800);
         return;
       }
       if (sim.min >= 90) {
-        clearInterval(ui.match.simTimer);
         ui.match.simTimer = null;
-        $('btn-pause').classList.add('hidden');
         finishMatch();
+        return;
       }
+      ui.match.simTimer = setTimeout(tick, nextDelay + bonus);
     }
 
-    ui.match.tick = tick;
-    ui.match.simTimer = setInterval(tick, 1000);
-  }
-
-  function togglePause() {
-    if (!ui.match || !ui.match.simStarted) return;
-    if (ui.match.simTimer) {
-      // Pause
-      clearInterval(ui.match.simTimer);
-      ui.match.simTimer = null;
-      running = false;
-      $('btn-pause').textContent = '▶ Resume';
-      $('match-status').textContent = 'PAUSED';
-    } else if (!running && ui.match.tick) {
-      // Resume
-      running = true;
-      $('btn-pause').textContent = '⏸ Pause';
-      $('match-status').textContent = 'LIVE';
-      ui.match.simTimer = setInterval(ui.match.tick, 1000);
-    }
+    ui.match.simTimer = setTimeout(tick, getDelay());
   }
 
   function addMatchEvent(e) {
@@ -1323,10 +1420,11 @@ const APP = (() => {
     if (!['goal','yellow','red'].includes(e.type)) return;
     const dot = document.createElement('div');
     dot.className = 'pitch-event-dot ' + e.type;
-    const x = rand(20, 80);
-    const y = e.team === 'home' ? rand(12, 38) : rand(62, 88);
-    dot.style.left = x + '%';
-    dot.style.top = y + '%';
+    const swapped = ui.match.sim.swapped;
+    const homeLeft = !swapped;
+    const x = (e.team === 'home') === homeLeft ? rand(10, 45) : rand(55, 90);
+    const y = rand(10, 90);
+    dot.style.left = x + '%'; dot.style.top = y + '%';
     $('pitch-events').appendChild(dot);
   }
 
@@ -1368,11 +1466,10 @@ const APP = (() => {
   function exitMatch() {
     if (!ui.match) { showScreen('game'); renderView(ui.view); return; }
 
-    if (ui.match.simTimer) { clearInterval(ui.match.simTimer); ui.match.simTimer = null; }
-    $('btn-pause').classList.add('hidden');
+    if (ui.match.simTimer) { clearTimeout(ui.match.simTimer); ui.match.simTimer = null; }
     $('btn-halftime').classList.add('hidden');
 
-    if (ui.match.simStarted) {
+    if (ui.match.sim && ui.match.sim.min > 0) {
       // Fast-forward any remaining events and show the final score
       running = false;
       const ev = ui.match.result.events;
