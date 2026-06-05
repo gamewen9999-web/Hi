@@ -157,14 +157,19 @@ const ENGINE = (() => {
 
   /* ---- RESULT PROCESSING ---- */
   function recordResult(gameState, fixture, hScore, aScore) {
+    const isLeague = !fixture.type || fixture.type === 'league';
+    const isEuropean = fixture.type === 'european';
+
     const upd = (club, gf, ga, home) => {
-      club.tableStats.played++;
-      club.tableStats.gf += gf;
-      club.tableStats.ga += ga;
-      if (gf > ga) { club.tableStats.won++; club.tableStats.points += 3; club.form.push('W'); }
-      else if (gf === ga) { club.tableStats.drawn++; club.tableStats.points += 1; club.form.push('D'); }
-      else { club.tableStats.lost++; club.form.push('L'); }
-      if (club.form.length > 5) club.form.shift();
+      if (isLeague) {
+        club.tableStats.played++;
+        club.tableStats.gf += gf;
+        club.tableStats.ga += ga;
+        if (gf > ga) { club.tableStats.won++; club.tableStats.points += 3; club.form.push('W'); }
+        else if (gf === ga) { club.tableStats.drawn++; club.tableStats.points += 1; club.form.push('D'); }
+        else { club.tableStats.lost++; club.form.push('L'); }
+        if (club.form.length > 5) club.form.shift();
+      }
       club.results.unshift({ opp: home ? fixture.away : fixture.home, gf, ga, home });
       if (club.results.length > 10) club.results.pop();
     };
@@ -172,7 +177,20 @@ const ENGINE = (() => {
     if (h) upd(h, hScore, aScore, true);
     if (a) upd(a, aScore, hScore, false);
 
-    fixture.events.forEach(ev => {
+    if (isEuropean && gameState.european && fixture.comp) {
+      const comp = gameState.european[fixture.comp];
+      if (comp) {
+        const updStat = (id, gf, ga) => {
+          const s = comp.groupStats[id] || (comp.groupStats[id] = { p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0 });
+          s.p++; s.gf += gf; s.ga += ga;
+          if (gf > ga) { s.w++; s.pts += 3; } else if (gf === ga) { s.d++; s.pts++; } else s.l++;
+        };
+        updStat(fixture.home, hScore, aScore);
+        updStat(fixture.away, aScore, hScore);
+      }
+    }
+
+    (fixture.events || []).forEach(ev => {
       if (ev.type === 'goal') {
         if (ev.player) { ev.player.goals = (ev.player.goals||0)+1; ev.player.appearances = (ev.player.appearances||0)+1; }
         if (ev.assist) ev.assist.assists = (ev.assist.assists||0)+1;
@@ -186,36 +204,67 @@ const ENGINE = (() => {
 
   function simulateSameDay(gameState, referenceFixture) {
     const ds = referenceFixture.date.toDateString();
+    const simF = (f) => {
+      const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
+      if (!h || !a) { f.played = true; return; }
+      const r = simulateMatch(h, a);
+      f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
+      recordResult(gameState, f, r.homeScore, r.awayScore);
+    };
     gameState.fixtures
       .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id)
-      .forEach(f => {
-        const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
-        if (!h || !a) return;
-        const r = simulateMatch(h, a);
-        f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-        recordResult(gameState, f, r.homeScore, r.awayScore);
+      .forEach(simF);
+    if (gameState.european) {
+      Object.values(gameState.european).forEach(comp => {
+        if (comp.stage !== 'league') return;
+        comp.fixtures
+          .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id)
+          .forEach(simF);
       });
+    }
   }
 
   function continueToNextFixture(gameState) {
     const next = getNextFixture(gameState);
     if (!next) return;
+    const simF = (f) => {
+      const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
+      if (!h || !a) { f.played = true; return; }
+      const r = simulateMatch(h, a);
+      f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
+      recordResult(gameState, f, r.homeScore, r.awayScore);
+    };
     gameState.fixtures
       .filter(f => !f.played && f.date < next.date)
-      .forEach(f => {
-        const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
-        if (!h || !a) return;
-        const r = simulateMatch(h, a);
-        f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-        recordResult(gameState, f, r.homeScore, r.awayScore);
+      .forEach(simF);
+    if (gameState.european) {
+      Object.values(gameState.european).forEach(comp => {
+        if (comp.stage !== 'league') return;
+        comp.fixtures
+          .filter(f => !f.played && f.date < next.date)
+          .forEach(simF);
       });
+    }
     gameState.currentDate = new Date(next.date);
   }
 
   function getNextFixture(gameState) {
-    return gameState.fixtures.find(f =>
-      !f.played && (f.home === gameState.myClubId || f.away === gameState.myClubId)
+    const myId = gameState.myClubId;
+    const leagueNext = gameState.fixtures.find(f =>
+      !f.played && (f.home === myId || f.away === myId)
     ) || null;
+    let euroNext = null;
+    if (gameState.european) {
+      Object.values(gameState.european).forEach(comp => {
+        if (comp.stage !== 'league') return;
+        const f = comp.fixtures.find(f => !f.played && (f.home === myId || f.away === myId));
+        if (f && (!euroNext || f.date < euroNext.date)) euroNext = f;
+      });
+    }
+    if (!leagueNext && !euroNext) return null;
+    if (!leagueNext) return euroNext;
+    if (!euroNext) return leagueNext;
+    return leagueNext.date <= euroNext.date ? leagueNext : euroNext;
   }
 
   function getLeagueTable(gameState, leagueId) {
@@ -302,7 +351,7 @@ const ENGINE = (() => {
           fixtures.push({ id: eid++, comp,
             home: flip ? m.away : m.home, away: flip ? m.home : m.away,
             date: new Date(date), played: false, homeScore: null, awayScore: null,
-            type: 'european', stage: 'league' });
+            events: [], type: 'european', stage: 'league' });
         });
       });
       return fixtures;
