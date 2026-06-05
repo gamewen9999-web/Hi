@@ -109,11 +109,15 @@ const ENGINE = (() => {
   }
 
   function simulateMatch(homeClub, awayClub, opts = {}) {
-    const { homeXG, awayXG } = calcMatchXG(
-      homeClub, awayClub,
-      opts.homeMentality || 'balanced',
-      opts.awayMentality || 'balanced'
-    );
+    const hMen = opts.homeMentality || 'balanced';
+    const aMen = opts.awayMentality || 'balanced';
+    const { homeXG, awayXG } = calcMatchXG(homeClub, awayClub, hMen, aMen);
+    // hStr needed for possession calc — recompute cheaply
+    const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
+    const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2 };
+    const hAtk = effectiveRating(homeClub) * (offMod[hMen] || 1.0) * 1.1;
+    const aDef = effectiveRating(awayClub) * (defMod[aMen] || 1.0);
+    const hStr = hAtk / (hAtk + aDef);
     // Match-day noise: teams routinely over/underperform xG (range ×0.55–1.45)
     const noise = () => 0.55 + Math.random() * 0.9;
     const hScore = poisson(Math.max(0.15, homeXG * noise()));
