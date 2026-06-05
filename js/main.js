@@ -1482,12 +1482,7 @@ const APP = (() => {
       return 999;
     }
 
-    function getDelay() {
-      const m = minsToNextEvent();
-      if (m <= 1) return 3000;
-      if (m <= 2) return 1800;
-      return 1000;
-    }
+    function getDelay() { return 1000; }
 
     // Look up the next upcoming event (not yet processed)
     function peekNextEvent() {
@@ -1521,34 +1516,23 @@ const APP = (() => {
 
       const goalEv = eventsThisMin.find(e => e.type === 'goal');
       if (goalEv) {
-        // Shot → goal → celebration
+        // Build-up (0.7s) → shot (1.1s) → celebrate (1.7s) = ~4s real-time drama
         const attackingRight = goalEv.team === 'home' ? homeRight : !homeRight;
-        animateShot(attackingRight, true, 0);
-        setTimeout(() => celebrateGoal(goalEv.team), 900);
-        bonus = 3200;
+        moveToBuildUpPositions(attackingRight);
+        animateBallPassing(attackingRight, 900);
+        animateShot(attackingRight, true, 1100);
+        setTimeout(() => celebrateGoal(goalEv.team), 1700);
+        bonus = 4000;
       } else if (eventsThisMin.some(e => e.type === 'red')) {
-        bonus = 1800;
-        updatePlayerDots(getDelay());
+        bonus = 1600;
+        updatePlayerDots(1000);
       } else if (eventsThisMin.some(e => e.type === 'yellow')) {
-        bonus = 1000;
-        updatePlayerDots(getDelay());
+        bonus = 900;
+        updatePlayerDots(1000);
       } else {
-        // No event this minute — normal play or build-up
-        const minsAway = minsToNextEvent();
-        const next     = peekNextEvent();
-        if (minsAway <= 1 && next) {
-          // Build-up: players cluster in final third, ball passes, then near-miss shot
-          addBuildUp(sim.min);
-          const attackingRight = next.team === 'home' ? homeRight : !homeRight;
-          moveToBuildUpPositions(attackingRight);
-          const tickMs = getDelay();
-          animateBallPassing(attackingRight, tickMs - 700);
-          // Show a near-miss shot toward end of this slow tick (defenders save/clear)
-          if (next.type !== 'goal') animateShot(attackingRight, false, tickMs - 650);
-        } else {
-          updatePlayerDots(getDelay());
-          moveBall(eventsThisMin, getDelay());
-        }
+        // Normal 60x play
+        updatePlayerDots(1000);
+        moveBall(eventsThisMin, 1000);
       }
 
       if (sim.min === 45) {
@@ -1813,7 +1797,7 @@ const APP = (() => {
     }
     cup.winner = teams[0];
     cup.fixtures.forEach(f => f.played = true);
-    if (myIn) notify(cup.winner === myId ? `🏆 You won the ${cup.name}!` : `${cup.name}: knocked out.`, cup.winner === myId ? 'success' : 'info');
+    if (myIn) notify(cup.winner === myId ? `You won the ${cup.name}!` : `${cup.name}: knocked out.`, cup.winner === myId ? 'success' : 'info');
   }
 
   /* =============================================
