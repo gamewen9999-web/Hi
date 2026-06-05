@@ -294,6 +294,7 @@ const APP = (() => {
         if (!ui.match) return;
         $('btn-halftime').classList.add('hidden');
         running = false;
+        ui.match.gamePhase = -1; resetBall(); // away kicks off second half
         runSimulation();
       });
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
@@ -402,7 +403,7 @@ const APP = (() => {
           <div class="nm-actions"><button class="btn-primary btn-lg" id="dash-play" style="flex:1">▶ Play Match</button></div>
         </div>`;
     } else {
-      nextHtml = `<div class="next-match-card"><div class="empty-state"><div class="empty-state-icon">🏁</div><div class="empty-state-text">Season complete — no fixtures remaining.</div></div></div>`;
+      nextHtml = `<div class="next-match-card"><div class="empty-state"><div class="empty-state-text">Season complete — no fixtures remaining.</div></div></div>`;
     }
 
     const topScorer = [...club.players].sort((a, b) => b.goals - a.goals)[0];
@@ -907,7 +908,7 @@ const APP = (() => {
     gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
     gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
     gameState.transferLog.unshift({ in: true, name: p.name, fee: N.agreedFee });
-    notify(`✍️ Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
+    notify(`Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
     ui.negotiation = null;
     closeModal();
     updateSidebar();
@@ -1199,42 +1200,117 @@ const APP = (() => {
     addDots(awaySlots, m.awayXI, m.away, awayColor, false);
   }
 
-  /* 60x speed: 1 tick = 1 match minute. Pace widens roam range; physical scales Y spread. */
+  /* FM-style ball-carrier movement.
+     Each tick one player "has" the ball. Teammates orbit the carrier.
+     Defenders hold their line and press. Ball tracks the carrier.
+     Pace controls how far each player can deviate; physical controls shape. */
   function updatePlayerDots(tickMs) {
     if (!ui.match?.players?.length) return;
-    ui.match.gamePhase = (Math.random() * 2) - 1;
-    const phase = ui.match.gamePhase;
-    const tSec  = (tickMs * 0.88 / 1000).toFixed(2);
+
+    // Randomly flip possession — in 1 match minute possession changes multiple times
+    if (Math.random() < 0.5) ui.match.gamePhase = Math.random() < 0.5 ? 1 : -1;
+    const phase   = ui.match.gamePhase || 0;
+    const swapped = ui.match.sim.swapped;
+    const homeHasBall = phase >= 0;
+    const possRight   = homeHasBall ? !swapped : swapped; // direction possessing team attacks
+
+    // Pick a ball carrier from the possession team (weighted toward midfield/attack)
+    const allPoss  = ui.match.players.filter(p => p.attacksRight === possRight && p.slot.y > 8);
+    const advanced = allPoss.filter(p => p.slot.y > 35);
+    const pool     = advanced.length ? advanced : allPoss;
+    if (!pool.length) return;
+    const carrier  = pool[Math.floor(Math.random() * pool.length)];
+
+    // Position the carrier realistically for their role
+    const cDepth = carrier.slot.y / 100;
+    const cWidth = carrier.slot.x / 100;
+    let cx, cy;
+    if (cDepth < 0.42) {
+      cx = possRight ? 22 + cDepth * 28 : 78 - cDepth * 28;
+    } else if (cDepth < 0.68) {
+      cx = possRight ? 42 + Math.random() * 24 : 34 + Math.random() * 24;
+    } else {
+      cx = possRight ? 64 + Math.random() * 24 : 12 + Math.random() * 24;
+    }
+    cy = 10 + cWidth * 80 + (Math.random() - 0.5) * 12;
+    cx = clamp(cx, 5, 95); cy = clamp(cy, 5, 95);
+
+    // Ball follows carrier
+    const b = $('pitch-ball');
+    if (b) {
+      const bt = Math.min(tickMs * 0.45 / 1000, 0.65).toFixed(2);
+      b.style.transition = `left ${bt}s ease, top ${bt}s ease`;
+      b.style.left = cx + '%'; b.style.top = cy + '%';
+    }
+
+    const tSec = (tickMs * 0.85 / 1000).toFixed(2);
+
     ui.match.players.forEach(p => {
       const depth    = p.slot.y / 100;
       const width    = p.slot.x / 100;
-      const myPhase  = p.attacksRight ? phase : -phase;
+      const isInPoss = p.attacksRight === possRight;
       const pace     = p.player?.attrs?.pace     || 65;
       const physical = p.player?.attrs?.physical || 65;
-      const rangeMult = 0.55 + (pace / 100) * 0.9;
-      const yJitter   = depth < 0.12 ? 8 : 16 + (physical / 100) * 14;
-      let lo, hi;
+      // Pace: how far they deviate from their base shape position
+      const devMult  = 0.5 + (pace / 100) * 1.0;
+      // Physical: how tightly they hold their zone
+      const compact  = 1.2 - (physical / 100) * 0.4;
+
+      let tx, ty;
+
       if (depth < 0.12) {
-        lo = p.attacksRight ?  4 : 86; hi = p.attacksRight ? 15 : 96;
-      } else if (depth < 0.42) {
-        lo = p.attacksRight ? 10 + myPhase*22 : 52 - myPhase*22;
-        hi = p.attacksRight ? 52 + myPhase*20 : 90 - myPhase*20;
-      } else if (depth < 0.68) {
-        lo = p.attacksRight ? 22 + myPhase*20 : 38 - myPhase*20;
-        hi = p.attacksRight ? 72 + myPhase*18 : 78 - myPhase*18;
+        // GK — near post, slight lateral movement
+        tx = p.attacksRight ? 6 + Math.random() * 3 : 91 + Math.random() * 3;
+        ty = 33 + Math.random() * 34;
+      } else if (p === carrier) {
+        tx = cx; ty = cy;
+      } else if (isInPoss) {
+        // Team in possession: create triangles around carrier
+        if (depth < 0.42) {
+          // Defenders: stay back as outlet, spread across pitch width
+          tx = possRight ? 16 + depth * 20 + Math.random() * 6 : 84 - depth * 20 - Math.random() * 6;
+          ty = 8 + width * 84 + (Math.random() - 0.5) * 10 * compact;
+        } else if (depth < 0.68) {
+          // Midfielders: orbit carrier — triangle support positions
+          const angle = Math.random() * Math.PI * 2;
+          const dist  = (10 + Math.random() * 20) * devMult;
+          tx = clamp(cx + Math.cos(angle) * dist, 14, 86);
+          ty = clamp(cy + Math.sin(angle) * dist * 0.55, 7, 93);
+        } else {
+          // Attackers: make forward runs into channels ahead of carrier
+          tx = possRight
+            ? clamp(cx + 10 + Math.random() * 24 * devMult, 48, 95)
+            : clamp(cx - 10 - Math.random() * 24 * devMult,  5, 52);
+          ty = 8 + width * 84 + (Math.random() - 0.5) * 18 * compact;
+        }
       } else {
-        lo = p.attacksRight ? 40 + myPhase*28 : 12 - myPhase*28;
-        hi = p.attacksRight ? 88 + myPhase* 8 : 60 - myPhase* 8;
+        // Defending team
+        if (depth < 0.42) {
+          // Defenders: hold line goal-side of carrier, man-mark runners
+          tx = possRight
+            ? clamp(cx - 10 - Math.random() * 16 * devMult,  5, 52)
+            : clamp(cx + 10 + Math.random() * 16 * devMult, 48, 95);
+          ty = 8 + width * 84 + (Math.random() - 0.5) * 12 * compact;
+        } else if (depth < 0.68) {
+          // Midfielders: press toward carrier, cut passing lanes
+          const pressX = cx + (possRight ? -(8 + Math.random() * 20) : (8 + Math.random() * 20));
+          tx = clamp(pressX, 10, 90);
+          ty = clamp(cy + (Math.random() - 0.5) * 28 * compact, 7, 93);
+        } else {
+          // Attackers: stay high for counter, press if defending deep
+          tx = possRight
+            ? clamp(cx - 28 - Math.random() * 18 * devMult, 12, 60)
+            : clamp(cx + 28 + Math.random() * 18 * devMult, 40, 88);
+          ty = 8 + width * 84 + (Math.random() - 0.5) * 16 * compact;
+        }
       }
-      lo = clamp(lo, 4, 86); hi = clamp(hi, lo + 8, 96);
-      const mid = (lo + hi) / 2;
-      const tx  = clamp(mid + (Math.random()-0.5) * ((hi-lo)*rangeMult), 4, 96);
-      const ty  = clamp(8 + width*84 + (Math.random()-0.5)*yJitter, 5, 95);
+
       p.el.style.transition = `left ${tSec}s ease-in-out, top ${tSec}s ease-in-out`;
-      p.el.style.left = tx + '%';
-      p.el.style.top  = ty + '%';
+      p.el.style.left = clamp(tx, 4, 96) + '%';
+      p.el.style.top  = clamp(ty, 5, 95) + '%';
     });
   }
+
 
   /* Attackers flood final third, defenders drop into shape for build-up */
   function moveToBuildUpPositions(attackingRight) {
@@ -1530,9 +1606,8 @@ const APP = (() => {
         bonus = 900;
         updatePlayerDots(1000);
       } else {
-        // Normal 60x play
+        // Normal 60x play — ball follows carrier inside updatePlayerDots
         updatePlayerDots(1000);
-        moveBall(eventsThisMin, 1000);
       }
 
       if (sim.min === 45) {
@@ -1825,11 +1900,11 @@ const APP = (() => {
     const topScorer = [...gameState.myClub.players].sort((a, b) => b.goals - a.goals)[0];
     const league = DATA.LEAGUES[gameState.myClub.league];
     let outcome = '';
-    if (pos === 1) outcome = `🏆 Champions of the ${league.name}!`;
-    else if (pos <= league.championsLeague) outcome = '⭐ Qualified for the Champions League!';
-    else if (pos <= league.championsLeague + league.europaLeague) outcome = '🌟 Qualified for the Europa League!';
-    else if (pos <= league.championsLeague + league.europaLeague + (league.conferenceLeague || 0)) outcome = '✨ Qualified for the Conference League!';
-    else if (pos > table.length - league.relegation) outcome = '⚠️ Relegated!';
+    if (pos === 1) outcome = `Champions of the ${league.name}!`;
+    else if (pos <= league.championsLeague) outcome = 'Qualified for the Champions League!';
+    else if (pos <= league.championsLeague + league.europaLeague) outcome = 'Qualified for the Europa League!';
+    else if (pos <= league.championsLeague + league.europaLeague + (league.conferenceLeague || 0)) outcome = 'Qualified for the Conference League!';
+    else if (pos > table.length - league.relegation) outcome = 'Relegated!';
     else outcome = 'A solid mid-table finish.';
 
     showModal(`
@@ -2087,7 +2162,7 @@ const APP = (() => {
   function openSaves(mode) {
     const slots = listSaves();
     const manualCount = slots.filter(s => s.id !== 'auto').length;
-    let html = `<div class="player-modal"><h2 style="margin-bottom:6px">${mode === 'save' ? '💾 Save Game' : '📂 Load Game'}</h2>`;
+    let html = `<div class="player-modal"><h2 style="margin-bottom:6px">${mode === 'save' ? 'Save Game' : 'Load Game'}</h2>`;
     html += `<p class="text-muted" style="font-size:11px;margin-bottom:12px">${manualCount}/${MAX_SLOTS} save slots used</p>`;
     if (mode === 'save') {
       html += manualCount < MAX_SLOTS
@@ -2095,11 +2170,11 @@ const APP = (() => {
         : `<p class="text-gold" style="font-size:11px;margin-bottom:12px">All ${MAX_SLOTS} slots full — overwrite or delete one below.</p>`;
     }
     if (!slots.length) {
-      html += `<div class="empty-state"><div class="empty-state-icon">💾</div><div class="empty-state-text">No saved games yet.</div></div>`;
+      html += `<div class="empty-state"><div class="empty-state-text">No saved games yet.</div></div>`;
     } else {
       html += slots.map(s => `
         <div class="inbox-item">
-          <div class="inbox-icon">${s.id === 'auto' ? '⏱️' : '🎮'}</div>
+          <div class="inbox-icon" style="font-size:14px;color:var(--text-muted)">${s.id === 'auto' ? '↻' : '▸'}</div>
           <div class="inbox-content">
             <div class="inbox-subject">${esc(s.label || s.clubName)}</div>
             <div class="inbox-preview">${esc(s.clubName)} · ${esc(s.leagueName)} · Season ${s.season} · ${esc(s.gameDate)}${s.pos ? ' · ' + ordinal(s.pos) : ''}<br>Saved ${fmtSavedAt(s.savedAt)}</div>
