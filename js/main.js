@@ -1165,7 +1165,7 @@ const APP = (() => {
     if (!container) return;
     container.innerHTML = '';
     ui.match.players = [];
-    ui.match.gamePhase = 0; // -1=away pressing, 0=contested, +1=home pressing
+    ui.match.gamePhase = 1; // home kicks off; -1=away has ball, +1=home has ball
     const m = ui.match;
     const homeColor = teamDotColor(m.home, null);
     const awayColor = teamDotColor(m.away, m.home);
@@ -1207,8 +1207,23 @@ const APP = (() => {
   function updatePlayerDots(tickMs) {
     if (!ui.match?.players?.length) return;
 
-    // Randomly flip possession — in 1 match minute possession changes multiple times
-    if (Math.random() < 0.5) ui.match.gamePhase = Math.random() < 0.5 ? 1 : -1;
+    // Possession flip weighted by dribbling vs defending — better dribblers keep ball longer
+    if (Math.random() < 0.48) {
+      const _avg = (isHome, attr) => {
+        const ps = ui.match.players.filter(p => p.isHome === isHome && p.slot.y > 8).map(p => p.player?.attrs?.[attr] || 62);
+        return ps.length ? ps.reduce((s, v) => s + v, 0) / ps.length : 62;
+      };
+      const hDrib = _avg(true,  'dribbling'), aDef = _avg(false, 'defending');
+      const aDrib = _avg(false, 'dribbling'), hDef = _avg(true,  'defending');
+      const phase = ui.match.gamePhase;
+      if (phase >= 0) {
+        const retain = Math.min(0.72, Math.max(0.28, 0.5 + (hDrib - aDef) / 200));
+        ui.match.gamePhase = Math.random() < retain ? 1 : -1;
+      } else {
+        const retain = Math.min(0.72, Math.max(0.28, 0.5 + (aDrib - hDef) / 200));
+        ui.match.gamePhase = Math.random() < retain ? -1 : 1;
+      }
+    }
     const phase   = ui.match.gamePhase || 0;
     const swapped = ui.match.sim.swapped;
     const homeHasBall = phase >= 0;
@@ -1598,6 +1613,12 @@ const APP = (() => {
         animateBallPassing(attackingRight, 900);
         animateShot(attackingRight, true, 1100);
         setTimeout(() => celebrateGoal(goalEv.team), 1700);
+        // Kick-off: conceding team gets possession, ball resets to centre
+        setTimeout(() => {
+          if (!ui.match) return;
+          resetBall();
+          ui.match.gamePhase = goalEv.team === 'home' ? -1 : 1;
+        }, 3600);
         bonus = 4000;
       } else if (eventsThisMin.some(e => e.type === 'red')) {
         bonus = 1600;
