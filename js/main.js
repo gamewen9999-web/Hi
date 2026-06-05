@@ -160,14 +160,11 @@ const APP = (() => {
       html += `<button class="btn-primary btn-lg home-btn" id="hm-continue">▶ Continue — ${esc(latest.clubName)} S${latest.season}</button>`;
     }
     html += `<button class="btn-secondary btn-lg home-btn" id="hm-new">⚽ New Save</button>`;
-    if (slots.length) {
-      html += `<button class="btn-secondary btn-lg home-btn" id="hm-load">📂 Load Save</button>`;
-    }
+    html += `<button class="btn-secondary btn-lg home-btn" id="hm-load" ${!slots.length ? 'disabled' : ''}>📂 Load Save</button>`;
     $('home-menu').innerHTML = html;
     if (latest) $('hm-continue').addEventListener('click', () => loadSave(latest.id));
     $('hm-new').addEventListener('click', showClubSelector);
-    const loadBtn = $('hm-load');
-    if (loadBtn) loadBtn.addEventListener('click', () => openSaves('load'));
+    if (slots.length) $('hm-load').addEventListener('click', () => openSaves('load'));
   }
 
   function showHomeView() {
@@ -294,7 +291,6 @@ const APP = (() => {
       $('modal-overlay').addEventListener('click', (e) => { if (e.target === $('modal-overlay')) closeModal(); });
       $('btn-simulate').addEventListener('click', () => runSimulation());
       $('btn-pause').addEventListener('click', togglePause);
-      $('btn-fast-sim').addEventListener('click', fastSimulate);
       $('btn-halftime').addEventListener('click', () => {
         if (!ui.match) return;
         $('btn-halftime').classList.add('hidden');
@@ -527,6 +523,62 @@ const APP = (() => {
 
     const bench = club.players.filter(p => !lineupSet.has(p.id)).sort((a, b) => b.ovr - a.ovr).slice(0, 12);
 
+    // Scout panel — live xG reacts to mentality changes
+    const next = ENGINE.getNextFixture(gameState);
+    let scoutHtml = '';
+    if (next) {
+      const myIsHome = next.home === gameState.myClubId;
+      const opp = gameState.clubs[myIsHome ? next.away : next.home];
+      if (opp) {
+        const xg = myIsHome
+          ? ENGINE.calcMatchXG(club, opp, gameState.tactics.mentality, 'balanced')
+          : ENGINE.calcMatchXG(opp, club, 'balanced', gameState.tactics.mentality);
+        const myXG  = myIsHome ? xg.homeXG : xg.awayXG;
+        const oppXG = myIsHome ? xg.awayXG : xg.homeXG;
+        const myPct = Math.round(myXG / (myXG + oppXG) * 100);
+        const favoured = myXG >= oppXG;
+        const oppTop = [...opp.players].sort((a, b) => b.ovr - a.ovr).slice(0, 3);
+        const formDots = (opp.form || []).map(f =>
+          `<span class="form-dot ${f === 'W' ? 'win' : f === 'D' ? 'draw' : 'loss'}">${f}</span>`).join('');
+        scoutHtml = `
+          <div class="tactics-section scout-panel">
+            <div class="scout-top">
+              <span class="scout-venue ${myIsHome ? 'home' : 'away'}">${myIsHome ? 'HOME' : 'AWAY'}</span>
+              <span class="scout-comp">${compName(next)}</span>
+              <span class="scout-dt">${fmtDate(next.date)}</span>
+            </div>
+            <div class="scout-opp-row">
+              ${badge(opp, 'scout-badge')}
+              <div class="scout-opp-info">
+                <span class="scout-opp-name">${esc(opp.shortName)}</span>
+                <div class="scout-form">${formDots || '<span style="font-size:10px;color:var(--text-muted)">No data</span>'}</div>
+              </div>
+              <div class="scout-ovr-block">
+                <span class="scout-ovr-val">${opp.sqRating}</span>
+                <span class="scout-ovr-label">OVR</span>
+              </div>
+            </div>
+            <div class="scout-xg-block">
+              <div class="scout-xg-row">
+                <span class="scout-xg-num ${favoured ? 'good' : ''}">${myXG.toFixed(2)}</span>
+                <div class="scout-xg-bar"><div class="scout-xg-mine" style="width:${myPct}%"></div></div>
+                <span class="scout-xg-num ${!favoured ? 'bad' : ''}">${oppXG.toFixed(2)}</span>
+              </div>
+              <div class="scout-xg-sub"><span>You</span><span>xG</span><span>Opp</span></div>
+            </div>
+            <div class="scout-key">
+              <span class="scout-key-label">Key Players</span>
+              ${oppTop.map(p => `
+                <div class="scout-player">
+                  <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
+                  <span class="scout-player-name">${esc(p.name)}</span>
+                  <span class="bench-ovr">${p.ovr}</span>
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }
+    }
+
     m.innerHTML = `
       <div class="view-header"><div><div class="view-title">Tactics</div><div class="view-subtitle">${form.name} · ${cap(gameState.tactics.mentality)}</div></div></div>
       <div class="tactics-layout">
@@ -549,6 +601,7 @@ const APP = (() => {
           <div class="tactics-section"><h3>Bench</h3>
             <div class="bench-list">${bench.map(p =>
               `<div class="bench-player" data-id="${p.id}"><span class="bench-pos pos-badge ${posClass(p.pos)}">${p.pos}</span><span class="bench-name">${esc(p.name)}</span><span class="bench-ovr">${p.ovr}</span></div>`).join('')}</div></div>
+          ${scoutHtml}
         </div>
       </div>`;
 
@@ -1254,31 +1307,6 @@ const APP = (() => {
       $('match-status').textContent = 'LIVE';
       ui.match.simTimer = setInterval(ui.match.tick, 1000);
     }
-  }
-
-  function fastSimulate() {
-    if (!ui.match) return;
-    // Stop any running timer
-    if (ui.match.simTimer) { clearInterval(ui.match.simTimer); ui.match.simTimer = null; }
-    running = false;
-    $('btn-pause').classList.add('hidden');
-    $('btn-halftime').classList.add('hidden');
-    ui.match.simStarted = true;
-
-    // Flush all remaining events instantly
-    const ev = ui.match.result.events;
-    const sim = ui.match.sim;
-    // If we're at halftime, jump to 45 as starting point
-    const startMin = sim.min;
-    while (sim.idx < ev.length) {
-      const e = ev[sim.idx++];
-      if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
-      if (e.min > startMin) { addMatchEvent(e); addPitchDot(e); }
-    }
-    sim.min = 90;
-    $('match-score').textContent = `${sim.hs} – ${sim.as}`;
-    $('match-time').textContent = "90'";
-    finishMatch();
   }
 
   function addMatchEvent(e) {
