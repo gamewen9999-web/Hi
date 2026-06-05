@@ -159,8 +159,8 @@ const APP = (() => {
     if (latest) {
       html += `<button class="btn-primary btn-lg home-btn" id="hm-continue">▶ Continue — ${esc(latest.clubName)} S${latest.season}</button>`;
     }
-    html += `<button class="btn-secondary btn-lg home-btn" id="hm-new">⚽ New Save</button>`;
-    html += `<button class="btn-secondary btn-lg home-btn" id="hm-load" ${!slots.length ? 'disabled' : ''}>📂 Load Save</button>`;
+    html += `<button class="btn-secondary btn-lg home-btn" id="hm-new">New Save</button>`;
+    html += `<button class="btn-secondary btn-lg home-btn" id="hm-load" ${!slots.length ? 'disabled' : ''}>Load Save</button>`;
     $('home-menu').innerHTML = html;
     if (latest) $('hm-continue').addEventListener('click', () => loadSave(latest.id));
     $('hm-new').addEventListener('click', showClubSelector);
@@ -304,8 +304,8 @@ const APP = (() => {
       const actions = document.createElement('div');
       actions.style.cssText = 'display:flex;gap:6px;margin-top:4px';
       actions.innerHTML = `
-        <button id="sb-save" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">💾 Save</button>
-        <button id="sb-menu" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">☰ Menu</button>`;
+        <button id="sb-save" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">Save</button>
+        <button id="sb-menu" class="btn-secondary" style="flex:1;padding:7px 4px;font-size:11px">Menu</button>`;
       sb.appendChild(actions);
       $('sb-save').addEventListener('click', () => openSaves('save'));
       $('sb-menu').addEventListener('click', goToMenu);
@@ -317,8 +317,7 @@ const APP = (() => {
     $('sb-club-name').textContent = c.shortName;
     $('sb-league-name').textContent = DATA.LEAGUES[c.league].name;
     const col = hex(c.color);
-    document.querySelector('.sidebar-club').style.background = `linear-gradient(180deg, ${col}18 0%, #080c14 100%)`;
-    $('sb-badge').style.boxShadow = `0 0 0 3px #080c14, 0 0 0 5px ${col}50, 0 8px 24px ${col}28`;
+    $('sb-badge').style.boxShadow = `0 4px 16px ${col}40`;
   }
 
   function updateSidebar() {
@@ -722,8 +721,8 @@ const APP = (() => {
     const open = ENGINE.isTransferWindowOpen(gameState);
     const club = gameState.myClub;
     const banner = open
-      ? `<div class="tw-banner">🟢 Transfer window is OPEN</div>`
-      : `<div class="tw-banner closed">🔴 Transfer window is closed (opens Jul–Aug & Jan)</div>`;
+      ? `<div class="tw-banner"><span class="tw-dot open-dot"></span> Transfer window is OPEN</div>`
+      : `<div class="tw-banner closed"><span class="tw-dot closed-dot"></span> Transfer window is closed (opens Jul–Aug & Jan)</div>`;
 
     let listHtml;
     if (ui.transferTab === 'market') {
@@ -777,7 +776,7 @@ const APP = (() => {
             <div class="card-title">Transfer Activity</div>
             <div class="transfer-log">${gameState.transferLog.length
               ? gameState.transferLog.slice(0, 12).map(t =>
-                `<div class="transfer-log-item"><span class="tlog-icon">${t.in ? '🟢' : '🔴'}</span><div class="tlog-info">${t.in ? 'IN' : 'OUT'}: ${esc(t.name)}</div><span class="tlog-fee">${money(t.fee)}</span></div>`).join('')
+                `<div class="transfer-log-item"><span class="tlog-dot" style="background:${t.in ? 'var(--accent)' : 'var(--accent-red)'}"></span><div class="tlog-info">${t.in ? 'IN' : 'OUT'}: ${esc(t.name)}</div><span class="tlog-fee">${money(t.fee)}</span></div>`).join('')
               : `<div class="stat-label">No transfers yet this save.</div>`}</div>
           </div>
         </div>
@@ -791,7 +790,7 @@ const APP = (() => {
     m.querySelectorAll('[data-buy]').forEach(el => el.addEventListener('click', () => openNegotiation(el.dataset.buy, el.dataset.club)));
     m.querySelectorAll('[data-sell]').forEach(el => el.addEventListener('click', () => confirmSell(el.dataset.sell)));
   }
-  function emptyList(text) { return `<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">${text}</div></div>`; }
+  function emptyList(text) { return `<div class="empty-state"><div class="empty-state-text">${text}</div></div>`; }
 
   /* ---- TRANSFER NEGOTIATION ---- */
   function openNegotiation(playerId, clubId) {
@@ -967,7 +966,7 @@ const APP = (() => {
               <span>${t.sa} – ${t.sb}</span>
               <span class="${t.winner===t.b?'fw-700 text-accent':''}">${B ? esc(B.shortName) : '?'}</span></div>`;
           }).join('')}</div></div>`).join('')}
-        ${comp.winner ? `<div class="knockout-round" style="text-align:center"><div class="knockout-round-title">🏆 Winner</div><div class="stat-big" style="font-size:24px">${esc(gameState.clubs[comp.winner].name)}</div></div>` : ''}
+        ${comp.winner ? `<div class="knockout-round" style="text-align:center"><div class="knockout-round-title">★ Winner</div><div class="stat-big" style="font-size:24px">${esc(gameState.clubs[comp.winner].name)}</div></div>` : ''}
       </div>`;
     }
 
@@ -980,7 +979,7 @@ const APP = (() => {
 
     m.querySelectorAll('[data-e]').forEach(b => b.addEventListener('click', () => { ui.euroTab = b.dataset.e; renderEuropean(m); }));
   }
-  function noEuro() { return `<div class="view-header"><div class="view-title">European Competitions</div></div><div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">No European competitions configured.</div></div>`; }
+  function noEuro() { return `<div class="view-header"><div class="view-title">European Competitions</div></div><div class="empty-state"><div class="empty-state-text">No European competitions configured.</div></div>`; }
   function leaguePhaseTable(comp) {
     const sorted = euTable(comp);
     const R = euBracketSize(comp);
@@ -1192,7 +1191,7 @@ const APP = (() => {
         container.appendChild(el);
 
         // attacksRight = true means this player's goal is on the right side
-        ui.match.players.push({ el, slot, slotIdx: i, isHome, attacksRight: isHome });
+        ui.match.players.push({ el, slot, slotIdx: i, isHome, attacksRight: isHome, player });
       });
     };
 
@@ -1200,58 +1199,143 @@ const APP = (() => {
     addDots(awaySlots, m.awayXI, m.away, awayColor, false);
   }
 
-  /* Zone-based realistic movement.
-     Each tick, possession phase drifts randomly (-1=away, +1=home).
-     Players shift toward the opponent's goal when their team has the ball,
-     and drop back when the opponent does — so both teams span the whole pitch. */
+  /* 60x speed: 1 tick = 1 match minute. Pace widens roam range; physical scales Y spread. */
   function updatePlayerDots(tickMs) {
     if (!ui.match?.players?.length) return;
-
-    // Randomly drift possession phase each tick
-    if (Math.random() < 0.3) {
-      ui.match.gamePhase = clamp(
-        (ui.match.gamePhase || 0) + (Math.random() - 0.5) * 1.2, -1, 1
-      );
-    }
-    const phase = ui.match.gamePhase; // +1 = home attacking, -1 = away attacking
-
-    const tSec = (tickMs * 0.85 / 1000).toFixed(2);
-
+    ui.match.gamePhase = (Math.random() * 2) - 1;
+    const phase = ui.match.gamePhase;
+    const tSec  = (tickMs * 0.88 / 1000).toFixed(2);
     ui.match.players.forEach(p => {
-      const depth = p.slot.y / 100; // 0 = GK, 1 = striker
-      const width = p.slot.x / 100; // 0..1 across pitch width
-
-      // myPhase: +1 = my team has ball and pressing, -1 = opponent pressing
-      const myPhase = p.attacksRight ? phase : -phase;
-
-      let cx, rx;
+      const depth    = p.slot.y / 100;
+      const width    = p.slot.x / 100;
+      const myPhase  = p.attacksRight ? phase : -phase;
+      const pace     = p.player?.attrs?.pace     || 65;
+      const physical = p.player?.attrs?.physical || 65;
+      const rangeMult = 0.55 + (pace / 100) * 0.9;
+      const yJitter   = depth < 0.12 ? 8 : 16 + (physical / 100) * 14;
+      let lo, hi;
       if (depth < 0.12) {
-        // GK — barely moves off line
-        cx = p.attacksRight ? 7 : 93;
-        rx = 3;
+        lo = p.attacksRight ?  4 : 86; hi = p.attacksRight ? 15 : 96;
       } else if (depth < 0.42) {
-        // Defenders — own half, push up when in possession
-        cx = p.attacksRight ? 27 + myPhase * 16 : 73 - myPhase * 16;
-        rx = 10;
+        lo = p.attacksRight ? 10 + myPhase*22 : 52 - myPhase*22;
+        hi = p.attacksRight ? 52 + myPhase*20 : 90 - myPhase*20;
       } else if (depth < 0.68) {
-        // Midfielders — roam both halves, the heart of the pitch
-        cx = p.attacksRight ? 50 + myPhase * 22 : 50 - myPhase * 22;
-        rx = 16;
+        lo = p.attacksRight ? 22 + myPhase*20 : 38 - myPhase*20;
+        hi = p.attacksRight ? 72 + myPhase*18 : 78 - myPhase*18;
       } else {
-        // Attackers — opponent's half, press high or drop to help
-        cx = p.attacksRight ? 73 + myPhase * 14 : 27 - myPhase * 14;
-        rx = 13;
+        lo = p.attacksRight ? 40 + myPhase*28 : 12 - myPhase*28;
+        hi = p.attacksRight ? 88 + myPhase* 8 : 60 - myPhase* 8;
       }
-
-      // Y: based on formation width slot + jitter
-      const cy = 10 + width * 80;
-
-      const tx = clamp(cx + (Math.random() - 0.5) * rx * 2, 5, 95);
-      const ty = clamp(cy + (Math.random() - 0.5) * 14, 6, 94);
-
-      p.el.style.transition = `left ${tSec}s ease, top ${tSec}s ease`;
+      lo = clamp(lo, 4, 86); hi = clamp(hi, lo + 8, 96);
+      const mid = (lo + hi) / 2;
+      const tx  = clamp(mid + (Math.random()-0.5) * ((hi-lo)*rangeMult), 4, 96);
+      const ty  = clamp(8 + width*84 + (Math.random()-0.5)*yJitter, 5, 95);
+      p.el.style.transition = `left ${tSec}s ease-in-out, top ${tSec}s ease-in-out`;
       p.el.style.left = tx + '%';
       p.el.style.top  = ty + '%';
+    });
+  }
+
+  /* Attackers flood final third, defenders drop into shape for build-up */
+  function moveToBuildUpPositions(attackingRight) {
+    if (!ui.match?.players?.length) return;
+    ui.match.players.forEach(p => {
+      const depth = p.slot.y / 100;
+      const width = p.slot.x / 100;
+      const isAtt = p.attacksRight === attackingRight;
+      let tx;
+      if (depth < 0.12) {
+        tx = p.attacksRight ? 7 : 93;
+      } else if (isAtt) {
+        if (depth < 0.42)      tx = attackingRight ? 42+Math.random()*12 : 46+Math.random()*12;
+        else if (depth < 0.68) tx = attackingRight ? 60+Math.random()*14 : 26+Math.random()*14;
+        else                   tx = attackingRight ? 73+Math.random()*16 : 11+Math.random()*16;
+      } else {
+        if (depth < 0.42)      tx = attackingRight ? 10+Math.random()*16 : 74+Math.random()*16;
+        else if (depth < 0.68) tx = attackingRight ? 26+Math.random()*18 : 56+Math.random()*18;
+        else                   tx = attackingRight ? 40+Math.random()*18 : 42+Math.random()*18;
+      }
+      const ty = 10 + width*80 + (Math.random()-0.5)*10;
+      p.el.style.transition = 'left 0.65s ease, top 0.65s ease';
+      p.el.style.left = clamp(tx, 4, 96) + '%';
+      p.el.style.top  = clamp(ty, 5, 95) + '%';
+    });
+  }
+
+  /* Ball passes rapidly between attacker positions during build-up */
+  function animateBallPassing(attackingRight, totalMs) {
+    const b = $('pitch-ball');
+    if (!b) return;
+    const steps = Math.max(3, Math.floor(totalMs / 540));
+    let t = 0;
+    for (let i = 0; i < steps; i++) {
+      const ms = t;
+      setTimeout(() => {
+        if (!ui.match) return;
+        const x = attackingRight ? 54+Math.random()*30 : 16+Math.random()*30;
+        const y = 12 + Math.random()*76;
+        b.style.transition = '0.4s ease';
+        b.style.left = x + '%'; b.style.top = y + '%';
+      }, ms);
+      t += 510;
+    }
+  }
+
+  /* Shot: ball fires to goal — either nets (isGoal) or GK dives and deflects */
+  function animateShot(attackingRight, isGoal, delayMs) {
+    const b = $('pitch-ball');
+    if (!b) return;
+    setTimeout(() => {
+      if (!ui.match) return;
+      const sx = attackingRight ? 76+Math.random()*10 : 14+Math.random()*10;
+      const sy = 26 + Math.random()*48;
+      b.style.transition = '0.16s ease-in';
+      b.style.left = sx + '%'; b.style.top = sy + '%';
+      setTimeout(() => {
+        if (!ui.match) return;
+        if (isGoal) {
+          b.style.transition = '0.28s ease-in';
+          b.style.left = (attackingRight ? 93+Math.random()*3 : 4+Math.random()*3) + '%';
+          b.style.top  = (33+Math.random()*34) + '%';
+        } else {
+          const deflY = 30 + Math.random()*40;
+          b.style.transition = '0.2s ease-out';
+          b.style.left = (attackingRight ? 91 : 9) + '%';
+          b.style.top  = deflY + '%';
+          const gk = ui.match.players.find(p => p.slot.y < 12 && p.attacksRight !== attackingRight);
+          if (gk) {
+            const spd = (0.35 - ((gk.player?.attrs?.gkReflexes||60)/100)*0.18).toFixed(2);
+            gk.el.style.transition = `top ${spd}s ease-in`;
+            gk.el.style.top = deflY + '%';
+          }
+          setTimeout(() => {
+            if (!b || !ui.match) return;
+            b.style.transition = '0.5s ease-out';
+            b.style.left = (attackingRight ? 96 : 4) + '%';
+            b.style.top  = (Math.random()<0.5 ? 8+Math.random()*12 : 80+Math.random()*12) + '%';
+          }, 290);
+        }
+      }, 210);
+    }, delayMs);
+  }
+
+  /* Goal: scoring team sprints to corner, opponents drift back dejected */
+  function celebrateGoal(team) {
+    if (!ui.match?.players) return;
+    const teamRight = (team === 'home') === !ui.match.sim.swapped;
+    ui.match.players.forEach((p, i) => {
+      setTimeout(() => {
+        if (!ui.match) return;
+        if (p.isHome === (team === 'home')) {
+          p.el.style.transition = 'left 0.55s ease-out, top 0.55s ease-out';
+          p.el.style.left = (teamRight ? 78+Math.random()*16 : 6+Math.random()*16) + '%';
+          p.el.style.top  = (18+Math.random()*64) + '%';
+        } else {
+          p.el.style.transition = 'left 1.5s ease, top 1.5s ease';
+          p.el.style.left = (28+Math.random()*44) + '%';
+          p.el.style.top  = (12+Math.random()*76) + '%';
+        }
+      }, i * 40);
     });
   }
 
@@ -1286,25 +1370,24 @@ const APP = (() => {
   function moveBall(events, tickMs) {
     const b = $('pitch-ball');
     if (!b) return;
-    const tSec = (tickMs * 0.8 / 1000).toFixed(2);
-    b.style.transition = `left ${tSec}s ease, top ${tSec}s ease`;
+    const tSec = (tickMs * 0.88 / 1000).toFixed(2);
+    b.style.transition = `left ${tSec}s ease-in-out, top ${tSec}s ease-in-out`;
     const swapped = ui.match.sim.swapped;
     const goalEv = events.find(e => e.type === 'goal');
     let x, y;
     if (goalEv) {
-      // Ball in the back of the net on the correct side
       const homeScored = goalEv.team === 'home';
       const homeAttacksRight = !swapped;
       const inRight = homeScored ? homeAttacksRight : !homeAttacksRight;
       x = inRight ? 91 + Math.random() * 4 : 5 + Math.random() * 4;
       y = 33 + Math.random() * 34;
     } else {
-      // Ball position biased toward whichever team has possession
+      // Ball sweeps freely — in 1 minute it crosses the pitch many times
       const phase = ui.match.gamePhase || 0;
       const homeAttacksRight = !swapped;
-      const bias = homeAttacksRight ? phase * 28 : -phase * 28;
-      x = clamp(50 + bias + (Math.random() - 0.5) * 36, 6, 94);
-      y = 10 + Math.random() * 80;
+      const bias = homeAttacksRight ? phase * 32 : -phase * 32;
+      x = clamp(50 + bias + (Math.random() - 0.5) * 44, 5, 95);
+      y = 8 + Math.random() * 84;
     }
     b.style.left = x + '%'; b.style.top = y + '%';
   }
@@ -1406,6 +1489,14 @@ const APP = (() => {
       return 1000;
     }
 
+    // Look up the next upcoming event (not yet processed)
+    function peekNextEvent() {
+      for (let i = sim.idx; i < ev.length; i++) {
+        if (ev[i].min > sim.min) return ev[i];
+      }
+      return null;
+    }
+
     function tick() {
       if (!running || !ui.match) return;
       sim.min++;
@@ -1424,16 +1515,41 @@ const APP = (() => {
       if (eventsThisMin.some(e => e.type === 'yellow' || e.type === 'red')) showCard(eventsThisMin);
       addCommentary(sim.min, eventsThisMin);
 
+      const swapped      = ui.match.sim.swapped;
+      const homeRight    = !swapped;
       let bonus = 0;
-      if (eventsThisMin.some(e => e.type === 'goal')) bonus = 2500;
-      else if (eventsThisMin.some(e => e.type === 'red')) bonus = 1800;
-      else if (eventsThisMin.some(e => e.type === 'yellow')) bonus = 1000;
 
-      const nextDelay = getDelay();
-      moveBall(eventsThisMin, nextDelay);
-      updatePlayerDots(nextDelay);
-
-      if (eventsThisMin.length === 0 && minsToNextEvent() === 1) addBuildUp(sim.min);
+      const goalEv = eventsThisMin.find(e => e.type === 'goal');
+      if (goalEv) {
+        // Shot → goal → celebration
+        const attackingRight = goalEv.team === 'home' ? homeRight : !homeRight;
+        animateShot(attackingRight, true, 0);
+        setTimeout(() => celebrateGoal(goalEv.team), 900);
+        bonus = 3200;
+      } else if (eventsThisMin.some(e => e.type === 'red')) {
+        bonus = 1800;
+        updatePlayerDots(getDelay());
+      } else if (eventsThisMin.some(e => e.type === 'yellow')) {
+        bonus = 1000;
+        updatePlayerDots(getDelay());
+      } else {
+        // No event this minute — normal play or build-up
+        const minsAway = minsToNextEvent();
+        const next     = peekNextEvent();
+        if (minsAway <= 1 && next) {
+          // Build-up: players cluster in final third, ball passes, then near-miss shot
+          addBuildUp(sim.min);
+          const attackingRight = next.team === 'home' ? homeRight : !homeRight;
+          moveToBuildUpPositions(attackingRight);
+          const tickMs = getDelay();
+          animateBallPassing(attackingRight, tickMs - 700);
+          // Show a near-miss shot toward end of this slow tick (defenders save/clear)
+          if (next.type !== 'goal') animateShot(attackingRight, false, tickMs - 650);
+        } else {
+          updatePlayerDots(getDelay());
+          moveBall(eventsThisMin, getDelay());
+        }
+      }
 
       if (sim.min === 45) {
         running = false;
@@ -1449,7 +1565,7 @@ const APP = (() => {
         finishMatch();
         return;
       }
-      ui.match.simTimer = setTimeout(tick, nextDelay + bonus);
+      ui.match.simTimer = setTimeout(tick, getDelay() + bonus);
     }
 
     ui.match.simTimer = setTimeout(tick, getDelay());
@@ -1457,7 +1573,7 @@ const APP = (() => {
 
   function addMatchEvent(e) {
     const club = e.team === 'home' ? ui.match.home : ui.match.away;
-    const icon = e.type === 'goal' ? '⚽' : e.type === 'yellow' ? '🟨' : e.type === 'red' ? '🟥' : '🔁';
+    const icon = e.type === 'goal' ? '●' : e.type === 'yellow' ? '■' : e.type === 'red' ? '■' : '⇄';
     let desc = e.player ? esc(e.player.name) : '';
     if (e.type === 'goal' && e.assist) desc += ` <span class="text-muted">(${esc(e.assist.name)})</span>`;
     const div = document.createElement('div');
@@ -1666,7 +1782,7 @@ const APP = (() => {
     comp.winner = teams[0];
     comp.stage = 'done';
     if (comp.clubs.includes(myId)) {
-      if (comp.winner === myId) notify(`🏆 You won the ${comp.name}!`, 'success');
+      if (comp.winner === myId) notify(`You won the ${comp.name}!`, 'success');
       else notify(`${comp.name}: your European run has ended.`, 'info');
     }
   }
