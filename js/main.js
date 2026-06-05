@@ -1165,6 +1165,7 @@ const APP = (() => {
     if (!container) return;
     container.innerHTML = '';
     ui.match.players = [];
+    ui.match.gamePhase = 0; // -1=away pressing, 0=contested, +1=home pressing
     const m = ui.match;
     const homeColor = teamDotColor(m.home, null);
     const awayColor = teamDotColor(m.away, m.home);
@@ -1190,7 +1191,8 @@ const APP = (() => {
         el.style.top  = pos.by + '%';
         container.appendChild(el);
 
-        ui.match.players.push({ el, bx: pos.bx, by: pos.by, slot, slotIdx: i, isHome });
+        // attacksRight = true means this player's goal is on the right side
+        ui.match.players.push({ el, slot, slotIdx: i, isHome, attacksRight: isHome });
       });
     };
 
@@ -1198,13 +1200,55 @@ const APP = (() => {
     addDots(awaySlots, m.awayXI, m.away, awayColor, false);
   }
 
+  /* Zone-based realistic movement.
+     Each tick, possession phase drifts randomly (-1=away, +1=home).
+     Players shift toward the opponent's goal when their team has the ball,
+     and drop back when the opponent does — so both teams span the whole pitch. */
   function updatePlayerDots(tickMs) {
     if (!ui.match?.players?.length) return;
-    const mag  = tickMs <= 1200 ? 7 : tickMs <= 2000 ? 4 : 2;
+
+    // Randomly drift possession phase each tick
+    if (Math.random() < 0.3) {
+      ui.match.gamePhase = clamp(
+        (ui.match.gamePhase || 0) + (Math.random() - 0.5) * 1.2, -1, 1
+      );
+    }
+    const phase = ui.match.gamePhase; // +1 = home attacking, -1 = away attacking
+
     const tSec = (tickMs * 0.85 / 1000).toFixed(2);
+
     ui.match.players.forEach(p => {
-      const tx = clamp(p.bx + (Math.random() - 0.5) * mag * 2, 5, 95);
-      const ty = clamp(p.by + (Math.random() - 0.5) * mag,     5, 95);
+      const depth = p.slot.y / 100; // 0 = GK, 1 = striker
+      const width = p.slot.x / 100; // 0..1 across pitch width
+
+      // myPhase: +1 = my team has ball and pressing, -1 = opponent pressing
+      const myPhase = p.attacksRight ? phase : -phase;
+
+      let cx, rx;
+      if (depth < 0.12) {
+        // GK — barely moves off line
+        cx = p.attacksRight ? 7 : 93;
+        rx = 3;
+      } else if (depth < 0.42) {
+        // Defenders — own half, push up when in possession
+        cx = p.attacksRight ? 27 + myPhase * 16 : 73 - myPhase * 16;
+        rx = 10;
+      } else if (depth < 0.68) {
+        // Midfielders — roam both halves, the heart of the pitch
+        cx = p.attacksRight ? 50 + myPhase * 22 : 50 - myPhase * 22;
+        rx = 16;
+      } else {
+        // Attackers — opponent's half, press high or drop to help
+        cx = p.attacksRight ? 73 + myPhase * 14 : 27 - myPhase * 14;
+        rx = 13;
+      }
+
+      // Y: based on formation width slot + jitter
+      const cy = 10 + width * 80;
+
+      const tx = clamp(cx + (Math.random() - 0.5) * rx * 2, 5, 95);
+      const ty = clamp(cy + (Math.random() - 0.5) * 14, 6, 94);
+
       p.el.style.transition = `left ${tSec}s ease, top ${tSec}s ease`;
       p.el.style.left = tx + '%';
       p.el.style.top  = ty + '%';
@@ -1222,9 +1266,9 @@ const APP = (() => {
     const homeSlots = (DATA.FORMATIONS[ui.match.homeFormation] || DATA.FORMATIONS['4-3-3']).positions;
     const awaySlots = (DATA.FORMATIONS[ui.match.awayFormation] || DATA.FORMATIONS['4-3-3']).positions;
     ui.match.players.forEach(p => {
+      p.attacksRight = !p.attacksRight; // flip direction for second half
       const slots = p.isHome ? homeSlots : awaySlots;
-      const newPos = slotToXY(slots[p.slotIdx], !p.isHome);
-      p.bx = newPos.bx; p.by = newPos.by;
+      const newPos = slotToXY(slots[p.slotIdx], p.attacksRight);
       p.el.style.transition = 'left 2s ease, top 2s ease';
       p.el.style.left = newPos.bx + '%';
       p.el.style.top  = newPos.by + '%';
@@ -1248,13 +1292,19 @@ const APP = (() => {
     const goalEv = events.find(e => e.type === 'goal');
     let x, y;
     if (goalEv) {
+      // Ball in the back of the net on the correct side
       const homeScored = goalEv.team === 'home';
-      const attacksRight = homeScored ? !swapped : swapped;
-      x = attacksRight ? 90 + Math.random() * 5 : 5 + Math.random() * 5;
-      y = 35 + Math.random() * 30;
+      const homeAttacksRight = !swapped;
+      const inRight = homeScored ? homeAttacksRight : !homeAttacksRight;
+      x = inRight ? 91 + Math.random() * 4 : 5 + Math.random() * 4;
+      y = 33 + Math.random() * 34;
     } else {
-      x = 20 + Math.random() * 60;
-      y = 15 + Math.random() * 70;
+      // Ball position biased toward whichever team has possession
+      const phase = ui.match.gamePhase || 0;
+      const homeAttacksRight = !swapped;
+      const bias = homeAttacksRight ? phase * 28 : -phase * 28;
+      x = clamp(50 + bias + (Math.random() - 0.5) * 36, 6, 94);
+      y = 10 + Math.random() * 80;
     }
     b.style.left = x + '%'; b.style.top = y + '%';
   }
