@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Football Manager</title>
-  <link rel="stylesheet" href="style.css?v=20260604">
+  <link rel="stylesheet" href="style.css?v=20260605">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -21,31 +21,33 @@
         </div>
       </div>
       <div class="start-content">
-        <div class="game-logo">
-          <div class="logo-emblem">⚽</div>
-          <h1 class="game-title">FOOTBALL<span>MANAGER</span></h1>
-          <p class="game-subtitle">Update Beta 1.1</p>
-        </div>
-        <div id="club-selector-panel" class="club-selector-panel">
-          <h2 class="selector-title">Choose Your Club</h2>
-          <div class="league-tabs" id="league-tabs">
-            <button class="ltab active" data-league="all">All</button>
-            <button class="ltab" data-league="premier_league">Premier League</button>
-            <button class="ltab" data-league="championship">Championship</button>
-            <button class="ltab" data-league="league_one">League One</button>
-            <button class="ltab" data-league="league_two">League Two</button>
-            <button class="ltab" data-league="national_league">National League</button>
-            <button class="ltab" data-league="la_liga">La Liga</button>
-            <button class="ltab" data-league="bundesliga">Bundesliga</button>
-            <button class="ltab" data-league="serie_a">Serie A</button>
-            <button class="ltab" data-league="ligue_1">Ligue 1</button>
+
+        <!-- HOME MENU -->
+        <div id="home-view" class="home-view">
+          <div class="game-logo">
+            <div class="logo-emblem">⚽</div>
+            <h1 class="game-title">FOOTBALL<span>MANAGER</span></h1>
+            <p class="game-subtitle">Beta 1.1</p>
           </div>
+          <div id="home-menu" class="home-menu"></div>
+        </div>
+
+        <!-- CLUB SELECTOR -->
+        <div id="club-selector-panel" class="club-selector-panel hidden">
+          <div class="selector-header">
+            <button class="btn-secondary btn-sm" id="btn-back-home">← Back</button>
+            <h2 class="selector-title">Choose Your Club</h2>
+          </div>
+          <div class="country-tabs" id="country-tabs"></div>
+          <div class="league-tabs" id="league-tabs"></div>
           <div class="search-bar">
             <input type="text" id="club-search" placeholder="Search clubs..." autocomplete="off">
             <span class="search-icon">🔍</span>
           </div>
           <div id="clubs-grid" class="clubs-grid"></div>
         </div>
+
+        <!-- CLUB CONFIRM -->
         <div id="club-confirm-panel" class="club-confirm-panel hidden">
           <div id="confirm-badge" class="confirm-badge"></div>
           <div class="confirm-info">
@@ -63,6 +65,7 @@
             <button class="btn-primary" id="btn-start-game">Start Career ➔</button>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -70,11 +73,19 @@
     <div id="screen-game" class="screen hidden">
       <aside id="sidebar">
         <div class="sidebar-club">
-          <div id="sb-badge" class="sb-badge">⚽</div>
-          <div class="sb-club-info">
-            <span id="sb-club-name" class="sb-name">Club</span>
-            <span id="sb-league-name" class="sb-league">League</span>
+          <div class="sb-badge-row">
+            <div class="sb-mini-stat">
+              <span id="sb-position" class="sb-mini-val sb-pos-val">—</span>
+              <span class="sb-mini-label">Position</span>
+            </div>
+            <div id="sb-badge" class="sb-badge">⚽</div>
+            <div class="sb-mini-stat">
+              <span id="sb-date" class="sb-mini-val">Aug 2024</span>
+              <span class="sb-mini-label">Date</span>
+            </div>
           </div>
+          <span id="sb-club-name" class="sb-name">Club</span>
+          <span id="sb-league-name" class="sb-league">League</span>
         </div>
         <nav class="sidebar-nav">
           <button class="snav-btn active" data-view="dashboard">
@@ -103,17 +114,9 @@
           </button>
         </nav>
         <div class="sidebar-bottom">
-          <div class="sb-date-block">
-            <span class="sb-date-label">Date</span>
-            <span id="sb-date" class="sb-date-val">Aug 2024</span>
-          </div>
           <div class="sb-budget-block">
             <span class="sb-budget-label">Transfer Budget</span>
             <span id="sb-budget" class="sb-budget-val">£0m</span>
-          </div>
-          <div class="sb-position-block">
-            <span class="sb-pos-label">Position</span>
-            <span id="sb-position" class="sb-pos-val">—</span>
           </div>
         </div>
       </aside>
@@ -148,16 +151,21 @@
           <div id="match-pitch-side">
             <div id="match-pitch">
               <div class="pitch-markings">
-                <div class="center-circle"></div>
-                <div class="center-line"></div>
-                <div class="penalty-box top"></div>
-                <div class="penalty-box bottom"></div>
-                <div class="goal-box top"></div>
-                <div class="goal-box bottom"></div>
+                <div class="pm-border"></div>
+                <div class="pm-halfway"></div>
+                <div class="pm-center-circle"></div>
+                <div class="pm-center-dot"></div>
+                <div class="pm-penalty-left"></div>
+                <div class="pm-goal-left"></div>
+                <div class="pm-penalty-right"></div>
+                <div class="pm-goal-right"></div>
               </div>
+              <div id="pitch-team-label-home" class="pitch-team-label"></div>
+              <div id="pitch-team-label-away" class="pitch-team-label"></div>
               <div id="pitch-players"></div>
               <div id="pitch-events"></div>
               <div id="pitch-ball"></div>
+              <div id="pitch-card"></div>
             </div>
             <div id="match-stats-bar">
               <div class="stat-row"><span id="s-possession-h">50%</span><div class="stat-bar-wrap"><div class="stat-bar-fill" id="stat-possession" style="width:50%"></div></div><span id="s-possession-a">50%</span><label>Possession</label></div>

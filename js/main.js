@@ -23,8 +23,18 @@ const APP = (() => {
     transferPos: 'all',
     tableLeague: null,
     euroTab: null,
-    match: null,           // { fixture, home, away, myIsHome, result }
+    match: null,
+    clubCountry: 'England',
+    clubLeague: 'premier_league',
   };
+
+  const COUNTRY_LEAGUES = [
+    { country: 'England', leagues: ['premier_league','championship','league_one','league_two','national_league'] },
+    { country: 'Spain',   leagues: ['la_liga'] },
+    { country: 'Germany', leagues: ['bundesliga'] },
+    { country: 'Italy',   leagues: ['serie_a'] },
+    { country: 'France',  leagues: ['ligue_1'] },
+  ];
 
   const KO_DATE = new Date(2026, 1, 17);   // European knockout resolves after this
 
@@ -130,32 +140,87 @@ const APP = (() => {
      START SCREEN
      ============================================= */
   function initStartScreen() {
-    renderClubGrid('all', '');
-    // league tabs
-    document.querySelectorAll('#league-tabs .ltab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('#league-tabs .ltab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        renderClubGrid(tab.dataset.league, $('club-search').value.trim().toLowerCase());
-      });
-    });
-    $('club-search').addEventListener('input', (e) => {
-      const active = document.querySelector('#league-tabs .ltab.active');
-      renderClubGrid(active ? active.dataset.league : 'all', e.target.value.trim().toLowerCase());
-    });
+    renderHomeMenu();
+    $('btn-back-home').addEventListener('click', showHomeView);
     $('btn-back-select').addEventListener('click', () => {
       $('club-confirm-panel').classList.add('hidden');
       $('club-selector-panel').classList.remove('hidden');
     });
     $('btn-start-game').addEventListener('click', () => { if (selectedClubId) startGame(selectedClubId); });
-    refreshContinueBar();
+    $('club-search').addEventListener('input', (e) => {
+      renderClubGrid(ui.clubLeague, e.target.value.trim().toLowerCase());
+    });
+  }
+
+  function renderHomeMenu() {
+    const slots = listSaves();
+    const latest = slots[0];
+    let html = '';
+    if (latest) {
+      html += `<button class="btn-primary btn-lg home-btn" id="hm-continue">▶ Continue — ${esc(latest.clubName)} S${latest.season}</button>`;
+    }
+    html += `<button class="btn-secondary btn-lg home-btn" id="hm-new">⚽ New Save</button>`;
+    if (slots.length) {
+      html += `<button class="btn-secondary btn-lg home-btn" id="hm-load">📂 Load Save</button>`;
+    }
+    $('home-menu').innerHTML = html;
+    if (latest) $('hm-continue').addEventListener('click', () => loadSave(latest.id));
+    $('hm-new').addEventListener('click', showClubSelector);
+    const loadBtn = $('hm-load');
+    if (loadBtn) loadBtn.addEventListener('click', () => openSaves('load'));
+  }
+
+  function showHomeView() {
+    $('home-view').classList.remove('hidden');
+    $('club-selector-panel').classList.add('hidden');
+    $('club-confirm-panel').classList.add('hidden');
+    renderHomeMenu();
+  }
+
+  function showClubSelector() {
+    $('home-view').classList.add('hidden');
+    $('club-confirm-panel').classList.add('hidden');
+    $('club-selector-panel').classList.remove('hidden');
+    $('club-search').value = '';
+    renderCountryTabs();
+  }
+
+  function renderCountryTabs() {
+    $('country-tabs').innerHTML = COUNTRY_LEAGUES.map(c =>
+      `<button class="ltab ${c.country === ui.clubCountry ? 'active' : ''}" data-country="${c.country}">${c.country}</button>`
+    ).join('');
+    $('country-tabs').querySelectorAll('.ltab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        ui.clubCountry = tab.dataset.country;
+        const entry = COUNTRY_LEAGUES.find(x => x.country === ui.clubCountry);
+        ui.clubLeague = entry.leagues[0];
+        renderCountryTabs();
+      });
+    });
+    renderLeagueTabs();
+    renderClubGrid(ui.clubLeague, $('club-search').value.trim().toLowerCase());
+  }
+
+  function renderLeagueTabs() {
+    const entry = COUNTRY_LEAGUES.find(x => x.country === ui.clubCountry);
+    const tabs = $('league-tabs');
+    if (!entry || entry.leagues.length <= 1) { tabs.innerHTML = ''; return; }
+    tabs.innerHTML = entry.leagues.map(l =>
+      `<button class="ltab ${l === ui.clubLeague ? 'active' : ''}" data-league="${l}">${DATA.LEAGUES[l].name}</button>`
+    ).join('');
+    tabs.querySelectorAll('.ltab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        ui.clubLeague = tab.dataset.league;
+        renderLeagueTabs();
+        renderClubGrid(ui.clubLeague, $('club-search').value.trim().toLowerCase());
+      });
+    });
   }
 
   function renderClubGrid(league, search) {
     const grid = $('clubs-grid');
     const clubs = DATA.CLUBS_DATA
-      .filter(c => !c.european)
-      .filter(c => (league === 'all' || c.league === league))
+      .filter(c => !c.european && c.league === league)
       .filter(c => !search || c.name.toLowerCase().includes(search))
       .sort((a, b) => b.rep - a.rep || b.sqRating - a.sqRating);
 
@@ -227,14 +292,14 @@ const APP = (() => {
       });
       $('modal-close').addEventListener('click', closeModal);
       $('modal-overlay').addEventListener('click', (e) => { if (e.target === $('modal-overlay')) closeModal(); });
-      $('btn-simulate').addEventListener('click', () => runSimulation(false));
-      $('btn-fast-sim').addEventListener('click', () => runSimulation(true));
-      const halftimeBtn = $('btn-halftime');
-      if (halftimeBtn) halftimeBtn.addEventListener('click', () => {
+      $('btn-simulate').addEventListener('click', () => runSimulation());
+      $('btn-pause').addEventListener('click', togglePause);
+      $('btn-fast-sim').addEventListener('click', fastSimulate);
+      $('btn-halftime').addEventListener('click', () => {
         if (!ui.match) return;
-        halftimeBtn.classList.add('hidden');
+        $('btn-halftime').classList.add('hidden');
         running = false;
-        runSimulation(false);
+        runSimulation();
       });
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
       $('btn-exit-match').addEventListener('click', exitMatch);
@@ -256,6 +321,9 @@ const APP = (() => {
     setBadgeEl($('sb-badge'), c);
     $('sb-club-name').textContent = c.shortName;
     $('sb-league-name').textContent = DATA.LEAGUES[c.league].name;
+    const col = hex(c.color);
+    document.querySelector('.sidebar-club').style.background = `linear-gradient(180deg, ${col}18 0%, #080c14 100%)`;
+    $('sb-badge').style.boxShadow = `0 0 0 3px #080c14, 0 0 0 5px ${col}50, 0 8px 24px ${col}28`;
   }
 
   function updateSidebar() {
@@ -992,6 +1060,8 @@ const APP = (() => {
     ['stat-possession','stat-shots','stat-sot'].forEach(id => $(id).style.width = '50%');
     $('match-result-overlay').classList.add('hidden');
     $('btn-halftime').classList.add('hidden');
+    $('btn-pause').classList.add('hidden');
+    $('btn-pause').textContent = '⏸ Pause';
     $('btn-simulate').disabled = false;
     running = false;
     initPlayerDots();
@@ -1217,7 +1287,7 @@ const APP = (() => {
   }
 
   function exitMatch() {
-    if (ui.match && ui.match.timer) clearInterval(ui.match.timer);
+    if (ui.match && ui.match.simTimer) clearInterval(ui.match.simTimer);
     running = false;
     ui.match = null;
     showScreen('game');
@@ -1703,28 +1773,9 @@ const APP = (() => {
     }));
   }
 
-  function refreshContinueBar() {
-    const old = document.getElementById('continue-bar'); if (old) old.remove();
-    const slots = listSaves(); if (!slots.length) return;
-    const top = slots[0];
-    const sc = document.querySelector('.start-content');
-    const selector = document.getElementById('club-selector-panel');
-    const bar = document.createElement('div');
-    bar.id = 'continue-bar';
-    bar.style.cssText = 'display:flex;gap:10px;width:100%;max-width:900px;align-items:center;justify-content:center;flex-wrap:wrap';
-    bar.innerHTML = `
-      <button class="btn-primary btn-lg" id="cb-continue">▶ Continue — ${esc(top.clubName)} (S${top.season})</button>
-      <button class="btn-secondary btn-lg" id="cb-load">📂 Load Game</button>`;
-    sc.insertBefore(bar, selector);
-    $('cb-continue').addEventListener('click', () => loadSave(top.id));
-    $('cb-load').addEventListener('click', () => openSaves('load'));
-  }
-
   function goToMenu() {
     showScreen('start');
-    document.getElementById('club-confirm-panel').classList.add('hidden');
-    document.getElementById('club-selector-panel').classList.remove('hidden');
-    refreshContinueBar();
+    showHomeView();
   }
 
   /* ---------------------------------------------
