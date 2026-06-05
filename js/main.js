@@ -302,7 +302,6 @@ const APP = (() => {
         runSimulation();
       });
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
-      $('btn-exit-match').addEventListener('click', exitMatch);
 
       // Save / Main-menu controls injected into the sidebar footer
       const sb = document.querySelector('.sidebar-bottom');
