@@ -42,9 +42,32 @@ const APP = (() => {
     const lum = (0.299*r + 0.587*g + 0.114*b);
     return lum > 170 ? '#0d1321' : '#ffffff';
   }
+  function crestURL(club) { return (club && DATA.CLUB_BADGES && DATA.CLUB_BADGES[club.id]) || null; }
+  // Inner contents of a circular badge: the real crest if we have one, with the
+  // club's initials as an automatic fallback if the image fails to load.
+  function crestImg(club) {
+    const url = crestURL(club);
+    const init = DATA.getInitials(club.name);
+    return `<img class="crest-img" src="${url}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('crest');this.parentNode.style.background='${hex(club.color)}';this.parentNode.style.color='${textOn(club.color)}';this.replaceWith(document.createTextNode('${init}'))">`;
+  }
   function badge(club, cls) {
-    const c = hex(club.color);
-    return `<div class="${cls}" style="background:${c};color:${textOn(club.color)}">${DATA.getInitials(club.name)}</div>`;
+    if (crestURL(club)) return `<div class="${cls} crest">${crestImg(club)}</div>`;
+    return `<div class="${cls}" style="background:${hex(club.color)};color:${textOn(club.color)}">${DATA.getInitials(club.name)}</div>`;
+  }
+  // Apply a club badge (crest or initials) to an existing DOM element.
+  function setBadgeEl(el, club) {
+    if (!el) return;
+    if (crestURL(club)) {
+      el.classList.add('crest');
+      el.style.background = '';
+      el.style.color = '';
+      el.innerHTML = crestImg(club);
+    } else {
+      el.classList.remove('crest');
+      el.style.background = hex(club.color);
+      el.style.color = textOn(club.color);
+      el.textContent = DATA.getInitials(club.name);
+    }
   }
   function money(m) {
     if (m == null) return '£0';
@@ -138,7 +161,7 @@ const APP = (() => {
 
     grid.innerHTML = clubs.map(c => `
       <div class="club-card" data-id="${c.id}">
-        <div class="club-card-badge" style="background:${hex(c.color)};color:${textOn(c.color)}">${DATA.getInitials(c.name)}</div>
+        ${crestURL(c) ? `<div class="club-card-badge crest">${crestImg(c)}</div>` : `<div class="club-card-badge" style="background:${hex(c.color)};color:${textOn(c.color)}">${DATA.getInitials(c.name)}</div>`}
         <div class="club-card-name">${esc(c.name)}</div>
         <div class="club-card-rep">${[1,2,3,4,5].map(i => `<span class="rep-star ${i <= c.rep ? 'lit' : ''}">★</span>`).join('')}</div>
       </div>`).join('') || `<div class="empty-state"><div class="empty-state-text">No clubs found</div></div>`;
@@ -152,9 +175,7 @@ const APP = (() => {
     selectedClubId = id;
     const c = DATA.CLUBS_DATA.find(x => x.id === id);
     const league = DATA.LEAGUES[c.league];
-    $('confirm-badge').style.background = hex(c.color);
-    $('confirm-badge').style.color = textOn(c.color);
-    $('confirm-badge').textContent = DATA.getInitials(c.name);
+    setBadgeEl($('confirm-badge'), c);
     $('confirm-name').textContent = c.name;
     $('confirm-league').textContent = league.name + ' · ' + league.country;
     $('confirm-rep').textContent = '★'.repeat(c.rep);
@@ -225,9 +246,7 @@ const APP = (() => {
       chromeReady = true;
     }
     const c = gameState.myClub;
-    $('sb-badge').style.background = hex(c.color);
-    $('sb-badge').style.color = textOn(c.color);
-    $('sb-badge').textContent = DATA.getInitials(c.name);
+    setBadgeEl($('sb-badge'), c);
     $('sb-club-name').textContent = c.shortName;
     $('sb-league-name').textContent = DATA.LEAGUES[c.league].name;
   }
@@ -542,7 +561,7 @@ const APP = (() => {
         <tbody>${table.map((c, i) => {
           const t = c.tableStats;
           return `<tr class="${c.id===gameState.myClubId?'my-club':''}" data-club="${c.id}">
-            <td><span class="table-pos ${zone(i)}">${i + 1}</span></td>
+            <td class="table-pos-cell ${zone(i)}"><span class="table-pos">${i + 1}</span></td>
             <td><div class="table-club">${badge(c,'table-badge')}<span class="table-club-name">${esc(c.name)}</span></div></td>
             <td>${t.played}</td><td>${t.won}</td><td>${t.drawn}</td><td>${t.lost}</td>
             <td>${t.gf}</td><td>${t.ga}</td><td>${gd(t) >= 0 ? '+' : ''}${gd(t)}</td>
@@ -831,7 +850,7 @@ const APP = (() => {
     const directCut = R / 2, playoffCut = R / 2 + R;     // top R/2 direct, next R into playoff
     const rows = sorted.map((id, i) => {
       const c = gameState.clubs[id], s = comp.groupStats[id] || {};
-      const zone = i < directCut ? 'ko-direct' : i < playoffCut ? 'ko-playoff' : 'ko-out';
+      const zone = i < directCut ? 'ko-direct' : i < playoffCut ? 'ko-playoff' : '';
       const gd = euGd(comp, id);
       return `<tr class="${id===gameState.myClubId?'my-club':''}">
         <td class="lp-pos ${zone}">${i + 1}</td>
@@ -842,7 +861,6 @@ const APP = (() => {
     return `<div class="lp-legend">
         <span class="lp-key"><span class="lp-dot ko-direct"></span>Round of 16</span>
         <span class="lp-key"><span class="lp-dot ko-playoff"></span>Knockout playoff</span>
-        <span class="lp-key"><span class="lp-dot ko-out"></span>Eliminated</span>
       </div>
       <table class="lp-table"><thead><tr><th>#</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
@@ -959,10 +977,7 @@ const APP = (() => {
     showScreen('match');
   }
   function setBadge(id, club) {
-    const el = $(id);
-    el.style.background = hex(club.color);
-    el.style.color = textOn(club.color);
-    el.textContent = DATA.getInitials(club.name);
+    setBadgeEl($(id), club);
   }
 
   function runSimulation(fast) {
