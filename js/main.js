@@ -141,6 +141,8 @@ const APP = (() => {
      ============================================= */
   function initStartScreen() {
     renderHomeMenu();
+    $('modal-close').addEventListener('click', closeModal);
+    $('modal-overlay').addEventListener('click', (e) => { if (e.target === $('modal-overlay')) closeModal(); });
     $('btn-back-home').addEventListener('click', showHomeView);
     $('btn-back-select').addEventListener('click', () => {
       $('club-confirm-panel').classList.add('hidden');
@@ -160,11 +162,11 @@ const APP = (() => {
       html += `<button class="btn-primary btn-lg home-btn" id="hm-continue">▶ Continue — ${esc(latest.clubName)} S${latest.season}</button>`;
     }
     html += `<button class="btn-secondary btn-lg home-btn" id="hm-new">New Save</button>`;
-    html += `<button class="btn-secondary btn-lg home-btn" id="hm-load" ${!slots.length ? 'disabled' : ''}>Load Save</button>`;
+    html += `<button class="btn-secondary btn-lg home-btn" id="hm-load">Load Save</button>`;
     $('home-menu').innerHTML = html;
     if (latest) $('hm-continue').addEventListener('click', () => loadSave(latest.id));
     $('hm-new').addEventListener('click', showClubSelector);
-    if (slots.length) $('hm-load').addEventListener('click', () => openSaves('load'));
+    $('hm-load').addEventListener('click', () => openSaves('load'));
   }
 
   function showHomeView() {
