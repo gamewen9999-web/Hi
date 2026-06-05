@@ -1041,7 +1041,9 @@ const APP = (() => {
     const awayFormation = myIsHome ? '4-3-3' : gameState.tactics.formation;
     const homeXI = myIsHome ? gameState.tactics.lineup : autoPickXI(home, homeFormation);
     const awayXI = myIsHome ? autoPickXI(away, awayFormation) : gameState.tactics.lineup;
-    const result = ENGINE.simulateMatch(home, away, { homeXI, awayXI });
+    const homeMentality = myIsHome ? gameState.tactics.mentality : 'balanced';
+    const awayMentality = myIsHome ? 'balanced' : gameState.tactics.mentality;
+    const result = ENGINE.simulateMatch(home, away, { homeXI, awayXI, homeMentality, awayMentality });
     ui.match = { fixture, home, away, myIsHome, result, homeFormation, awayFormation,
                  sim: { min: 0, idx: 0, hs: 0, as: 0 }, simTimer: null };
 
@@ -1180,7 +1182,10 @@ const APP = (() => {
   function runSimulation() {
     if (running || !ui.match) return;
     running = true;
+    ui.match.simStarted = true;
     $('btn-simulate').disabled = true;
+    $('btn-pause').classList.remove('hidden');
+    $('btn-pause').textContent = '⏸ Pause';
     $('match-status').textContent = 'LIVE';
 
     const ev = ui.match.result.events;
@@ -1217,17 +1222,63 @@ const APP = (() => {
         running = false;
         $('match-status').textContent = 'HALF TIME';
         $('match-time').textContent = "45'";
+        $('btn-pause').classList.add('hidden');
         $('btn-halftime').classList.remove('hidden');
         return;
       }
       if (sim.min >= 90) {
         clearInterval(ui.match.simTimer);
         ui.match.simTimer = null;
+        $('btn-pause').classList.add('hidden');
         finishMatch();
       }
     }
 
+    ui.match.tick = tick;
     ui.match.simTimer = setInterval(tick, 1000);
+  }
+
+  function togglePause() {
+    if (!ui.match || !ui.match.simStarted) return;
+    if (ui.match.simTimer) {
+      // Pause
+      clearInterval(ui.match.simTimer);
+      ui.match.simTimer = null;
+      running = false;
+      $('btn-pause').textContent = '▶ Resume';
+      $('match-status').textContent = 'PAUSED';
+    } else if (!running && ui.match.tick) {
+      // Resume
+      running = true;
+      $('btn-pause').textContent = '⏸ Pause';
+      $('match-status').textContent = 'LIVE';
+      ui.match.simTimer = setInterval(ui.match.tick, 1000);
+    }
+  }
+
+  function fastSimulate() {
+    if (!ui.match) return;
+    // Stop any running timer
+    if (ui.match.simTimer) { clearInterval(ui.match.simTimer); ui.match.simTimer = null; }
+    running = false;
+    $('btn-pause').classList.add('hidden');
+    $('btn-halftime').classList.add('hidden');
+    ui.match.simStarted = true;
+
+    // Flush all remaining events instantly
+    const ev = ui.match.result.events;
+    const sim = ui.match.sim;
+    // If we're at halftime, jump to 45 as starting point
+    const startMin = sim.min;
+    while (sim.idx < ev.length) {
+      const e = ev[sim.idx++];
+      if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
+      if (e.min > startMin) { addMatchEvent(e); addPitchDot(e); }
+    }
+    sim.min = 90;
+    $('match-score').textContent = `${sim.hs} – ${sim.as}`;
+    $('match-time').textContent = "90'";
+    finishMatch();
   }
 
   function addMatchEvent(e) {
@@ -1287,7 +1338,32 @@ const APP = (() => {
   }
 
   function exitMatch() {
-    if (ui.match && ui.match.simTimer) clearInterval(ui.match.simTimer);
+    if (!ui.match) { showScreen('game'); renderView(ui.view); return; }
+
+    if (ui.match.simTimer) { clearInterval(ui.match.simTimer); ui.match.simTimer = null; }
+    $('btn-pause').classList.add('hidden');
+    $('btn-halftime').classList.add('hidden');
+
+    if (ui.match.simStarted) {
+      // Fast-forward any remaining events and show the final score
+      running = false;
+      const ev = ui.match.result.events;
+      const sim = ui.match.sim;
+      const startMin = sim.min;
+      while (sim.idx < ev.length) {
+        const e = ev[sim.idx++];
+        if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
+        if (e.min > startMin) { addMatchEvent(e); addPitchDot(e); }
+      }
+      sim.min = 90;
+      $('match-score').textContent = `${sim.hs} – ${sim.as}`;
+      $('match-time').textContent = "90'";
+      if ($('match-result-overlay').classList.contains('hidden')) finishMatch();
+      // Stay on match screen — user clicks Continue ➔ to advance
+      return;
+    }
+
+    // No simulation ran yet — exit cleanly
     running = false;
     ui.match = null;
     showScreen('game');

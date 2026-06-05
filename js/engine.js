@@ -53,6 +53,25 @@ const ENGINE = (() => {
   /* ---- MATCH SIMULATION ---- */
   function effectiveRating(club) { return club.sqRating || 70; }
 
+  // Deterministic xG from ratings + mentality. Use this for UI previews and
+  // as the base lambda for match simulation (noise applied separately there).
+  function calcMatchXG(homeClub, awayClub, homeMentality, awayMentality) {
+    const hR = effectiveRating(homeClub);
+    const aR = effectiveRating(awayClub);
+    const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
+    const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2 };
+    const hAtk = hR * (offMod[homeMentality] || 1.0) * 1.1;
+    const hDef = hR * (defMod[homeMentality] || 1.0);
+    const aAtk = aR * (offMod[awayMentality] || 1.0);
+    const aDef = aR * (defMod[awayMentality] || 1.0);
+    const hStr = hAtk / (hAtk + aDef);
+    const aStr = aAtk / (aAtk + hDef);
+    return {
+      homeXG: Math.max(0.2, Math.round(2.8 * hStr * 100) / 100),
+      awayXG: Math.max(0.2, Math.round(2.5 * aStr * 100) / 100),
+    };
+  }
+
   function pickScorer(club, xi) {
     const pool = xi
       ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
@@ -90,15 +109,15 @@ const ENGINE = (() => {
   }
 
   function simulateMatch(homeClub, awayClub, opts = {}) {
-    const hR = effectiveRating(homeClub);
-    const aR = effectiveRating(awayClub);
-    const hStr = (hR * 1.15) / (hR * 1.15 + aR);
-
-    const hExp = Math.max(0.3, 2.7 * hStr);
-    const aExp = Math.max(0.3, 2.7 * (1 - hStr));
-
-    const hScore = poisson(hExp);
-    const aScore = poisson(aExp);
+    const { homeXG, awayXG } = calcMatchXG(
+      homeClub, awayClub,
+      opts.homeMentality || 'balanced',
+      opts.awayMentality || 'balanced'
+    );
+    // Match-day noise: teams routinely over/underperform xG (range ×0.55–1.45)
+    const noise = () => 0.55 + Math.random() * 0.9;
+    const hScore = poisson(Math.max(0.15, homeXG * noise()));
+    const aScore = poisson(Math.max(0.15, awayXG * noise()));
 
     const events = [];
     const hXI = opts.homeXI || null;
@@ -462,7 +481,7 @@ const ENGINE = (() => {
   }
 
   return {
-    generateSchedule, simulateMatch, recordResult,
+    generateSchedule, simulateMatch, calcMatchXG, recordResult,
     simulateSameDay, continueToNextFixture,
     getNextFixture, getLeagueTable, getMyPosition,
     setupEuropean, setupCups,
