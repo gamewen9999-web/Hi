@@ -541,7 +541,7 @@ const CLUB_BADGES = {
   "real_sociedad": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/250px-Real_Sociedad_logo.svg.png",
   "betis": "https://upload.wikimedia.org/wikipedia/en/thumb/1/13/Real_betis_logo.svg/250px-Real_betis_logo.svg.png",
   "valencia": "https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/250px-Valenciacf.svg.png",
-  "athletic": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/Athletic_Club_crest_2024.svg/250px-Athletic_Club_crest_2024.svg.png",
+  "athletic": "https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Athletic_Club-escudo.svg/250px-Athletic_Club-escudo.svg.png",
   "getafe": "https://upload.wikimedia.org/wikipedia/en/thumb/4/46/Getafe_logo.svg/250px-Getafe_logo.svg.png",
   "osasuna": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/CA_Osasuna_2024_crest.svg/250px-CA_Osasuna_2024_crest.svg.png",
   "girona": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f7/Girona_FC_Logo.svg/250px-Girona_FC_Logo.svg.png",
@@ -679,4 +679,8 @@ const CLUB_BADGES = {
   "shelbourne": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7d/Shelbourne_F.C._crest.svg/250px-Shelbourne_F.C._crest.svg.png"
 };
 
-window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, getInitials, calcValue , CLUB_BADGES };
+const CLUB_BADGE_SCALE = {
+  "brighton": 1.45
+};
+
+window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE };

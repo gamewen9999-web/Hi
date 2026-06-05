@@ -58,7 +58,9 @@ const APP = (() => {
   function crestImg(club) {
     const url = crestURL(club);
     const init = DATA.getInitials(club.name);
-    return `<img class="crest-img" src="${url}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('crest');this.parentNode.style.background='${hex(club.color)}';this.parentNode.style.color='${textOn(club.color)}';this.replaceWith(document.createTextNode('${init}'))">`;
+    const scale = (DATA.CLUB_BADGE_SCALE && DATA.CLUB_BADGE_SCALE[club.id]) || 1;
+    const scaleStyle = scale !== 1 ? ` style="transform:scale(${scale})"` : '';
+    return `<img class="crest-img"${scaleStyle} src="${url}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('crest');this.parentNode.style.background='${hex(club.color)}';this.parentNode.style.color='${textOn(club.color)}';this.replaceWith(document.createTextNode('${init}'))">`;
   }
   function badge(club, cls) {
     if (crestURL(club)) return `<div class="${cls} crest">${crestImg(club)}</div>`;
@@ -1105,8 +1107,8 @@ const APP = (() => {
       simTimer: null, players: []
     };
 
-    $('match-home-name').textContent = home.shortName;
-    $('match-away-name').textContent = away.shortName;
+    $('match-home-name').textContent = home.name;
+    $('match-away-name').textContent = away.name;
     setBadge('match-home-badge', home);
     setBadge('match-away-badge', away);
     $('match-score').textContent = '0 – 0';
@@ -1176,8 +1178,8 @@ const APP = (() => {
 
     const lblHome = $('pitch-team-label-home');
     const lblAway = $('pitch-team-label-away');
-    if (lblHome) lblHome.textContent = m.home.shortName;
-    if (lblAway) lblAway.textContent = m.away.shortName;
+    if (lblHome) lblHome.textContent = m.home.name;
+    if (lblAway) lblAway.textContent = m.away.name;
 
     const addDots = (slots, xi, club, color, isHome) => {
       slots.forEach((slot, i) => {
@@ -1437,8 +1439,8 @@ const APP = (() => {
     ui.match.sim.swapped = true;
     const lblHome = $('pitch-team-label-home');
     const lblAway = $('pitch-team-label-away');
-    if (lblHome) lblHome.textContent = ui.match.away.shortName;
-    if (lblAway) lblAway.textContent = ui.match.home.shortName;
+    if (lblHome) lblHome.textContent = ui.match.away.name;
+    if (lblAway) lblAway.textContent = ui.match.home.name;
 
     const homeSlots = (DATA.FORMATIONS[ui.match.homeFormation] || DATA.FORMATIONS['4-3-3']).positions;
     const awaySlots = (DATA.FORMATIONS[ui.match.awayFormation] || DATA.FORMATIONS['4-3-3']).positions;
@@ -1531,11 +1533,11 @@ const APP = (() => {
         let text = '';
         if (e.type === 'goal') {
           const s = ['GOAL! What a finish!','GOAL! Back of the net!','GOAL! The keeper had no chance!','GOAL! Unstoppable!'];
-          text = s[rand(0, s.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.shortName)}!` : '');
+          text = s[rand(0, s.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.name)}!` : '');
         } else if (e.type === 'yellow') {
-          text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.shortName) + ')' : esc(club.shortName)} is shown a yellow card.`;
+          text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.name) + ')' : esc(club.name)} is shown a yellow card.`;
         } else if (e.type === 'red') {
-          text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is off! ${esc(club.shortName)} down to ten men!`;
+          text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is off! ${esc(club.name)} down to ten men!`;
         }
         if (!text) return;
         const div = document.createElement('div');
@@ -1660,7 +1662,7 @@ const APP = (() => {
     if (e.type === 'goal' && e.assist) desc += ` <span class="text-muted">(${esc(e.assist.name)})</span>`;
     const div = document.createElement('div');
     div.className = 'match-event ' + e.type;
-    div.innerHTML = `<span class="event-min">${e.min}'</span><span class="event-icon">${icon}</span><span class="event-desc">${desc}</span><span class="event-team">${esc(club.shortName)}</span>`;
+    div.innerHTML = `<span class="event-min">${e.min}'</span><span class="event-icon">${icon}</span><span class="event-desc">${desc}</span><span class="event-team">${esc(club.name)}</span>`;
     $('match-events-list').prepend(div);
   }
   function addPitchDot(e) {
@@ -1698,7 +1700,7 @@ const APP = (() => {
     $('result-teams').textContent = `${home.name}  vs  ${away.name}`;
     const goals = r.events.filter(e => e.type === 'goal');
     $('result-scorers').innerHTML = goals.length
-      ? goals.map(g => `<div class="result-scorer-item"><span>${g.min}'</span><span class="scorer-name">${esc(g.player.name)}</span><span class="scorer-team">${esc((g.team === 'home' ? home : away).shortName)}</span></div>`).join('')
+      ? goals.map(g => `<div class="result-scorer-item"><span>${g.min}'</span><span class="scorer-name">${esc(g.player.name)}</span><span class="scorer-team">${esc((g.team === 'home' ? home : away).name)}</span></div>`).join('')
       : `<div class="result-scorer-item">No goals.</div>`;
 
     const myRatings = (ui.match.myIsHome ? r.homeRatings : r.awayRatings).slice().sort((a, b) => b.rating - a.rating);
