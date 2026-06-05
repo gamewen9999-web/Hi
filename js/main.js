@@ -1162,6 +1162,7 @@ const APP = (() => {
 
   function initPlayerDots() {
     const container = $('pitch-players');
+    console.log('[DOTS] container=', !!container, 'ui.match=', !!ui.match);
     if (!container) return;
     container.innerHTML = '';
     ui.match.players = [];
@@ -1334,6 +1335,7 @@ const APP = (() => {
 
   /* ============ SIMULATION LOOP ============ */
   function runSimulation() {
+    console.log('[SIM] runSimulation called, running=', running, 'ui.match=', !!ui.match);
     if (running || !ui.match) return;
     running = true;
     $('btn-simulate').disabled = true;
@@ -1358,7 +1360,7 @@ const APP = (() => {
 
     function tick() {
       if (!running || !ui.match) return;
-
+      console.log('[TICK] min=', sim.min + 1);
       sim.min++;
       const eventsThisMin = [];
       while (sim.idx < ev.length && ev[sim.idx].min <= sim.min) {
