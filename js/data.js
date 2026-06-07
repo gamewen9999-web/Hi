@@ -3,11 +3,11 @@
    ============================================= */
 
 const LEAGUES = {
-  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 5, europaLeague: 2, conferenceLeague: 1, relegation: 3 },
-  championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
-  league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4 },
-  league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2 },
-  national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3 },
+  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 5, europaLeague: 2, conferenceLeague: 1, relegation: 3, autoPromotion: 0, playoffSpots: 0 },
+  championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3, autoPromotion: 2, playoffSpots: 4 },
+  league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4, autoPromotion: 2, playoffSpots: 4 },
+  league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 3, playoffSpots: 4 },
+  national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 1, playoffSpots: 4 },
   la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
   bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
   serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
@@ -311,25 +311,39 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function generatePlayer(id, pos, clubRating, age) {
   const firstName = pick(FIRST_NAMES);
   const lastName  = pick(LAST_NAMES);
-  const baseRating = clubRating + rand(-8, 8);
-  const ovr = Math.max(45, Math.min(99, baseRating));
-  const pot = Math.min(99, ovr + rand(0, Math.max(0, 28 - age)));
+  const ageAdj = age < 18 ? (age - 18) * 4 : 0; // under-18s are rawer: -4 per year below 18
+  const base = clubRating + rand(-8, 8) + ageAdj;
 
   const isGK = pos === 'GK';
   const isDef = ['CB','LB','RB','LWB','RWB'].includes(pos);
   const isMid = ['CM','CDM','CAM','LM','RM'].includes(pos);
   const isAtt = ['ST','CF','LW','RW'].includes(pos);
 
-  const attrs = {
-    pace:     isGK ? rand(30,55) : isAtt ? rand(60,95) : isDef ? rand(50,80) : rand(55,85),
-    shooting: isGK ? rand(10,30) : isAtt ? rand(55,90) : isMid ? rand(40,70) : rand(20,50),
-    passing:  isGK ? rand(40,70) : isDef ? rand(40,72) : isMid ? rand(60,90) : rand(50,80),
-    dribbling:isGK ? rand(20,40) : isAtt ? rand(60,95) : isMid ? rand(55,85) : rand(35,70),
-    defending:isGK ? rand(10,30) : isDef ? rand(60,90) : isMid ? rand(40,70) : rand(20,50),
-    physical: isGK ? rand(55,80) : rand(50,85),
-    gkReflexes: isGK ? rand(60,92) : rand(5,20),
-    gkPositioning: isGK ? rand(60,92) : rand(5,20),
+  // Scale each stat range around clubRating so better clubs get better players
+  const sc = (lo, hi) => {
+    const mid = (lo + hi) / 2, half = (hi - lo) / 2;
+    const shifted = mid + (base - 70) * 0.55;
+    return Math.max(10, Math.min(99, rand(Math.round(shifted - half), Math.round(shifted + half))));
   };
+
+  const attrs = {
+    pace:     isGK ? sc(30,55) : isAtt ? sc(60,95) : isDef ? sc(50,80) : sc(55,85),
+    shooting: isGK ? sc(10,30) : isAtt ? sc(55,90) : isMid ? sc(40,70) : sc(20,50),
+    passing:  isGK ? sc(40,70) : isDef ? sc(40,72) : isMid ? sc(60,90) : sc(50,80),
+    dribbling:isGK ? sc(20,40) : isAtt ? sc(60,95) : isMid ? sc(55,85) : sc(35,70),
+    defending:isGK ? sc(10,30) : isDef ? sc(60,90) : isMid ? sc(40,70) : sc(20,50),
+    physical: isGK ? sc(55,80) : sc(50,85),
+    gkReflexes:    isGK ? sc(60,92) : sc(5,20),
+    gkPositioning: isGK ? sc(60,92) : sc(5,20),
+  };
+
+  // OVR = mean of top 4 stats across all attrs
+  const top4 = Object.values(attrs).sort((a, b) => b - a).slice(0, 4);
+  const ovr  = Math.max(45, Math.min(99, Math.round(top4.reduce((s, v) => s + v, 0) / 4)));
+  const potGap = age < 18
+    ? rand(15, Math.min(40, Math.round((40 - age) * 2)))
+    : rand(0, Math.max(0, Math.round((32 - age) * 1.8)));
+  const pot  = Math.min(99, ovr + potGap);
 
   const value = calcValue(ovr, age);
   const wage  = Math.round(value / 150) * 5 + rand(-5,15);
@@ -345,7 +359,9 @@ function generatePlayer(id, pos, clubRating, age) {
     attrs,
     value,
     wage: Math.max(5, wage),
-    contract: rand(1, 4),
+    contract: rand(1, 5),
+    transferListed: rand(0, 99) < 6,
+    loyal: rand(0, 99) < 60,
     morale: rand(65, 95),
     fitness: rand(75, 100),
     goals: 0,
@@ -422,7 +438,7 @@ const CLUB_BADGES = {
   "liverpool": "https://upload.wikimedia.org/wikipedia/en/thumb/0/0c/Liverpool_FC.svg/250px-Liverpool_FC.svg.png",
   "chelsea": "https://upload.wikimedia.org/wikipedia/en/thumb/c/cc/Chelsea_FC.svg/250px-Chelsea_FC.svg.png",
   "man_utd": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7a/Manchester_United_FC_crest.svg/250px-Manchester_United_FC_crest.svg.png",
-  "tottenham": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Tottenham_Hotspur.svg/250px-Tottenham_Hotspur.svg.png",
+  "tottenham": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/367.png",
   "newcastle": "https://upload.wikimedia.org/wikipedia/en/thumb/5/56/Newcastle_United_Logo.svg/250px-Newcastle_United_Logo.svg.png",
   "aston_villa": "https://upload.wikimedia.org/wikipedia/en/thumb/9/9a/Aston_Villa_FC_new_crest.svg/250px-Aston_Villa_FC_new_crest.svg.png",
   "west_ham": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c2/West_Ham_United_FC_logo.svg/250px-West_Ham_United_FC_logo.svg.png",
@@ -541,7 +557,7 @@ const CLUB_BADGES = {
   "real_sociedad": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/250px-Real_Sociedad_logo.svg.png",
   "betis": "https://upload.wikimedia.org/wikipedia/en/thumb/1/13/Real_betis_logo.svg/250px-Real_betis_logo.svg.png",
   "valencia": "https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/250px-Valenciacf.svg.png",
-  "athletic": "https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Athletic_Club-escudo.svg/250px-Athletic_Club-escudo.svg.png",
+  "athletic": "https://a.espncdn.com/i/teamlogos/soccer/500/93.png",
   "getafe": "https://upload.wikimedia.org/wikipedia/en/thumb/4/46/Getafe_logo.svg/250px-Getafe_logo.svg.png",
   "osasuna": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/CA_Osasuna_2024_crest.svg/250px-CA_Osasuna_2024_crest.svg.png",
   "girona": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f7/Girona_FC_Logo.svg/250px-Girona_FC_Logo.svg.png",
@@ -683,4 +699,9 @@ const CLUB_BADGE_SCALE = {
   "brighton": 1.45
 };
 
-window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE };
+const CLUB_BADGE_FILTER = {
+  "derby":   "brightness(0) invert(1)",
+  "swansea": "brightness(0) invert(1)"
+};
+
+window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE, CLUB_BADGE_FILTER };

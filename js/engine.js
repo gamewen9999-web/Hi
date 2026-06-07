@@ -4,10 +4,11 @@ const ENGINE = (() => {
 
   function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-  function poisson(lambda) {
-    const l = Math.exp(-lambda); let k = 0, p = 1;
-    do { k++; p *= Math.random(); } while (p > l);
-    return k - 1;
+  function goalsFromXG(xg) {
+    // Box-Muller normal distribution centred on xg, variance = xg
+    const u1 = Math.random(), u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1 || 1e-9)) * Math.cos(2 * Math.PI * u2);
+    return Math.max(0, Math.round(xg + Math.sqrt(Math.max(xg, 0.5)) * z));
   }
 
   /* ---- ROUND-ROBIN SCHEDULE ---- */
@@ -53,23 +54,204 @@ const ENGINE = (() => {
   /* ---- MATCH SIMULATION ---- */
   function effectiveRating(club) { return club.sqRating || 70; }
 
-  // Deterministic xG from ratings + mentality. Use this for UI previews and
-  // as the base lambda for match simulation (noise applied separately there).
-  function calcMatchXG(homeClub, awayClub, homeMentality, awayMentality) {
-    const hR = effectiveRating(homeClub);
-    const aR = effectiveRating(awayClub);
+  // Formation tactical attributes: att = attacking weight (0–4), def = defensive weight (0–4).
+  // Baseline is 2 = neutral. Each point of advantage in a matchup = ±5% xG swing.
+  const FORM_ATTRS = {
+    '4-4-2':   { att: 2, def: 2 },
+    '4-3-3':   { att: 3, def: 1 },
+    '4-2-3-1': { att: 2, def: 3 },
+    '3-5-2':   { att: 2, def: 1 },
+    '5-3-2':   { att: 1, def: 4 },
+    '4-5-1':   { att: 1, def: 3 },
+    '3-4-3':   { att: 4, def: 0 },
+    '4-1-4-1': { att: 1, def: 3 },
+    '4-4-2 D': { att: 1, def: 3 },
+  };
+
+  // Pressing: ownBoost = direct xG gain from turnovers, risk = space left behind for opponents.
+  // High press is high risk/reward; low block is cautious.
+  const PRESS_PRESET = {
+    high:   { ownBoost:  0.12, risk:  0.08 },
+    medium: { ownBoost:  0.00, risk:  0.00 },
+    low:    { ownBoost: -0.10, risk: -0.14 },
+  };
+
+  // Style own-attack multiplier.
+  const STYLE_ATK = {
+    direct:      1.08,
+    balanced:    1.00,
+    possession:  1.05,
+    counter:     0.92, // patient until the moment strikes — lower volume, high quality
+    gegenpressing: 1.10, // intense press and immediate transitions — big xG but tiring
+    longball:    1.06, // aerial threat + direct delivery
+  };
+
+  // How well your play style exploits the *risk* the opponent's pressing leaves:
+  //   counter  — how well you exploit space left by an aggressive high press
+  //   breakdown — susceptibility to a low block (higher = block is MORE effective against you)
+  const STYLE_EXPOSURE = {
+    direct:       { counter: 1.4,  breakdown: 0.7  },
+    balanced:     { counter: 1.0,  breakdown: 1.0  },
+    possession:   { counter: 0.5,  breakdown: 1.2  },
+    counter:      { counter: 2.0,  breakdown: 0.5  }, // thrives on space, hard to break down
+    gegenpressing:{ counter: 0.8,  breakdown: 0.9  }, // wins ball high, but risky if transition fails
+    longball:     { counter: 1.6,  breakdown: 0.6  }, // good on counters, bypasses low blocks with aerial balls
+  };
+
+  function formAttrs(tac) {
+    if (!tac) return { att: 2, def: 2 };
+    if (tac.formation === 'custom' && tac.customFormation?.attrs) return tac.customFormation.attrs;
+    return FORM_ATTRS[tac.formation] || { att: 2, def: 2 };
+  }
+
+  // Derive sensible AI tactics from a club's rep.
+  function deriveAITactics(club) {
+    const rep = club.rep || 3;
+    return {
+      mentality: 'balanced',
+      pressing: rep >= 4 ? 'high'   : rep >= 2 ? 'medium' : 'low',
+      style:    rep >= 4 ? 'possession' : rep >= 3 ? 'balanced' : rep >= 2 ? 'direct' : 'counter',
+    };
+  }
+
+  // Build a custom formation from def/mid/att counts (must sum to 10).
+  // Build a custom formation from an array of line counts (3 or 4 lines, summing to 10).
+  function buildCustomFormation(counts) {
+    if (!Array.isArray(counts)) return null;
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (total !== 10) return null;
+    const lines = counts.length;
+    if (lines < 3 || lines > 4) return null;
+
+    const positions = [{ pos: 'GK', x: 50, y: 92 }];
+    const spread = (n, y, posTypes) => {
+      const xs = n === 1 ? [50] : Array.from({ length: n }, (_, i) => Math.round(15 + (70 / (n - 1)) * i));
+      for (let i = 0; i < n; i++) positions.push({ pos: posTypes[i % posTypes.length], x: xs[i], y });
+    };
+
+    const defPos = n => n <= 2 ? Array(n).fill('CB') : n === 3 ? ['CB','CB','CB'] : n === 4 ? ['RB','CB','CB','LB'] : ['RB','CB','CB','CB','LB'];
+    const dmPos  = n => n === 1 ? ['CDM'] : n === 2 ? ['CDM','CDM'] : n === 3 ? ['CM','CDM','CM'] : n === 4 ? ['CM','CDM','CDM','CM'] : ['CM','CDM','CDM','CDM','CM'];
+    const midPos = n => n <= 2 ? Array(n).fill('CM') : n === 3 ? ['CM','CM','CM'] : n === 4 ? ['RM','CM','CM','LM'] : ['RM','CM','CM','CM','LM'];
+    const amPos  = n => n === 1 ? ['CAM'] : n === 2 ? ['CAM','CAM'] : n === 3 ? ['CM','CAM','CM'] : n === 4 ? ['RM','CAM','CAM','LM'] : ['RM','CAM','CAM','CAM','LM'];
+    const attPos = n => n === 1 ? ['ST'] : n === 2 ? ['ST','ST'] : n === 3 ? ['RW','ST','LW'] : n === 4 ? ['RW','ST','ST','LW'] : ['RW','ST','ST','ST','LW'];
+
+    let attW, defW;
+    if (lines === 3) {
+      const [def, mid, att] = counts;
+      spread(def, def >= 5 ? 78 : 76, defPos(def));
+      spread(mid, 56, midPos(mid));
+      spread(att, att === 1 ? 22 : 26, attPos(att));
+      attW = Math.max(0, Math.min(4, (att - 1) * 2));
+      defW = Math.max(0, Math.min(4, (def - 3) * 2));
+    } else {
+      const [def, dm, am, att] = counts;
+      spread(def, 76, defPos(def));
+      spread(dm,  60, dmPos(dm));
+      spread(am,  44, amPos(am));
+      spread(att, 26, attPos(att));
+      const fwd = am + att, bck = def + dm;
+      attW = Math.max(0, Math.min(4, Math.round((fwd - 2) * 4 / 6)));
+      defW = Math.max(0, Math.min(4, Math.round((bck - 2) * 4 / 6)));
+    }
+
+    return { name: counts.join('-'), positions, attrs: { att: attW, def: defW }, isCustom: true, counts, lines };
+  }
+
+  // Deterministic xG from ratings + full tactics. homeTactics/awayTactics can be:
+  //   • a string (legacy: treated as mentality)
+  //   • an object { mentality, formation, pressing, style, customFormation? }
+  // Returns { homeXG, awayXG, hStr } — hStr is used downstream for possession calc.
+  function calcMatchXG(homeClub, awayClub, homeTactics, awayTactics) {
+    const hTac = typeof homeTactics === 'string' ? { mentality: homeTactics } : (homeTactics || {});
+    const aTac = typeof awayTactics === 'string' ? { mentality: awayTactics } : (awayTactics || {});
+
+    const hMen   = hTac.mentality || 'balanced';
+    const aMen   = aTac.mentality || 'balanced';
+    const hPress = hTac.pressing  || 'medium';
+    const aPress = aTac.pressing  || 'medium';
+    const hStyle = hTac.style     || 'balanced';
+    const aStyle = aTac.style     || 'balanced';
+
+    // 1. Base xG from squad ratings + mentality (home gets 1.1× advantage).
     const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
-    const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2 };
-    const hAtk = hR * (offMod[homeMentality] || 1.0) * 1.1;
-    const hDef = hR * (defMod[homeMentality] || 1.0);
-    const aAtk = aR * (offMod[awayMentality] || 1.0);
-    const aDef = aR * (defMod[awayMentality] || 1.0);
+    const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2  };
+    const hR   = effectiveRating(homeClub);
+    const aR   = effectiveRating(awayClub);
+    const hAtk = hR * (offMod[hMen] || 1.0) * 1.1;
+    const hDef = hR * (defMod[hMen] || 1.0);
+    const aAtk = aR * (offMod[aMen] || 1.0);
+    const aDef = aR * (defMod[aMen] || 1.0);
     const hStr = hAtk / (hAtk + aDef);
     const aStr = aAtk / (aAtk + hDef);
+    let homeXG = Math.max(0.20, 2.8 * hStr);
+    let awayXG = Math.max(0.20, 2.5 * aStr);
+
+    // 2. Formation matchup — each 1-pt advantage = ±5% xG (capped at ±25%).
+    if (hTac.formation || aTac.formation) {
+      const hFA = formAttrs(hTac);
+      const aFA = formAttrs(aTac);
+      homeXG *= 1 + Math.max(-0.25, Math.min(0.25, (hFA.att - aFA.def) * 0.05));
+      awayXG *= 1 + Math.max(-0.25, Math.min(0.25, (aFA.att - hFA.def) * 0.05));
+    }
+
+    // 3. Pressing: own boost from winning the ball high, plus risk left for the opponent.
+    const hp = PRESS_PRESET[hPress] || PRESS_PRESET.medium;
+    const ap = PRESS_PRESET[aPress] || PRESS_PRESET.medium;
+    const hSE = STYLE_EXPOSURE[hStyle] || STYLE_EXPOSURE.balanced;
+    const aSE = STYLE_EXPOSURE[aStyle] || STYLE_EXPOSURE.balanced;
+    homeXG *= 1 + hp.ownBoost;
+    awayXG *= 1 + ap.ownBoost;
+    // Risk from home pressing affects away xG.
+    awayXG *= hp.risk >= 0
+      ? 1 + hp.risk * aSE.counter    // high press → space for away counters
+      : 1 + hp.risk * aSE.breakdown; // low block  → away finds it harder to break through
+    // Risk from away pressing affects home xG.
+    homeXG *= ap.risk >= 0
+      ? 1 + ap.risk * hSE.counter
+      : 1 + ap.risk * hSE.breakdown;
+
+    // 4. Play style multiplier on own attack.
+    homeXG *= STYLE_ATK[hStyle] || 1.0;
+    awayXG *= STYLE_ATK[aStyle] || 1.0;
+
     return {
-      homeXG: Math.max(0.2, Math.round(2.8 * hStr * 100) / 100),
-      awayXG: Math.max(0.2, Math.round(2.5 * aStr * 100) / 100),
+      homeXG: Math.max(0.15, Math.round(homeXG * 100) / 100),
+      awayXG: Math.max(0.15, Math.round(awayXG * 100) / 100),
+      hStr,
     };
+  }
+
+  // Position group for OOP calculations
+  function posGroup(pos) {
+    if (pos === 'GK') return 'GK';
+    if (['CB','RB','LB','RWB','LWB'].includes(pos)) return 'DEF';
+    if (['CM','CDM','CAM','RM','LM'].includes(pos)) return 'MID';
+    return 'ATT';
+  }
+
+  // Stat effectiveness multiplier when a player plays out of position.
+  // Natural position: 1.0 | Same group: 0.88 | Different group: 0.72 | GK/outfield swap: 0.50
+  function oopFactor(playerPos, slotPos) {
+    if (!slotPos || playerPos === slotPos) return 1.0;
+    const pg = posGroup(playerPos), sg = posGroup(slotPos);
+    if (pg === 'GK' || sg === 'GK') return 0.50;
+    if (pg === sg) return 0.88;
+    return 0.72;
+  }
+
+  // Average a stat across a subset of the XI (or squad if no XI given).
+  // slotPositions: optional array of slot position strings (same index as xi) — enables OOP nerf.
+  function avgStat(club, xi, attr, slotPositions) {
+    const pool = xi
+      ? xi.map((id, i) => {
+          const p = club.players.find(x => x.id === id);
+          if (!p) return null;
+          const factor = slotPositions ? oopFactor(p.pos, slotPositions[i]) : 1.0;
+          return { stat: (p.attrs?.[attr] || 65) * factor };
+        }).filter(Boolean)
+      : club.players.slice(0, 11).map(p => ({ stat: p.attrs?.[attr] || 65 }));
+    if (!pool.length) return 65;
+    return pool.reduce((s, x) => s + x.stat, 0) / pool.length;
   }
 
   function pickScorer(club, xi) {
@@ -77,12 +259,15 @@ const ENGINE = (() => {
       ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
       : club.players;
     const w = pool.map(p => {
-      if (['ST','CF'].includes(p.pos)) return 12;
-      if (['RW','LW','CAM'].includes(p.pos)) return 7;
-      if (['CM','RM','LM'].includes(p.pos)) return 3;
-      if (['CDM'].includes(p.pos)) return 1;
-      if (['CB','RB','LB'].includes(p.pos)) return 0.5;
-      return 0.1;
+      // Position base weight
+      let base = 0.1;
+      if (['ST','CF'].includes(p.pos))         base = 12;
+      else if (['RW','LW','CAM'].includes(p.pos)) base = 7;
+      else if (['CM','RM','LM'].includes(p.pos))  base = 3;
+      else if (['CDM'].includes(p.pos))            base = 1;
+      else if (['CB','RB','LB'].includes(p.pos))   base = 0.5;
+      // Shooting stat scales weight — a 90-rated shooter is ~33% more likely than average
+      return base * (0.7 + (p.attrs?.shooting || 65) / 195);
     });
     const total = w.reduce((a, b) => a + b, 0);
     let r = Math.random() * total;
@@ -109,23 +294,43 @@ const ENGINE = (() => {
   }
 
   function simulateMatch(homeClub, awayClub, opts = {}) {
-    const hMen = opts.homeMentality || 'balanced';
-    const aMen = opts.awayMentality || 'balanced';
-    const { homeXG, awayXG } = calcMatchXG(homeClub, awayClub, hMen, aMen);
-    // hStr needed for possession calc — recompute cheaply
-    const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
-    const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2 };
-    const hAtk = effectiveRating(homeClub) * (offMod[hMen] || 1.0) * 1.1;
-    const aDef = effectiveRating(awayClub) * (defMod[aMen] || 1.0);
-    const hStr = hAtk / (hAtk + aDef);
+    // Build full tactics objects for each side. Legacy opts.homeMentality still works.
+    const hTac = opts.homeTactics || { ...deriveAITactics(homeClub), mentality: opts.homeMentality || 'balanced' };
+    const aTac = opts.awayTactics || { ...deriveAITactics(awayClub), mentality: opts.awayMentality || 'balanced' };
+    const hXI      = opts.homeXI || null;
+    const aXI      = opts.awayXI || null;
+    const hSlotPos = opts.homeSlotPositions || null; // e.g. ['GK','CB','CB','RB','LB',...]
+    const aSlotPos = opts.awaySlotPositions || null;
+    const { homeXG, awayXG, hStr } = calcMatchXG(homeClub, awayClub, hTac, aTac);
+    const hStyle = hTac.style || 'balanced';
+    const aStyle = aTac.style || 'balanced';
+
+    // Stat modifiers with OOP nerf — players out of position contribute less.
+    // Shooting: avg team shooting vs 65 baseline shifts xG up to ±18%
+    const hShootMod = 0.82 + (avgStat(homeClub, hXI, 'shooting', hSlotPos) / 65) * 0.18;
+    const aShootMod = 0.82 + (avgStat(awayClub, aXI, 'shooting', aSlotPos) / 65) * 0.18;
+    // GK reflexes of the keeper reduces goals conceded
+    const hGKMod = 1.0 - ((avgStat(homeClub, hXI, 'gkReflexes', hSlotPos) - 65) / 65) * 0.10;
+    const aGKMod = 1.0 - ((avgStat(awayClub, aXI, 'gkReflexes', aSlotPos) - 65) / 65) * 0.10;
+    // Passing: better passing team creates more chances (±8% xG)
+    const hPassMod = 0.96 + (avgStat(homeClub, hXI, 'passing', hSlotPos) / 65) * 0.04;
+    const aPassMod = 0.96 + (avgStat(awayClub, aXI, 'passing', aSlotPos) / 65) * 0.04;
+    // Physical: higher physicality wins more duels, boosts xG slightly (±5%)
+    const hPhysMod = 0.975 + (avgStat(homeClub, hXI, 'physical', hSlotPos) / 65) * 0.025;
+    const aPhysMod = 0.975 + (avgStat(awayClub, aXI, 'physical', aSlotPos) / 65) * 0.025;
+    // Pace: faster team presses harder, slightly reduces opponent xG (±4%)
+    const hPaceMod = 1.0 - ((avgStat(awayClub, aXI, 'pace', aSlotPos) - 65) / 65) * 0.04;
+    const aPaceMod = 1.0 - ((avgStat(homeClub, hXI, 'pace', hSlotPos) - 65) / 65) * 0.04;
+    // Effective xG after all stat adjustments
+    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod);
+    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod);
+
     // Match-day noise: teams routinely over/underperform xG (range ×0.55–1.45)
     const noise = () => 0.55 + Math.random() * 0.9;
-    const hScore = poisson(Math.max(0.15, homeXG * noise()));
-    const aScore = poisson(Math.max(0.15, awayXG * noise()));
+    const hScore = goalsFromXG(hEffXG * noise());
+    const aScore = goalsFromXG(aEffXG * noise());
 
     const events = [];
-    const hXI = opts.homeXI || null;
-    const aXI = opts.awayXI || null;
 
     const addGoals = (count, team, club, xi) => {
       const mins = Array.from({ length: count }, () => rand(1, 90)).sort((a,b) => a-b);
@@ -139,30 +344,109 @@ const ENGINE = (() => {
     addGoals(hScore, 'home', homeClub, hXI);
     addGoals(aScore, 'away', awayClub, aXI);
 
-    // Cards
-    for (let i = 0; i < poisson(1.4); i++)
-      events.push({ min: rand(5,90), type: 'yellow', team: 'home', player: pick(homeClub.players) });
-    for (let i = 0; i < poisson(1.4); i++)
-      events.push({ min: rand(5,90), type: 'yellow', team: 'away', player: pick(awayClub.players) });
-    if (Math.random() < 0.055) {
-      const t = Math.random() < 0.5 ? 'home' : 'away';
-      events.push({ min: rand(20,85), type: 'red', team: t, player: pick(t === 'home' ? homeClub.players : awayClub.players) });
+    // Near-miss shots — feed the highlight system
+    const missPool = ['shot_saved', 'shot_saved', 'shot_wide', 'shot_post'];
+    for (let i = 0; i < rand(2, 5); i++)
+      events.push({ min: rand(1, 90), type: pick(missPool), team: 'home', player: pickScorer(homeClub, hXI) });
+    for (let i = 0; i < rand(2, 5); i++)
+      events.push({ min: rand(1, 90), type: pick(missPool), team: 'away', player: pickScorer(awayClub, aXI) });
+
+    // Stat-based tackle simulation
+    // Each tackle: defender vs attacker using physical+defending vs dribbling+pace
+    // Ratios determine: success, foul, card type, slide tackle risk
+    const simTackle = (tacklerClub, targetClub, min) => {
+      const midDefs = tacklerClub.players.filter(p => ['CDM','CM','CB','RB','LB'].includes(p.pos));
+      const tackler = midDefs.length ? pick(midDefs) : pick(tacklerClub.players);
+      const target  = pick(targetClub.players.filter(p => !['GK'].includes(p.pos)));
+      if (!tackler || !target) return;
+
+      const tDef  = (tackler.attrs?.defending || 65) + (tackler.attrs?.physical || 65);
+      const tDrib = (target.attrs?.dribbling  || 65) + (target.attrs?.pace     || 65);
+      const total = tDef + tDrib;
+      // Probability tackler wins the ball
+      const successP = tDef / total;
+
+      const isSlide  = Math.random() < 0.30; // 30% chance it's a slide tackle
+      const foulP    = isSlide ? (1 - successP) * 0.65 : (1 - successP) * 0.30;
+      const isFoul   = Math.random() < foulP;
+      const team     = tacklerClub === homeClub ? 'home' : 'away';
+
+      events.push({ min, type: 'tackle', team, player: tackler,
+        success: !isFoul, slide: isSlide });
+
+      if (isFoul) {
+        const yellowP = isSlide ? 0.38 : 0.18;
+        const redP    = isSlide ? 0.06 : 0.02;
+        const r = Math.random();
+        if (r < redP) {
+          events.push({ min: min+1, type: 'red',    team, player: tackler });
+        } else if (r < yellowP) {
+          events.push({ min: min+1, type: 'yellow', team, player: tackler });
+        }
+      }
+    };
+
+    // 8-14 tackle moments per match spread across both teams
+    for (let i = 0; i < rand(8, 14); i++) {
+      const homeAttacks = Math.random() < 0.5;
+      simTackle(
+        homeAttacks ? awayClub : homeClub, // tackler defends
+        homeAttacks ? homeClub : awayClub, // target has ball
+        rand(4, 88)
+      );
     }
+
+    // Offsides (3-5 per match)
+    for (let i = 0; i < rand(3, 5); i++) {
+      const t = Math.random() < 0.5 ? 'home' : 'away';
+      const club = t === 'home' ? homeClub : awayClub;
+      const xi   = t === 'home' ? hXI : aXI;
+      events.push({ min: rand(12, 87), type: 'offside', team: t, player: pickScorer(club, xi) });
+    }
+    // Corners (4-8 per match)
+    for (let i = 0; i < rand(4, 8); i++) {
+      events.push({ min: rand(3, 89), type: 'corner', team: Math.random() < 0.5 ? 'home' : 'away' });
+    }
+    // VAR checks after goals (30% chance each)
+    events.filter(e => e.type === 'goal').forEach(g => {
+      if (Math.random() < 0.30)
+        events.push({ min: Math.min(g.min + 1, 89), type: 'var_check', team: g.team });
+    });
 
     events.sort((a, b) => a.min - b.min);
 
-    const hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + rand(-8, 8))));
-    const hShots = hScore * rand(3,5) + rand(1,5);
-    const aShots = aScore * rand(3,5) + rand(1,5);
+    // Possession: passing quality + style (possession +10%, direct -8%)
+    const hPassAvg = avgStat(homeClub, hXI, 'passing');
+    const aPassAvg = avgStat(awayClub, aXI, 'passing');
+    const passBias  = (hPassAvg - aPassAvg) / (hPassAvg + aPassAvg) * 12;
+    const STYLE_POSS = { direct: -8, balanced: 0, possession: 10 };
+    const stylePoss  = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
+    const hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + rand(-5, 5))));
+    // Shots proportional to shooting stat — better shooters attempt more
+    const hShotMult = 0.85 + (avgStat(homeClub, hXI, 'shooting') / 65) * 0.15;
+    const aShotMult = 0.85 + (avgStat(awayClub, aXI, 'shooting') / 65) * 0.15;
+    const hShots = Math.round((hScore * rand(3,5) + rand(1,5)) * hShotMult);
+    const aShots = Math.round((aScore * rand(3,5) + rand(1,5)) * aShotMult);
 
     const genRatings = (club, xi, won, drew) => {
       const pool = xi
         ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
         : club.players.slice(0, 11);
       return pool.map(p => {
-        let base = 6.0 + (p.ovr - 70) * 0.04 + (won ? 0.4 : drew ? 0 : -0.4) + (Math.random() - 0.5);
-        events.filter(e => e.player?.id === p.id && e.type === 'goal').forEach(() => base += 0.7);
-        events.filter(e => e.assist?.id === p.id).forEach(() => base += 0.3);
+        const a = p.attrs || {};
+        // Rating purely from the stats relevant to that player's role — no ovr influence
+        const relevantAvg = p.pos === 'GK'
+          ? ((a.gkReflexes||65) + (a.gkPositioning||65) + (a.physical||65)) / 3
+          : ['ST','CF'].includes(p.pos)    ? ((a.shooting||65)+(a.pace||65)+(a.dribbling||65)) / 3
+          : ['RW','LW','CAM'].includes(p.pos) ? ((a.dribbling||65)+(a.passing||65)+(a.shooting||65)) / 3
+          : ['CM','CDM','RM','LM'].includes(p.pos) ? ((a.passing||65)+(a.physical||65)+(a.defending||65)) / 3
+          : ((a.defending||65)+(a.physical||65)+(a.pace||65)) / 3; // defenders
+        // Normalise: 65 = 6.0, 80 = 6.9, 50 = 5.1
+        let base = 4.0 + (relevantAvg / 100) * 6.0 + (won ? 0.4 : drew ? 0 : -0.3) + (Math.random() - 0.5) * 1.2;
+        events.filter(e => e.player?.id === p.id && e.type === 'goal').forEach(() => base += 0.8);
+        events.filter(e => e.assist?.id === p.id).forEach(() => base += 0.4);
+        events.filter(e => e.player?.id === p.id && e.type === 'yellow').forEach(() => base -= 0.2);
+        events.filter(e => e.player?.id === p.id && e.type === 'red').forEach(() => base -= 1.0);
         return { player: p, rating: Math.min(10, Math.max(4, Math.round(base * 10) / 10)) };
       });
     };
@@ -237,11 +521,12 @@ const ENGINE = (() => {
     gameState.fixtures
       .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id)
       .forEach(simF);
+    const myId = gameState.myClubId;
     if (gameState.european) {
       Object.values(gameState.european).forEach(comp => {
         if (comp.stage !== 'league') return;
         comp.fixtures
-          .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id)
+          .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id && f.home !== myId && f.away !== myId)
           .forEach(simF);
       });
     }
@@ -260,11 +545,12 @@ const ENGINE = (() => {
     gameState.fixtures
       .filter(f => !f.played && f.date < next.date)
       .forEach(simF);
+    const myId = gameState.myClubId;
     if (gameState.european) {
       Object.values(gameState.european).forEach(comp => {
         if (comp.stage !== 'league') return;
         comp.fixtures
-          .filter(f => !f.played && f.date < next.date)
+          .filter(f => !f.played && f.date < next.date && f.home !== myId && f.away !== myId)
           .forEach(simF);
       });
     }
@@ -424,10 +710,18 @@ const ENGINE = (() => {
   /* ---- TRANSFER MARKET ---- */
   function getTransferMarket(gameState) {
     const listed = [];
+    const seen = new Set();
     Object.values(gameState.clubs).forEach(club => {
       if (club.id === gameState.myClubId) return;
       club.players.forEach(p => {
-        if (Math.random() < 0.08) listed.push({ ...p, clubId: club.id, clubName: club.name });
+        if (seen.has(p.id)) return;
+        const expiring = (p.contract || 4) <= 1 && !p.loyal;
+        const wantsMove = !!p.transferListed;
+        const random = Math.random() < 0.05;
+        if (expiring || wantsMove || random) {
+          seen.add(p.id);
+          listed.push({ ...p, clubId: club.id, clubName: club.name, expiring, wantsMove });
+        }
       });
     });
     return listed.sort((a, b) => b.ovr - a.ovr);
@@ -442,19 +736,18 @@ const ENGINE = (() => {
      A negotiation has two phases: agree a fee with the selling club, then
      agree personal terms (wages) with the player. Fees are in £m, wages £k/wk. */
   function startNegotiation(player, sellerClub) {
-    // Clubs price players above market value; more for youth and high potential.
-    const youngBoost = player.age <= 23 ? 0.18 : player.age >= 31 ? -0.1 : 0;
-    const potBoost = (player.pot - player.ovr) >= 6 ? 0.12 : 0;
-    // Bigger clubs are more reluctant to sell their stars.
-    const repBoost = (sellerClub.rep >= 4 && player.ovr >= 80) ? 0.1 : 0;
-    const mult = 1.2 + youngBoost + potBoost + repBoost + rand(0, 18) / 100;
-    const asking = Math.max(0.2, Math.round(player.value * mult * 10) / 10);
-    const wageDemand = Math.max(5, Math.round(player.wage * (1.15 + rand(5, 30) / 100)));
+    // Show market value as the listed price; minFee gives real room to negotiate.
+    const youngBoost = player.age <= 23 ? 0.06 : 0;
+    const potBoost = (player.pot - player.ovr) >= 8 ? 0.04 : 0;
+    const repBoost = (sellerClub.rep >= 4 && player.ovr >= 80) ? 0.04 : 0;
+    const minMult = Math.max(0.68, 0.72 + youngBoost + potBoost + repBoost + rand(0, 8) / 100);
+    const minFee = Math.max(0.1, Math.round(player.value * minMult * 10) / 10);
+    const wageDemand = Math.max(5, Math.round(player.wage * (1.10 + rand(3, 20) / 100)));
     return {
-      asking,
-      minFee: Math.max(0.1, Math.round(asking * 0.82 * 10) / 10),
+      asking: player.value,
+      minFee,
       wageDemand,
-      minWage: Math.max(5, Math.round(wageDemand * 0.9)),
+      minWage: Math.max(5, Math.round(wageDemand * 0.88)),
       feeRound: 0,
       wageRound: 0,
     };
@@ -463,23 +756,24 @@ const ENGINE = (() => {
   function evaluateFeeOffer(neg, offer) {
     neg.feeRound++;
     if (offer >= neg.minFee) return { decision: 'accept' };
-    if (neg.feeRound >= 5) return { decision: 'walk' };
-    if (offer >= neg.minFee * 0.7) {
-      const counter = Math.round(((offer + neg.asking) / 2) * 10) / 10;
-      neg.asking = Math.max(neg.minFee, counter);
-      return { decision: 'counter', counter: neg.asking };
+    if (neg.feeRound >= 6) return { decision: 'walk' };
+    if (offer >= neg.minFee * 0.62) {
+      const midpoint = (neg.asking + neg.minFee) / 2;
+      const counter = Math.max(neg.minFee, Math.round(((offer + midpoint) / 2) * 10) / 10);
+      neg.asking = counter;
+      return { decision: 'counter', counter };
     }
-    return { decision: 'reject' };   // insultingly low — burns a round but no walkout yet
+    return { decision: 'reject' };
   }
 
   function evaluateWageOffer(neg, offer) {
     neg.wageRound++;
     if (offer >= neg.minWage) return { decision: 'accept' };
-    if (neg.wageRound >= 5) return { decision: 'walk' };
-    if (offer >= neg.minWage * 0.75) {
-      const counter = Math.round((offer + neg.wageDemand) / 2);
-      neg.wageDemand = Math.max(neg.minWage, counter);
-      return { decision: 'counter', counter: neg.wageDemand };
+    if (neg.wageRound >= 6) return { decision: 'walk' };
+    if (offer >= neg.minWage * 0.65) {
+      const counter = Math.max(neg.minWage, Math.round(offer * 0.4 + neg.wageDemand * 0.6));
+      neg.wageDemand = counter;
+      return { decision: 'counter', counter };
     }
     return { decision: 'reject' };
   }
@@ -491,6 +785,8 @@ const ENGINE = (() => {
     setupEuropean, setupCups,
     getTransferMarket, isTransferWindowOpen,
     startNegotiation, evaluateFeeOffer, evaluateWageOffer,
+    buildCustomFormation, deriveAITactics, FORM_ATTRS, PRESS_PRESET, STYLE_ATK,
+    oopFactor, posGroup,
   };
 
 })();

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Football Manager</title>
-  <link rel="stylesheet" href="style.css?v=20260605c">
+  <link rel="stylesheet" href="style.css?v=20260607c">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -113,6 +113,9 @@
           <button class="snav-btn" data-view="finances">
             <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,13 5,8 9.5,10 14,3"/><polyline points="11.5,3 14,3 14,5.5"/></svg></span><span>Finances</span>
           </button>
+          <button class="snav-btn" data-view="scout">
+            <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/><line x1="6.5" y1="3.5" x2="6.5" y2="4.5"/><line x1="6.5" y1="8.5" x2="6.5" y2="9.5"/><line x1="3.5" y1="6.5" x2="4.5" y2="6.5"/><line x1="8.5" y1="6.5" x2="9.5" y2="6.5"/></svg></span><span>Scout</span>
+          </button>
         </nav>
         <div class="sidebar-bottom">
           <div class="sb-budget-block">
@@ -135,6 +138,7 @@
             <div class="match-team home">
               <div id="match-home-badge" class="match-badge"></div>
               <span id="match-home-name">Home</span>
+              <span id="match-home-color" class="team-color-swatch"></span>
             </div>
             <div class="match-scoreboard">
               <div id="match-score" class="match-score">0 – 0</div>
@@ -142,6 +146,7 @@
               <div id="match-status" class="match-status">PRE-MATCH</div>
             </div>
             <div class="match-team away">
+              <span id="match-away-color" class="team-color-swatch"></span>
               <span id="match-away-name">Away</span>
               <div id="match-away-badge" class="match-badge"></div>
             </div>
@@ -160,11 +165,7 @@
                 <div class="pm-penalty-right"></div>
                 <div class="pm-goal-right"></div>
               </div>
-              <div id="pitch-team-label-home" class="pitch-team-label"></div>
-              <div id="pitch-team-label-away" class="pitch-team-label"></div>
-              <div id="pitch-players"></div>
               <div id="pitch-events"></div>
-              <div id="pitch-ball"></div>
               <div id="pitch-card"></div>
             </div>
             <div id="match-stats-bar">
@@ -181,6 +182,8 @@
         <div id="match-controls">
           <button id="btn-simulate" class="btn-primary btn-lg">▶ Start Match</button>
           <button id="btn-halftime" class="btn-primary btn-lg hidden">▶ Second Half</button>
+          <button id="btn-pause" class="btn-secondary btn-lg hidden">⏸ Pause</button>
+          <button id="btn-speed" class="btn-secondary btn-lg hidden">2×</button>
         </div>
         <div id="match-result-overlay" class="hidden">
           <div class="result-box">
