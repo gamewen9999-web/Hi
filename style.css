@@ -773,7 +773,7 @@ select, input, button, textarea { font-family: inherit; }
 .tactics-pitch {
   position: relative;
   width: 100%;
-  padding-bottom: 133%;
+  padding-bottom: 115%;
   background: linear-gradient(180deg, #2d5016 0%, #1e3a0f 50%, #2d5016 100%);
   border-radius: var(--r-sm);
   overflow: hidden;
@@ -848,6 +848,30 @@ select, input, button, textarea { font-family: inherit; }
   padding: 1px 4px;
   border-radius: 2px;
 }
+.pitch-player-circle.empty-slot { background: rgba(255,255,255,0.08); border: 2px dashed rgba(255,255,255,0.3); color: rgba(255,255,255,0.5); font-size: 8px; }
+.pitch-player.swap-sel .pitch-player-circle { border-color: #fff; box-shadow: 0 0 0 3px var(--accent); transform: scale(1.15); }
+.pitch-player.swap-dim { opacity: 0.4; }
+
+.pitch-swap-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 4px 8px; min-height: 32px;
+}
+.pitch-swap-hint { font-size: 11px; color: var(--accent-gold); font-weight: 600; }
+.bench-row {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 4px 4px;
+}
+.bench-empty { font-size: 11px; color: var(--text-dim); }
+.bench-chip {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 4px 8px; cursor: pointer;
+  transition: var(--transition); font-size: 11px;
+}
+.bench-chip:hover { border-color: var(--text-muted); }
+.bench-chip.swap-sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.bench-chip.swap-dim { opacity: 0.4; }
+.bench-chip-name { font-weight: 600; }
+.bench-chip-ovr { color: var(--text-muted); margin-left: 2px; }
 
 .tactics-options-panel {
   display: flex;
@@ -1755,6 +1779,8 @@ select, input, button, textarea { font-family: inherit; }
 .btn-primary:active { transform: none; }
 .btn-primary.btn-lg { padding: 11px 28px; font-size: 14px; }
 
+.btn-warning { padding: 9px 20px; border-radius: var(--r-sm); border: 1px solid var(--accent-gold); background: rgba(245,166,35,0.12); color: var(--accent-gold); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--transition); }
+.btn-warning:hover { background: rgba(245,166,35,0.22); }
 .btn-secondary {
   padding: 9px 20px;
   border-radius: var(--r-sm);

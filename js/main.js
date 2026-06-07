@@ -432,11 +432,18 @@ const APP = (() => {
     ui.view = v;
     document.querySelectorAll('.snav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
     const m = $('main-content');
-    ({
-      dashboard: renderDashboard, squad: renderSquad, tactics: renderTactics,
-      fixtures: renderFixtures, table: renderTable, transfers: renderTransfers,
-      european: renderEuropean, finances: renderFinances, scout: renderScout,
-    }[v] || renderDashboard)(m);
+    try {
+      const renderer = ({
+        dashboard: renderDashboard, squad: renderSquad, tactics: renderTactics,
+        fixtures: renderFixtures, table: renderTable, transfers: renderTransfers,
+        european: renderEuropean, finances: renderFinances, scout: renderScout,
+      }[v] || renderDashboard);
+      renderer(m);
+    } catch (err) {
+      console.error('Error rendering view', v, err);
+      notify('An error occurred while opening the view. See console for details.', 'error');
+      m.innerHTML = `<div class="card"><div class="card-title">Error</div><div class="stat-label">Unable to open view "${esc(v)}". The developer console contains details.</div></div>`;
+    }
     m.scrollTop = 0;
   }
 
@@ -537,6 +544,12 @@ const APP = (() => {
   function renderSquad(m) {
     const _st = m.scrollTop;
     const filters = [['all','All'],['GK','Goalkeepers'],['DEF','Defenders'],['MID','Midfielders'],['ATT','Attackers']];
+
+    if (!gameState || !gameState.myClub || !Array.isArray(gameState.myClub.players)) {
+      m.innerHTML = `<div class="card"><div class="card-title">Squad</div><div class="stat-label">No squad data available.</div></div>`;
+      return;
+    }
+
     let players = [...gameState.myClub.players];
     if (ui.squadFilter !== 'all') players = players.filter(p => group(p.pos) === ui.squadFilter);
     players.sort(squadSorter(ui.squadSort));
@@ -602,20 +615,42 @@ const APP = (() => {
     const pressLabels = { high: 'High Press', medium: 'Medium Block', low: 'Low Block' };
     const styleLabels = { direct: 'Direct', balanced: 'Balanced', possession: 'Possession', counter: 'Counter', gegenpressing: 'Gegenpressing', longball: 'Long Ball' };
 
+    const swapMode = !!ui.swapMode;
+    const swapSel  = ui.swapSel || null;
+
     const pitchPlayers = activeForm.positions.map((slot, i) => {
       const p = club.players.find(x => x.id === lineup[i]);
-      if (!p) return '';
-      return `<div class="pitch-player" data-id="${p.id}" style="left:${slot.x}%;top:${slot.y}%">
+      if (!p) return `<div class="pitch-player pitch-empty" data-slot="${i}" style="left:${slot.x}%;top:${slot.y}%">
+        <div class="pitch-player-circle empty-slot">${slot.pos}</div></div>`;
+      const sel = swapSel === p.id ? ' swap-sel' : '';
+      const dim = swapMode && swapSel && swapSel !== p.id ? ' swap-dim' : '';
+      return `<div class="pitch-player${sel}${dim}" data-id="${p.id}" style="left:${slot.x}%;top:${slot.y}%">
         <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}">${p.ovr}</div>
         <div class="pitch-player-name">${esc(p.lastName)}</div></div>`;
     }).join('');
 
+    const benchPlayers = club.players.filter(p => !lineupSet.has(p.id));
+    const benchChips = benchPlayers.map(p => {
+      const sel = swapSel === p.id ? ' swap-sel' : '';
+      const dim = swapMode && swapSel && swapSel !== p.id ? ' swap-dim' : '';
+      return `<div class="bench-chip${sel}${dim}" data-id="${p.id}">
+        <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
+        <span class="bench-chip-name">${esc(p.lastName)}</span>
+        <span class="bench-chip-ovr">${p.ovr}</span>
+      </div>`;
+    }).join('');
+
     const innerTab = ui.tacticsTab || 'tactics';
+    const swapHint = swapMode ? (swapSel ? 'Pick who to swap with' : 'Pick a player') : '';
 
     m.innerHTML = `
       <div class="view-header"><div><div class="view-title">Tactics</div><div class="view-subtitle">${activeForm.name} · ${cap(tac.mentality)} · ${pressLabels[tac.pressing]} · ${styleLabels[tac.style]}</div></div></div>
       <div class="tactics-layout">
         <div class="tactics-pitch-container">
+          <div class="pitch-swap-bar">
+            <span class="pitch-swap-hint">${swapHint}</span>
+            <button id="pitch-swap-btn" class="${swapMode ? 'btn-warning' : 'btn-secondary'}">${swapMode ? 'Cancel' : 'Swap'}</button>
+          </div>
           <div class="tactics-pitch">
             <div class="tactics-pitch-lines">
               <div class="tp-center-line"></div><div class="tp-center-circle"></div>
@@ -623,6 +658,7 @@ const APP = (() => {
             </div>
             ${pitchPlayers}
           </div>
+          <div class="bench-row">${benchChips || '<span class="bench-empty">No bench players</span>'}</div>
         </div>
         <div class="tactics-options-panel">
           <div class="tac-inner-tab-row">
@@ -633,11 +669,38 @@ const APP = (() => {
         </div>
       </div>`;
 
-    m.querySelectorAll('.tac-inner-tab-btn').forEach(b => b.addEventListener('click', () => {
-      ui.tacticsTab = b.dataset.inner;
-      renderTactics(m);
+    // Swap button
+    $('pitch-swap-btn').addEventListener('click', () => {
+      ui.swapMode = !ui.swapMode; ui.swapSel = null; renderTactics(m);
+    });
+
+    // Click handler for any player (pitch or bench)
+    function handlePlayerClick(pid) {
+      if (!ui.swapMode && lineupSet.has(pid)) {
+        // clicking on-field player outside swap mode → enter swap mode and select
+        ui.swapMode = true; ui.swapSel = pid; renderTactics(m); return;
+      }
+      if (!ui.swapMode) { showPlayerModal(pid); return; }
+      if (!ui.swapSel) { ui.swapSel = pid; renderTactics(m); return; }
+      if (ui.swapSel === pid) { ui.swapSel = null; renderTactics(m); return; }
+      // perform swap
+      const idxA = tac.lineup.indexOf(ui.swapSel);
+      const idxB = tac.lineup.indexOf(pid);
+      if (idxA >= 0 && idxB >= 0) { tac.lineup[idxA] = pid; tac.lineup[idxB] = ui.swapSel; }
+      else if (idxA >= 0) { tac.lineup[idxA] = pid; tac.excluded = (tac.excluded||[]).filter(id=>id!==pid); }
+      else if (idxB >= 0) { tac.lineup[idxB] = ui.swapSel; tac.excluded = (tac.excluded||[]).filter(id=>id!==ui.swapSel); }
+      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
+    }
+
+    m.querySelectorAll('.pitch-player:not(.pitch-empty)').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
+    m.querySelectorAll('.bench-chip').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
+    m.querySelectorAll('.pitch-empty').forEach(el => el.addEventListener('click', () => {
+      if (!ui.swapSel) return;
+      const slot = parseInt(el.dataset.slot);
+      tac.lineup[slot] = ui.swapSel;
+      tac.excluded = (tac.excluded||[]).filter(id => id !== ui.swapSel);
+      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
     }));
-    m.querySelectorAll('.pitch-player').forEach(el => el.addEventListener('click', () => showPlayerModal(el.dataset.id)));
 
     if (innerTab === 'tactics') renderTacticsInner($('tac-inner-body'), m, club, tac, activeForm, lineup, lineupSet, excluded, slotMap);
     else renderTacticsSquad($('tac-inner-body'), m, club, tac, activeForm, lineup, lineupSet, excluded, slotMap);
@@ -775,21 +838,21 @@ const APP = (() => {
       ${scoutHtml}`;
 
     el.querySelectorAll('.formation-btn[data-f]').forEach(b => b.addEventListener('click', () => {
-      tac.formation = b.dataset.f; tac.lineup = autoPickXI(club, b.dataset.f);
+      tac.formation = b.dataset.f; tac.lineup = Array(11).fill(null);
       renderTactics(m);
     }));
     el.querySelectorAll('[data-tac]').forEach(b => b.addEventListener('click', () => { tac[b.dataset.tac] = b.dataset.v; renderTactics(m); }));
     el.querySelectorAll('[data-cf-sel]').forEach(b => b.addEventListener('click', () => {
       const cf = gameState.savedCustomFormations.find(x => x.id === b.dataset.cfSel);
       if (!cf) return;
-      tac.customFormation = cf; tac.formation = 'custom'; tac.lineup = autoPickXI(club, cf);
+      tac.customFormation = cf; tac.formation = 'custom'; tac.lineup = Array(11).fill(null);
       renderTactics(m);
     }));
     el.querySelectorAll('[data-cf-del]').forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.cfDel;
       gameState.savedCustomFormations = gameState.savedCustomFormations.filter(x => x.id !== id);
       if (tac.customFormation && tac.customFormation.id === id) {
-        tac.formation = '4-3-3'; tac.customFormation = null; tac.lineup = autoPickXI(club, '4-3-3');
+        tac.formation = '4-3-3'; tac.customFormation = null; tac.lineup = Array(11).fill(null);
       }
       renderTactics(m);
     }));
@@ -3628,7 +3691,7 @@ const APP = (() => {
     if (!ms) return false;
     const home = gameState.clubs[ms.homeId], away = gameState.clubs[ms.awayId];
     if (!home || !away) { delete gameState.matchSave; return false; }
-    const result = { homeScore: ms.result.homeScore, awayScore: ms.result.awayScore, events: ms.result.matchEvents || [] };
+    const result = { homeScore: ms.result.homeScore, awayScore: ms.result.awayScore, events: ms.result.matchEvents || [], stats: ms.result.stats || { possession:[50,50], shots:[0,0], shotsOnTarget:[0,0] }, homeRatings: ms.result.homeRatings || [], awayRatings: ms.result.awayRatings || [] };
     const fixture = gameState.fixtures.find(f => !f.played && f.home === ms.homeId && f.away === ms.awayId)
       || { home: ms.homeId, away: ms.awayId, played: false };
     ui.match = {
@@ -3851,12 +3914,18 @@ const APP = (() => {
   function autoSave() {
     if (!gameState) return;
     if (ui.match && ui.match.sim && ui.match.sim.min > 0) {
+      const mr = ui.match.result;
       gameState.matchSave = {
         homeId: ui.match.home.id, awayId: ui.match.away.id,
         myIsHome: ui.match.myIsHome,
         homeFormation: ui.match.homeFormation, awayFormation: ui.match.awayFormation,
         homeXI: ui.match.homeXI, awayXI: ui.match.awayXI,
-        result: { homeScore: ui.match.result.homeScore, awayScore: ui.match.result.awayScore, matchEvents: ui.match.result.events },
+        result: {
+          homeScore: mr.homeScore, awayScore: mr.awayScore,
+          matchEvents: mr.events,
+          stats: mr.stats,
+          homeRatings: mr.homeRatings, awayRatings: mr.awayRatings,
+        },
         sim: { ...ui.match.sim },
         gamePhase: ui.match.gamePhase || 1,
         atHalfTime: ui.match.sim.min === 45,
