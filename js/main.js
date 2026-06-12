@@ -62,7 +62,7 @@ const APP = (() => {
   const FIN_TV_LEAGUE    = [0, 95, 8.5, 1.6, 1.0, 0.4];   // £m/season equal share
   const FIN_MATCHDAY_LEAGUE = [0, 32, 9, 2.8, 1.1, 0.35]; // £m/season gate income at standard prices, by league level
   const FIN_STADIUM_MULT = [0, 0.55, 0.75, 1.0, 1.35, 1.8]; // fanbase/stadium size multiplier by club rep
-  const FIN_INIT_BAL    = [0,  0.3,  2,  10,   40, 100];  // starting bank balance £m
+  const FIN_INIT_BAL    = [0,  1.5,  4,  12,   40, 100];  // starting bank balance £m
   const FIN_BASE_GRANT  = [0,  0.3,  2,   8,   30,  80];  // base board transfer grant £m
   // Merit payments: end-of-season TV merit money by final league position (level 1 values, scaled down per level)
   const PRIZE_BY_POS    = [56,53,50,47,44,41,38,35,32,29,26,23,20,17,14,11,8,6,4,3];

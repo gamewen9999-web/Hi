@@ -62,80 +62,80 @@ const CLUBS_DATA = [
   { id:'wrexham',     name:'Wrexham',            league:'championship',   rep:2, color:'#D6001C', budget:10,  wage:0.6, sqRating:66 },
   { id:'charlton',    name:'Charlton Athletic',  league:'championship',   rep:2, color:'#D4021D', budget:7,   wage:0.45,sqRating:64 },
   // League One (2025/26)
-  { id:'cardiff',     name:'Cardiff City',       league:'league_one',     rep:2, color:'#0070B5', budget:5,   wage:0.3, sqRating:63 },
-  { id:'luton',       name:'Luton Town',         league:'league_one',     rep:2, color:'#F78F1E', budget:5,   wage:0.3, sqRating:63 },
-  { id:'plymouth',    name:'Plymouth Argyle',    league:'league_one',     rep:2, color:'#007B5E', budget:4.5, wage:0.28,sqRating:62 },
-  { id:'rotherham',   name:'Rotherham United',   league:'league_one',     rep:2, color:'#D6001C', budget:4,   wage:0.25,sqRating:61 },
-  { id:'blackpool',   name:'Blackpool',          league:'league_one',     rep:2, color:'#F58220', budget:4,   wage:0.25,sqRating:61 },
-  { id:'bolton',      name:'Bolton Wanderers',   league:'league_one',     rep:2, color:'#FFFFFF', budget:4,   wage:0.25,sqRating:61 },
-  { id:'huddersfield',name:'Huddersfield Town',  league:'league_one',     rep:2, color:'#0073CF', budget:5,   wage:0.3, sqRating:62 },
-  { id:'wigan',       name:'Wigan Athletic',     league:'league_one',     rep:2, color:'#1B458F', budget:4,   wage:0.25,sqRating:61 },
-  { id:'bradford',    name:'Bradford City',      league:'league_one',     rep:2, color:'#8A1538', budget:3,   wage:0.2, sqRating:59 },
-  { id:'reading',     name:'Reading',            league:'league_one',     rep:2, color:'#004494', budget:5,   wage:0.3, sqRating:62 },
-  { id:'barnsley',    name:'Barnsley',           league:'league_one',     rep:2, color:'#EE3524', budget:4,   wage:0.25,sqRating:60 },
-  { id:'peterborough',name:'Peterborough Utd',   league:'league_one',     rep:2, color:'#034694', budget:4,   wage:0.25,sqRating:60 },
-  { id:'stockport',   name:'Stockport County',   league:'league_one',     rep:1, color:'#003F6B', budget:3,   wage:0.2, sqRating:59 },
-  { id:'doncaster',   name:'Doncaster Rovers',   league:'league_one',     rep:1, color:'#DD0000', budget:3,   wage:0.2, sqRating:59 },
-  { id:'exeter',      name:'Exeter City',        league:'league_one',     rep:1, color:'#EC2227', budget:3,   wage:0.2, sqRating:59 },
-  { id:'lincoln',     name:'Lincoln City',       league:'league_one',     rep:1, color:'#D6001C', budget:3,   wage:0.2, sqRating:60 },
-  { id:'leyton_orient',name:'Leyton Orient',     league:'league_one',     rep:1, color:'#D6001C', budget:3,   wage:0.2, sqRating:60 },
-  { id:'wycombe',     name:'Wycombe Wanderers',  league:'league_one',     rep:1, color:'#0B1A4A', budget:3,   wage:0.2, sqRating:60 },
-  { id:'burton',      name:'Burton Albion',      league:'league_one',     rep:1, color:'#F7C600', budget:3,   wage:0.2, sqRating:58 },
-  { id:'stevenage',   name:'Stevenage',          league:'league_one',     rep:1, color:'#FF0000', budget:2,   wage:0.15,sqRating:57 },
-  { id:'mansfield',   name:'Mansfield Town',     league:'league_one',     rep:1, color:'#FFD200', budget:3,   wage:0.2, sqRating:59 },
-  { id:'northampton', name:'Northampton Town',   league:'league_one',     rep:1, color:'#7C2529', budget:2.5, wage:0.18,sqRating:58 },
-  { id:'port_vale',   name:'Port Vale',          league:'league_one',     rep:1, color:'#FFFFFF', budget:2.5, wage:0.18,sqRating:58 },
-  { id:'afc_wimbledon',name:'AFC Wimbledon',     league:'league_one',     rep:1, color:'#003DA5', budget:2.5, wage:0.18,sqRating:58 },
+  { id:'cardiff',     name:'Cardiff City',       league:'league_one',     rep:2, color:'#0070B5', budget:5,   wage:0.3, sqRating:65 },
+  { id:'luton',       name:'Luton Town',         league:'league_one',     rep:2, color:'#F78F1E', budget:5,   wage:0.3, sqRating:65 },
+  { id:'plymouth',    name:'Plymouth Argyle',    league:'league_one',     rep:2, color:'#007B5E', budget:4.5, wage:0.28,sqRating:64 },
+  { id:'rotherham',   name:'Rotherham United',   league:'league_one',     rep:2, color:'#D6001C', budget:4,   wage:0.25,sqRating:63 },
+  { id:'blackpool',   name:'Blackpool',          league:'league_one',     rep:2, color:'#F58220', budget:4,   wage:0.25,sqRating:63 },
+  { id:'bolton',      name:'Bolton Wanderers',   league:'league_one',     rep:2, color:'#FFFFFF', budget:4,   wage:0.25,sqRating:63 },
+  { id:'huddersfield',name:'Huddersfield Town',  league:'league_one',     rep:2, color:'#0073CF', budget:5,   wage:0.3, sqRating:64 },
+  { id:'wigan',       name:'Wigan Athletic',     league:'league_one',     rep:2, color:'#1B458F', budget:4,   wage:0.25,sqRating:63 },
+  { id:'bradford',    name:'Bradford City',      league:'league_one',     rep:2, color:'#8A1538', budget:3,   wage:0.2, sqRating:61 },
+  { id:'reading',     name:'Reading',            league:'league_one',     rep:2, color:'#004494', budget:5,   wage:0.3, sqRating:64 },
+  { id:'barnsley',    name:'Barnsley',           league:'league_one',     rep:2, color:'#EE3524', budget:4,   wage:0.25,sqRating:62 },
+  { id:'peterborough',name:'Peterborough Utd',   league:'league_one',     rep:2, color:'#034694', budget:4,   wage:0.25,sqRating:62 },
+  { id:'stockport',   name:'Stockport County',   league:'league_one',     rep:1, color:'#003F6B', budget:3,   wage:0.2, sqRating:61 },
+  { id:'doncaster',   name:'Doncaster Rovers',   league:'league_one',     rep:1, color:'#DD0000', budget:3,   wage:0.2, sqRating:61 },
+  { id:'exeter',      name:'Exeter City',        league:'league_one',     rep:1, color:'#EC2227', budget:3,   wage:0.2, sqRating:61 },
+  { id:'lincoln',     name:'Lincoln City',       league:'league_one',     rep:1, color:'#D6001C', budget:3,   wage:0.2, sqRating:62 },
+  { id:'leyton_orient',name:'Leyton Orient',     league:'league_one',     rep:1, color:'#D6001C', budget:3,   wage:0.2, sqRating:62 },
+  { id:'wycombe',     name:'Wycombe Wanderers',  league:'league_one',     rep:1, color:'#0B1A4A', budget:3,   wage:0.2, sqRating:62 },
+  { id:'burton',      name:'Burton Albion',      league:'league_one',     rep:1, color:'#F7C600', budget:3,   wage:0.2, sqRating:60 },
+  { id:'stevenage',   name:'Stevenage',          league:'league_one',     rep:1, color:'#FF0000', budget:2,   wage:0.15,sqRating:59 },
+  { id:'mansfield',   name:'Mansfield Town',     league:'league_one',     rep:1, color:'#FFD200', budget:3,   wage:0.2, sqRating:61 },
+  { id:'northampton', name:'Northampton Town',   league:'league_one',     rep:1, color:'#7C2529', budget:2.5, wage:0.18,sqRating:60 },
+  { id:'port_vale',   name:'Port Vale',          league:'league_one',     rep:1, color:'#FFFFFF', budget:2.5, wage:0.18,sqRating:60 },
+  { id:'afc_wimbledon',name:'AFC Wimbledon',     league:'league_one',     rep:1, color:'#003DA5', budget:2.5, wage:0.18,sqRating:60 },
   // League Two (2025/26)
-  { id:'notts_county',name:'Notts County',       league:'league_two',     rep:1, color:'#000000', budget:1.5, wage:0.1, sqRating:55 },
-  { id:'grimsby',     name:'Grimsby Town',       league:'league_two',     rep:1, color:'#000000', budget:1.5, wage:0.1, sqRating:55 },
-  { id:'swindon',     name:'Swindon Town',       league:'league_two',     rep:1, color:'#CC0000', budget:1.5, wage:0.1, sqRating:54 },
-  { id:'mk_dons',     name:'MK Dons',            league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:54 },
-  { id:'bristol_rovers',name:'Bristol Rovers',   league:'league_two',     rep:1, color:'#004A97', budget:1.8, wage:0.12,sqRating:56 },
-  { id:'cambridge',   name:'Cambridge United',   league:'league_two',     rep:1, color:'#F5A623', budget:1.8, wage:0.12,sqRating:56 },
-  { id:'shrewsbury',  name:'Shrewsbury Town',    league:'league_two',     rep:1, color:'#0C4899', budget:1.8, wage:0.12,sqRating:56 },
-  { id:'tranmere',    name:'Tranmere Rovers',    league:'league_two',     rep:1, color:'#FFFFFF', budget:1,   wage:0.08,sqRating:53 },
-  { id:'colchester',  name:'Colchester United',  league:'league_two',     rep:1, color:'#0000FF', budget:1.5, wage:0.1, sqRating:54 },
-  { id:'walsall',     name:'Walsall',            league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:54 },
-  { id:'oldham',      name:'Oldham Athletic',    league:'league_two',     rep:1, color:'#004A97', budget:1.3, wage:0.09,sqRating:53 },
-  { id:'chesterfield',name:'Chesterfield',       league:'league_two',     rep:1, color:'#1D5BA4', budget:1.3, wage:0.09,sqRating:53 },
-  { id:'gillingham',  name:'Gillingham',         league:'league_two',     rep:1, color:'#003DA5', budget:1.2, wage:0.09,sqRating:53 },
-  { id:'cheltenham',  name:'Cheltenham Town',    league:'league_two',     rep:1, color:'#D6001C', budget:1.2, wage:0.09,sqRating:53 },
-  { id:'harrogate',   name:'Harrogate Town',     league:'league_two',     rep:1, color:'#F8C300', budget:1,   wage:0.08,sqRating:52 },
-  { id:'crawley',     name:'Crawley Town',       league:'league_two',     rep:1, color:'#CC0000', budget:1,   wage:0.08,sqRating:52 },
-  { id:'salford',     name:'Salford City',       league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:54 },
-  { id:'barnet',      name:'Barnet',             league:'league_two',     rep:1, color:'#F58220', budget:1.2, wage:0.09,sqRating:53 },
-  { id:'newport',     name:'Newport County',     league:'league_two',     rep:1, color:'#F7A32F', budget:1,   wage:0.08,sqRating:51 },
-  { id:'fleetwood',   name:'Fleetwood Town',     league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:52 },
-  { id:'accrington',  name:'Accrington Stanley', league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:52 },
-  { id:'crewe',       name:'Crewe Alexandra',    league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:52 },
-  { id:'bromley',     name:'Bromley',            league:'league_two',     rep:1, color:'#FFFFFF', budget:1,   wage:0.08,sqRating:52 },
-  { id:'barrow',      name:'Barrow',             league:'league_two',     rep:1, color:'#003DA5', budget:1,   wage:0.08,sqRating:51 },
+  { id:'notts_county',name:'Notts County',       league:'league_two',     rep:1, color:'#000000', budget:1.5, wage:0.1, sqRating:58 },
+  { id:'grimsby',     name:'Grimsby Town',       league:'league_two',     rep:1, color:'#000000', budget:1.5, wage:0.1, sqRating:58 },
+  { id:'swindon',     name:'Swindon Town',       league:'league_two',     rep:1, color:'#CC0000', budget:1.5, wage:0.1, sqRating:57 },
+  { id:'mk_dons',     name:'MK Dons',            league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:57 },
+  { id:'bristol_rovers',name:'Bristol Rovers',   league:'league_two',     rep:1, color:'#004A97', budget:1.8, wage:0.12,sqRating:59 },
+  { id:'cambridge',   name:'Cambridge United',   league:'league_two',     rep:1, color:'#F5A623', budget:1.8, wage:0.12,sqRating:59 },
+  { id:'shrewsbury',  name:'Shrewsbury Town',    league:'league_two',     rep:1, color:'#0C4899', budget:1.8, wage:0.12,sqRating:59 },
+  { id:'tranmere',    name:'Tranmere Rovers',    league:'league_two',     rep:1, color:'#FFFFFF', budget:1,   wage:0.08,sqRating:56 },
+  { id:'colchester',  name:'Colchester United',  league:'league_two',     rep:1, color:'#0000FF', budget:1.5, wage:0.1, sqRating:57 },
+  { id:'walsall',     name:'Walsall',            league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:57 },
+  { id:'oldham',      name:'Oldham Athletic',    league:'league_two',     rep:1, color:'#004A97', budget:1.3, wage:0.09,sqRating:56 },
+  { id:'chesterfield',name:'Chesterfield',       league:'league_two',     rep:1, color:'#1D5BA4', budget:1.3, wage:0.09,sqRating:56 },
+  { id:'gillingham',  name:'Gillingham',         league:'league_two',     rep:1, color:'#003DA5', budget:1.2, wage:0.09,sqRating:56 },
+  { id:'cheltenham',  name:'Cheltenham Town',    league:'league_two',     rep:1, color:'#D6001C', budget:1.2, wage:0.09,sqRating:56 },
+  { id:'harrogate',   name:'Harrogate Town',     league:'league_two',     rep:1, color:'#F8C300', budget:1,   wage:0.08,sqRating:55 },
+  { id:'crawley',     name:'Crawley Town',       league:'league_two',     rep:1, color:'#CC0000', budget:1,   wage:0.08,sqRating:55 },
+  { id:'salford',     name:'Salford City',       league:'league_two',     rep:1, color:'#D6001C', budget:1.5, wage:0.1, sqRating:57 },
+  { id:'barnet',      name:'Barnet',             league:'league_two',     rep:1, color:'#F58220', budget:1.2, wage:0.09,sqRating:56 },
+  { id:'newport',     name:'Newport County',     league:'league_two',     rep:1, color:'#F7A32F', budget:1,   wage:0.08,sqRating:54 },
+  { id:'fleetwood',   name:'Fleetwood Town',     league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:55 },
+  { id:'accrington',  name:'Accrington Stanley', league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:55 },
+  { id:'crewe',       name:'Crewe Alexandra',    league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:55 },
+  { id:'bromley',     name:'Bromley',            league:'league_two',     rep:1, color:'#FFFFFF', budget:1,   wage:0.08,sqRating:55 },
+  { id:'barrow',      name:'Barrow',             league:'league_two',     rep:1, color:'#003DA5', budget:1,   wage:0.08,sqRating:54 },
   // National League (2025/26) — level 5, avg sqRating ~44
-  { id:'carlisle',    name:'Carlisle United',    league:'national_league', rep:1, color:'#003DA5', budget:0.6, wage:0.05,sqRating:46 },
-  { id:'morecambe',   name:'Morecambe',          league:'national_league', rep:1, color:'#D6001C', budget:0.5, wage:0.05,sqRating:45 },
-  { id:'york',        name:'York City',          league:'national_league', rep:1, color:'#D00027', budget:0.5, wage:0.05,sqRating:46 },
-  { id:'forest_green',name:'Forest Green Rovers',league:'national_league', rep:1, color:'#0B6E4F', budget:0.5, wage:0.05,sqRating:45 },
-  { id:'southend',    name:'Southend United',    league:'national_league', rep:1, color:'#003DA5', budget:0.5, wage:0.05,sqRating:45 },
-  { id:'scunthorpe',  name:'Scunthorpe United',  league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'halifax',     name:'FC Halifax Town',    league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'altrincham',  name:'Altrincham',         league:'national_league', rep:1, color:'#FF0000', budget:0.3, wage:0.04,sqRating:44 },
-  { id:'gateshead',   name:'Gateshead',          league:'national_league', rep:1, color:'#000000', budget:0.3, wage:0.04,sqRating:43 },
-  { id:'hartlepool',  name:'Hartlepool United',  league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'rochdale',    name:'Rochdale',           league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'solihull',    name:'Solihull Moors',     league:'national_league', rep:1, color:'#F58220', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'yeovil',      name:'Yeovil Town',        league:'national_league', rep:1, color:'#0B6E4F', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'aldershot',   name:'Aldershot Town',     league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:44 },
-  { id:'eastleigh',   name:'Eastleigh',          league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:43 },
-  { id:'sutton',      name:'Sutton United',      league:'national_league', rep:1, color:'#FFB300', budget:0.3, wage:0.04,sqRating:43 },
-  { id:'woking',      name:'Woking',             league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:43 },
-  { id:'boston_utd',  name:'Boston United',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:43 },
-  { id:'braintree',   name:'Braintree Town',     league:'national_league', rep:1, color:'#F58220', budget:0.3, wage:0.04,sqRating:42 },
-  { id:'wealdstone',  name:'Wealdstone',         league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:42 },
-  { id:'tamworth',    name:'Tamworth',           league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:42 },
-  { id:'truro',       name:'Truro City',         league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:42 },
-  { id:'brackley',    name:'Brackley Town',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:41 },
-  { id:'boreham_wood',name:'Boreham Wood',       league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:42 },
+  { id:'carlisle',    name:'Carlisle United',    league:'national_league', rep:1, color:'#003DA5', budget:0.6, wage:0.05,sqRating:53 },
+  { id:'morecambe',   name:'Morecambe',          league:'national_league', rep:1, color:'#D6001C', budget:0.5, wage:0.05,sqRating:52 },
+  { id:'york',        name:'York City',          league:'national_league', rep:1, color:'#D00027', budget:0.5, wage:0.05,sqRating:53 },
+  { id:'forest_green',name:'Forest Green Rovers',league:'national_league', rep:1, color:'#0B6E4F', budget:0.5, wage:0.05,sqRating:52 },
+  { id:'southend',    name:'Southend United',    league:'national_league', rep:1, color:'#003DA5', budget:0.5, wage:0.05,sqRating:52 },
+  { id:'scunthorpe',  name:'Scunthorpe United',  league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'halifax',     name:'FC Halifax Town',    league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'altrincham',  name:'Altrincham',         league:'national_league', rep:1, color:'#FF0000', budget:0.3, wage:0.04,sqRating:51 },
+  { id:'gateshead',   name:'Gateshead',          league:'national_league', rep:1, color:'#000000', budget:0.3, wage:0.04,sqRating:50 },
+  { id:'hartlepool',  name:'Hartlepool United',  league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'rochdale',    name:'Rochdale',           league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'solihull',    name:'Solihull Moors',     league:'national_league', rep:1, color:'#F58220', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'yeovil',      name:'Yeovil Town',        league:'national_league', rep:1, color:'#0B6E4F', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'aldershot',   name:'Aldershot Town',     league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:51 },
+  { id:'eastleigh',   name:'Eastleigh',          league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:50 },
+  { id:'sutton',      name:'Sutton United',      league:'national_league', rep:1, color:'#FFB300', budget:0.3, wage:0.04,sqRating:50 },
+  { id:'woking',      name:'Woking',             league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:50 },
+  { id:'boston_utd',  name:'Boston United',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:50 },
+  { id:'braintree',   name:'Braintree Town',     league:'national_league', rep:1, color:'#F58220', budget:0.3, wage:0.04,sqRating:49 },
+  { id:'wealdstone',  name:'Wealdstone',         league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:49 },
+  { id:'tamworth',    name:'Tamworth',           league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:49 },
+  { id:'truro',       name:'Truro City',         league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:49 },
+  { id:'brackley',    name:'Brackley Town',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:48 },
+  { id:'boreham_wood',name:'Boreham Wood',       league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:49 },
   // La Liga
   { id:'real_madrid', name:'Real Madrid',        league:'la_liga',        rep:5, color:'#FEBE10', budget:180, wage:4.2, sqRating:89 },
   { id:'barcelona',   name:'Barcelona',          league:'la_liga',        rep:5, color:'#A50044', budget:160, wage:3.8, sqRating:87 },
@@ -319,10 +319,12 @@ function generatePlayer(id, pos, clubRating, age) {
   const isMid = ['CM','CDM','CAM','LM','RM'].includes(pos);
   const isAtt = ['ST','CF','LW','RW'].includes(pos);
 
-  // Scale each stat range around clubRating so better clubs get better players
+  // Scale each stat range around clubRating so better clubs get better players.
+  // Full 1:1 propagation (with a small -2 offset to counter top-4 inflation) so
+  // lower-league players genuinely rate at their tier instead of compressing toward 70.
   const sc = (lo, hi) => {
     const mid = (lo + hi) / 2, half = (hi - lo) / 2;
-    const shifted = mid + (base - 70) * 0.72;
+    const shifted = mid + (base - 72);
     return Math.max(10, Math.min(99, rand(Math.round(shifted - half), Math.round(shifted + half))));
   };
 
@@ -339,7 +341,11 @@ function generatePlayer(id, pos, clubRating, age) {
 
   // OVR = mean of top 4 stats across all attrs
   const top4 = Object.values(attrs).sort((a, b) => b - a).slice(0, 4);
-  const rawOvr = Math.round(top4.reduce((s, v) => s + v, 0) / 4);
+  let rawOvr = Math.round(top4.reduce((s, v) => s + v, 0) / 4);
+  // Anchor to the club's level: no League Two club fields a 75-rated star.
+  // (Transfermarkt: best L2 player ~£1.5m; outlier rolls were inflating whole-tier values.)
+  const anchor = clubRating + ageAdj;
+  rawOvr = Math.max(anchor - 8, Math.min(anchor + 8, rawOvr));
   // Soft cap: compress above 87 — 90-rated players should be very rare world-class
   const cappedOvr = rawOvr <= 87 ? rawOvr : 87 + Math.round((rawOvr - 87) * 0.22);
   const ovr = Math.max(38, Math.min(91, cappedOvr));
@@ -351,13 +357,13 @@ function generatePlayer(id, pos, clubRating, age) {
 
   const value = calcValue(ovr, age);
   // Wage in game units (p.wage / 1000 = £m/wk for display)
-  // OVR 55 L2 = £1-2k | OVR 60 L1 = £2-3k | OVR 65 Champ = £4-7k
-  // OVR 70 = £8-14k | OVR 75 PL = £18-30k | OVR 80 PL star = £33-56k
-  // OVR 85 elite = £63-105k | OVR 88 = £88-147k | OVR 90 = £111-186k (some above 200k) | max = £220k
+  // Calibrated vs real wage bills: NL £0.8-3m/yr, L2 £1.5-4m/yr, L1 £3-12m/yr, Champ £10-60m, PL £60-350m.
+  // OVR 50 NL = ~£410/wk | OVR 55 L2 = ~£1.2k | OVR 60 L1 = ~£3.8k | OVR 65 Champ = ~£7.8k
+  // OVR 70 = ~£16k | OVR 75 PL = ~£33k | OVR 80 = ~£69k | OVR 85 star = ~£140k | OVR 90 = ~£290k | max £350k
   const wageBase = ovr >= 60
-    ? Math.pow(1.13, ovr - 60) * 4.5
-    : Math.pow(0.72, 60 - ovr) * 4.5;
-  const wage = Math.min(220, Math.max(0.3, Math.round(wageBase * (0.75 + rand(0, 50) / 100) * 10) / 10));
+    ? Math.pow(1.155, ovr - 60) * 3.8
+    : Math.pow(0.80, 60 - ovr) * 3.8;
+  const wage = Math.min(350, Math.max(0.3, Math.round(wageBase * (0.75 + rand(0, 50) / 100) * 10) / 10));
 
   return {
     id, firstName, lastName,
@@ -390,10 +396,15 @@ function generatePlayer(id, pos, clubRating, age) {
 }
 
 function calcValue(ovr, age) {
-  // Steep curve: OVR 60 = ~£800k, OVR 50 = ~£55k, OVR 45 = ~£18k, OVR 70 = £4.3m, OVR 80 = £23m
+  // Calibrated vs Transfermarkt tier anchors (2025-26): NL squads ~£0.5-3m, L2 avg €4m,
+  // L1 avg €10m, Championship €14-210m, PL €200m-1.3bn.
+  // OVR 50 = £30k, 55 = £101k, 60 = £350k, 65 = £1.03m, 70 = £3.1m, 75 = £8.8m,
+  // 80 = £18.5m, 85 = £39m, 88 = £61m (age multiplier pushes young stars higher)
   const base = ovr >= 60
-    ? Math.pow(1.20, ovr - 60) * 0.8
-    : 0.8 * Math.pow(0.76, 60 - ovr);
+    ? (ovr <= 75
+        ? 0.35 * Math.pow(1.24, ovr - 60)
+        : 0.35 * Math.pow(1.24, 15) * Math.pow(1.16, ovr - 75))
+    : 0.35 * Math.pow(0.78, 60 - ovr);
   const ageMult = age < 20 ? 1.5 : age < 23 ? 1.3 : age < 27 ? 1.1 : age < 30 ? 1.0 : age < 32 ? 0.55 : age < 34 ? 0.3 : 0.12;
   return Math.max(0.003, Math.round(base * ageMult * 100) / 100);
 }
@@ -454,10 +465,10 @@ function generateFreeAgents(count) {
   const positions = ['GK','CB','CB','LB','RB','CDM','CM','CM','CAM','LW','RW','ST','ST','CB','CM','ST','LB','RB','GK','LW','RW','CDM','CAM'];
   // Tiers: national league → prem fringe, with more lower-league players
   const tiers = [
-    { minOvr:42, maxOvr:50, minAge:22, maxAge:38, count:14 }, // National League level
-    { minOvr:50, maxOvr:58, minAge:22, maxAge:36, count:14 }, // League Two / One level
-    { minOvr:58, maxOvr:66, minAge:24, maxAge:35, count:10 }, // Championship level
-    { minOvr:66, maxOvr:73, minAge:25, maxAge:34, count:7 },  // PL fringe / Champ top
+    { minOvr:46, maxOvr:53, minAge:22, maxAge:38, count:14 }, // National League level
+    { minOvr:53, maxOvr:60, minAge:22, maxAge:36, count:14 }, // League Two / One level
+    { minOvr:60, maxOvr:67, minAge:24, maxAge:35, count:10 }, // Championship level
+    { minOvr:67, maxOvr:73, minAge:25, maxAge:34, count:7 },  // PL fringe / Champ top
     { minOvr:73, maxOvr:79, minAge:27, maxAge:35, count:5 },  // PL squad / released stars
   ];
   const agents = [];
