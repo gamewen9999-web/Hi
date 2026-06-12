@@ -59,13 +59,14 @@ const APP = (() => {
   /* ----- FINANCIAL CONSTANTS ----- */
   // TV broadcast: equal share per club, identical for every club in the same division.
   // Indexed by league level: 1=PL, 2=Championship, 3=L1, 4=L2, 5=National League.
-  const FIN_TV_LEAGUE    = [0, 95, 8.5, 1.6, 1.0, 0.4];   // £m/season equal share
+  const FIN_TV_LEAGUE    = [0, 110, 9.5, 1.9, 1.3, 0.5];  // £m/season equal share (PL incl. facility fees ≈ £110m floor)
   const FIN_MATCHDAY_LEAGUE = [0, 32, 9, 2.8, 1.1, 0.35]; // £m/season gate income at standard prices, by league level
   const FIN_STADIUM_MULT = [0, 0.55, 0.75, 1.0, 1.35, 1.8]; // fanbase/stadium size multiplier by club rep
   const FIN_INIT_BAL    = [0,  1.5,  4,  12,   40, 100];  // starting bank balance £m
   const FIN_BASE_GRANT  = [0,  0.3,  2,   8,   30,  80];  // base board transfer grant £m
   // Merit payments: end-of-season TV merit money by final league position (level 1 values, scaled down per level)
-  const PRIZE_BY_POS    = [56,53,50,47,44,41,38,35,32,29,26,23,20,17,14,11,8,6,4,3];
+  // PL winner ~£176m total TV (110 equal + 66 merit), bottom ~£115m — matches real distributions
+  const PRIZE_BY_POS    = [66,62,58,54,50,47,44,41,38,35,32,29,26,23,20,17,14,11,8,5];
   const PRIZE_LEVEL_MULT= [1, 0.06, 0.015, 0.005, 0.0012];
   // Ticket pricing tiers. attEffect = attendance change; fans in lower leagues are more price-sensitive.
   const TICKET_TIERS = {
@@ -154,8 +155,10 @@ const APP = (() => {
     if (m == null) return '£0';
     const abs = Math.abs(m);
     if (abs >= 1) return '£' + (Math.round(m * 10) / 10) + 'm';
-    if (abs >= 0.0005) return '£' + Math.round(m * 1000) + 'k';
-    return '£' + Math.round(m * 1e6);
+    const k = m * 1000, ak = Math.abs(k);
+    if (ak >= 100) return '£' + Math.round(k) + 'k';
+    if (ak >= 1)   return '£' + (Math.round(k * 10) / 10) + 'k';
+    return '£' + Math.round(k * 1000);
   }
   function ovrClass(o) {
     return o >= 90 ? 'ovr-90plus' : o >= 80 ? 'ovr-80plus' : o >= 70 ? 'ovr-70plus' : 'ovr-below70';
@@ -1680,7 +1683,7 @@ const APP = (() => {
         <div class="neg-row"><span>Agreed fee</span><span class="fw-700 text-accent">${money(N.agreedFee)}</span></div>
         <div class="neg-row"><span>Player wants</span><span class="fw-700 text-gold">${money(neg.wageDemand / 1000)}/wk</span></div>
         <div class="neg-field"><label>Your wage offer (£k/wk)</label>
-          <input id="neg-input" type="number" step="5" min="0" value="${N.lastWage != null ? N.lastWage : p.wage}"></div>
+          <input id="neg-input" type="number" step="0.1" min="0" value="${N.lastWage != null ? N.lastWage : p.wage}"></div>
         <div class="neg-field"><label>Contract length</label>
           <select id="neg-contract-len">
             ${[1,2,3,4,5].map(y => `<option value="${y}"${y === contractLen ? ' selected' : ''}>${y} year${y > 1 ? 's' : ''}</option>`).join('')}
@@ -2000,12 +2003,13 @@ const APP = (() => {
   };
 
   // Realistic shirt-front sponsorship market rate (£m/season), driven by division then club stature.
-  // PL: ~£4m bottom club up to ~£60m for an elite brand; Championship £0.6–1.5m; L1 £150–300k; L2 ~£60k; NL ~£25k.
+  // Sized so total commercial income (shirt + sleeve + stadium + kit) matches real club revenue:
+  // PL £15-150m commercial, Championship £5-15m, L1 £1.5-4m, L2 £0.6-1.5m, NL £0.25-0.6m.
   function sponsorMarketAnnual(club) {
     const lvl = leagueLevel(club);
     const repFrac = (Math.max(1, Math.min(5, club.rep)) - 1) / 4;
-    const base    = [0, 4, 0.6, 0.15, 0.06, 0.025][lvl];
-    const repMult = 1 + repFrac * repFrac * [0, 14, 1.5, 1.0, 0.8, 0.6][lvl];
+    const base    = [0, 4, 2, 0.5, 0.2, 0.08][lvl];
+    const repMult = 1 + repFrac * repFrac * [0, 14, 1.8, 1.0, 0.8, 0.6][lvl];
     return base * repMult;
   }
 
@@ -2974,10 +2978,10 @@ const APP = (() => {
       const curContract = p.contract || 1;
       const contractEnd = gameState.currentDate.getFullYear() + curContract;
       // Minimum the player will accept: their current wage (they won't take a cut unless low morale)
-      const minAccept = p.morale < 45 ? Math.round(curWage * 0.85 * 10) / 10 : curWage;
+      const minAccept = p.morale < 45 ? Math.round(curWage * 0.85 * 100) / 100 : curWage;
       // What they ideally want: 10-25% raise based on form and age
       const wantRaise = p.age < 28 && p.pot > p.ovr ? 1.20 : 1.10;
-      const wantedWage = Math.round(curWage * wantRaise * 10) / 10;
+      const wantedWage = Math.round(curWage * wantRaise * 100) / 100;
       showModal(`
         <div style="max-width:360px">
           <h2 style="margin-bottom:4px">Renegotiate Contract</h2>
@@ -2989,7 +2993,7 @@ const APP = (() => {
           </div>
           <div style="margin-bottom:10px">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Offer wage (£k/wk)</label>
-            <input id="rn-wage-input" type="number" step="1" min="1" value="${Math.round(wantedWage)}"
+            <input id="rn-wage-input" type="number" step="0.1" min="0.1" value="${wantedWage}"
               style="width:100%;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
           </div>
           <div style="margin-bottom:14px">
@@ -3028,7 +3032,7 @@ const APP = (() => {
           closeModal();
           return;
         }
-        p.wage = Math.round(offeredWageUnits * 10) / 10;
+        p.wage = Math.round(offeredWageUnits * 100) / 100;
         p.contract = chosenYears;
         p.morale = Math.min(100, p.morale + 8);
         closeModal();
@@ -3172,8 +3176,8 @@ const APP = (() => {
     const potGap = p.pot - p.ovr;
     const potColor = potGap >= 10 ? 'var(--accent)' : potGap >= 5 ? 'var(--accent-gold)' : 'var(--text-muted)';
     // Wage: player wants 10-25% above their current wage (no transfer fee)
-    const wantedWage = Math.max(0.5, Math.round(p.wage * (1.12 + rand(0, 13) / 100) * 10) / 10);
-    const minWage = Math.max(0.5, Math.round(p.wage * 0.95 * 10) / 10);
+    const wantedWage = Math.max(0.4, Math.round(p.wage * (1.12 + rand(0, 13) / 100) * 100) / 100);
+    const minWage = Math.max(0.4, Math.round(p.wage * 0.95 * 100) / 100);
 
     const barsHtml = attrDefs.map(([name, key]) => {
       const v = p.attrs[key] || 0, pv = potVal(key);
@@ -3208,7 +3212,7 @@ const APP = (() => {
         <div class="pm-value-row"><span>Wants</span><span class="text-gold fw-700">${money(wantedWage / 1000)}/wk</span></div>
         <div class="neg-field" style="margin:10px 0">
           <label>Your wage offer (£k/wk)</label>
-          <input id="fa-wage-input" type="number" step="0.5" min="0" value="${wantedWage}">
+          <input id="fa-wage-input" type="number" step="0.1" min="0" value="${wantedWage}">
         </div>
         <div class="neg-field" style="margin-bottom:14px">
           <label>Contract length</label>

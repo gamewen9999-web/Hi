@@ -855,12 +855,12 @@ const ENGINE = (() => {
     const minMult = Math.max(0.82, 0.87 + youngBoost + potBoost + repBoost + rand(0, 6) / 100);
     const minFee = Math.max(0.1, Math.round(player.value * minMult * 10) / 10);
     // Player wants 20-40% more than current wage
-    const wageDemand = Math.max(0.5, Math.round(player.wage * (1.25 + rand(3, 20) / 100) * 10) / 10);
+    const wageDemand = Math.max(0.4, Math.round(player.wage * (1.25 + rand(3, 20) / 100) * 100) / 100);
     return {
       asking,
       minFee,
       wageDemand,
-      minWage: Math.max(0.5, Math.round(wageDemand * 0.92 * 10) / 10),
+      minWage: Math.max(0.4, Math.round(wageDemand * 0.92 * 100) / 100),
       feeRound: 0,
       wageRound: 0,
     };
@@ -884,7 +884,7 @@ const ENGINE = (() => {
     if (offer >= neg.minWage) return { decision: 'accept' };
     if (neg.wageRound >= 4) return { decision: 'walk' };
     if (offer >= neg.minWage * 0.78) {
-      const counter = Math.max(neg.minWage, Math.round(offer * 0.35 + neg.wageDemand * 0.65));
+      const counter = Math.max(neg.minWage, Math.round((offer * 0.35 + neg.wageDemand * 0.65) * 100) / 100);
       neg.wageDemand = counter;
       return { decision: 'counter', counter };
     }

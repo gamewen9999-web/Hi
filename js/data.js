@@ -345,7 +345,7 @@ function generatePlayer(id, pos, clubRating, age) {
   // Anchor to the club's level: no League Two club fields a 75-rated star.
   // (Transfermarkt: best L2 player ~£1.5m; outlier rolls were inflating whole-tier values.)
   const anchor = clubRating + ageAdj;
-  rawOvr = Math.max(anchor - 8, Math.min(anchor + 8, rawOvr));
+  rawOvr = Math.max(anchor - 8, Math.min(anchor + 6, rawOvr));
   // Soft cap: compress above 87 — 90-rated players should be very rare world-class
   const cappedOvr = rawOvr <= 87 ? rawOvr : 87 + Math.round((rawOvr - 87) * 0.22);
   const ovr = Math.max(38, Math.min(91, cappedOvr));
@@ -398,13 +398,14 @@ function generatePlayer(id, pos, clubRating, age) {
 function calcValue(ovr, age) {
   // Calibrated vs Transfermarkt tier anchors (2025-26): NL squads ~£0.5-3m, L2 avg €4m,
   // L1 avg €10m, Championship €14-210m, PL €200m-1.3bn.
-  // OVR 50 = £30k, 55 = £101k, 60 = £350k, 65 = £1.03m, 70 = £3.1m, 75 = £8.8m,
+  // OVR 50 = £24k, 55 = £72k, 60 = £220k, 65 = £750k, 70 = £2.6m, 75 = £8.8m,
   // 80 = £18.5m, 85 = £39m, 88 = £61m (age multiplier pushes young stars higher)
+  // Anchors: Bradford-type L1 club ~£7m squad, Champ median ~£50m, PL bottom ~£170m.
   const base = ovr >= 60
     ? (ovr <= 75
-        ? 0.35 * Math.pow(1.24, ovr - 60)
-        : 0.35 * Math.pow(1.24, 15) * Math.pow(1.16, ovr - 75))
-    : 0.35 * Math.pow(0.78, 60 - ovr);
+        ? 0.18 * Math.pow(1.296, ovr - 60)
+        : 0.18 * Math.pow(1.296, 15) * Math.pow(1.16, ovr - 75))
+    : 0.18 * Math.pow(0.80, 60 - ovr);
   const ageMult = age < 20 ? 1.5 : age < 23 ? 1.3 : age < 27 ? 1.1 : age < 30 ? 1.0 : age < 32 ? 0.55 : age < 34 ? 0.3 : 0.12;
   return Math.max(0.003, Math.round(base * ageMult * 100) / 100);
 }
@@ -434,7 +435,11 @@ function generateSquad(club) {
     { pos:'ST',  count:4 },
     { pos:'CF',  count:1 },
   ];
+  // Lower-league clubs run leaner squads (~25 players vs ~30 at the top, like real life)
+  const lean = club.sqRating < 66;
+  const trimmable = new Set(['GK','CB','CM','ST','CF']);
   positions.forEach(({ pos, count }) => {
+    if (lean && trimmable.has(pos)) count = Math.max(1, count - 1);
     for (let i = 0; i < count; i++) {
       const age = pos === 'GK' ? rand(22, 36) : rand(17, 33);
       players.push(generatePlayer(`${club.id}_p${pid++}`, pos, club.sqRating, age));
