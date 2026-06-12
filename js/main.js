@@ -154,7 +154,8 @@ const APP = (() => {
     if (m == null) return '£0';
     const abs = Math.abs(m);
     if (abs >= 1) return '£' + (Math.round(m * 10) / 10) + 'm';
-    return '£' + Math.round(m * 1000) + 'k';
+    if (abs >= 0.0005) return '£' + Math.round(m * 1000) + 'k';
+    return '£' + Math.round(m * 1e6);
   }
   function ovrClass(o) {
     return o >= 90 ? 'ovr-90plus' : o >= 80 ? 'ovr-80plus' : o >= 70 ? 'ovr-70plus' : 'ovr-below70';
@@ -1972,6 +1973,8 @@ const APP = (() => {
       balance:        FIN_INIT_BAL[rep] || 10,
       boardConfidence:50,
       sponsor:        _genSponsor(club, 50, false),
+      sleeve:         null,   // sleeve sponsor slot — sold by the manager
+      stadium:        null,   // stadium naming rights slot — sold by the manager
       kitDeal:        _genKitDeal(club),
       seasonIncome:   { tv:0, matchday:0, sponsorship:0, prizes:0, sales:0 },
       seasonExpenses: { wages:0, transfers:0, agentFees:0, staff:0 },
@@ -1989,21 +1992,35 @@ const APP = (() => {
     };
   }
 
-  function _genSponsor(club, confidence, goodSeason) {
-    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
-    let tier = rep >= 4 ? 3 : rep >= 3 ? 2 : 1;
-    if (goodSeason && confidence >= 65 && tier < 3) tier++;
-    else if (confidence < 30 && tier > 1) tier--;
+  // Commercial sponsorship slots a club can sell. share = fraction of the shirt-front market rate.
+  const SPONSOR_SLOTS = {
+    shirt:   { label: 'Shirt Front',         share: 1.00, terms: [1, 2, 3] },
+    sleeve:  { label: 'Sleeve',              share: 0.22, terms: [1, 2, 3] },
+    stadium: { label: 'Stadium Naming Rights', share: 0.60, terms: [3, 5, 8] },
+  };
+
+  // Realistic shirt-front sponsorship market rate (£m/season), driven by division then club stature.
+  // PL: ~£4m bottom club up to ~£60m for an elite brand; Championship £0.6–1.5m; L1 £150–300k; L2 ~£60k; NL ~£25k.
+  function sponsorMarketAnnual(club) {
+    const lvl = leagueLevel(club);
+    const repFrac = (Math.max(1, Math.min(5, club.rep)) - 1) / 4;
+    const base    = [0, 4, 0.6, 0.15, 0.06, 0.025][lvl];
+    const repMult = 1 + repFrac * repFrac * [0, 14, 1.5, 1.0, 0.8, 0.6][lvl];
+    return base * repMult;
+  }
+
+  function _genSponsor(club, confidence, goodSeason, slot = 'shirt') {
+    const cfg = SPONSOR_SLOTS[slot] || SPONSOR_SLOTS.shirt;
+    let annual = sponsorMarketAnnual(club) * cfg.share * (0.85 + Math.random() * 0.3);
+    if (goodSeason) annual *= 1.10;
+    if (confidence >= 65) annual *= 1.05;
+    else if (confidence < 30) annual *= 0.88;
+    const tier = annual >= 10 ? 3 : annual >= 0.5 ? 2 : 1;
     const pool = SPONSORS[tier - 1];
     const name = pool.names[Math.floor(Math.random() * pool.names.length)];
-    // Weekly sponsor value in £m: tier1=NL/L2 (£500-3k/wk), tier2=L1/Champ (£8k-50k/wk), tier3=PL (£120k-700k/wk)
-    const ranges = [[0.0005, 0.003], [0.008, 0.05], [0.12, 0.70]];
-    const [lo, hi] = ranges[tier - 1];
-    const repFrac = (club.rep - 1) / 4;
-    const base = lo + (hi - lo) * Math.min(1, repFrac * 1.4 + (goodSeason ? 0.1 : 0));
-    const weeklyValue = Math.round(base * (0.85 + Math.random() * 0.3) * 100) / 100;
-    return { name, tier, weeklyValue, seasonsLeft: Math.floor(Math.random() * 3) + 1,
-             clauses: _genSponsorClauses(club, weeklyValue) };
+    const weeklyValue = Math.round(annual / 52 * 1e5) / 1e5;
+    return { name, tier, slot, weeklyValue, seasonsLeft: Math.floor(Math.random() * 3) + 1,
+             clauses: slot === 'shirt' ? _genSponsorClauses(club, weeklyValue) : [] };
   }
 
   // Performance clauses written into sponsor contracts — bonuses that pay out on results.
@@ -2045,20 +2062,24 @@ const APP = (() => {
     const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
     const makers = ['AdiSport','ProKit','StrikeX','NovaSport','EliteKit','AlphaWear'];
     const name = makers[Math.floor(Math.random() * makers.length)];
-    // Annual kit deal in £m: rep1=£15-30k, rep2=£100-200k, rep3=£700k-1.4m, rep4=£4-8m, rep5=£12-24m
-    const annualValue = [0, 0.02, 0.15, 1.0, 6, 18][rep] * (0.8 + Math.random() * 0.4);
+    // Annual kit deal in £m: club brand value (rep) or half the league shirt-market rate, whichever is higher.
+    // Elite brands keep big kit deals even when relegated; ordinary clubs get paid for their division's exposure.
+    const brandBase  = [0, 0.025, 0.2, 1.2, 10, 40][rep];
+    const marketBase = sponsorMarketAnnual(club) * 0.5;
+    const annualValue = Math.max(brandBase, marketBase) * (0.8 + Math.random() * 0.4);
     return { name, annualValue: Math.round(annualValue * 100) / 100, seasonsLeft: Math.floor(Math.random() * 3) + 2 };
   }
 
-  function genSponsorOffers(club, confidence, goodSeason) {
+  function genSponsorOffers(club, confidence, goodSeason, slot = 'shirt') {
+    const cfg = SPONSOR_SLOTS[slot] || SPONSOR_SLOTS.shirt;
     const offers = [];
     const usedNames = new Set();
     for (let i = 0; i < 3; i++) {
-      const sp = _genSponsor(club, confidence - 10 + i * 12, goodSeason && i > 0);
+      const sp = _genSponsor(club, confidence - 10 + i * 12, goodSeason && i > 0, slot);
       if (usedNames.has(sp.name)) sp.name += ' Group';
       usedNames.add(sp.name);
-      sp.seasonsLeft = i + 1; // 1-yr, 2-yr, 3-yr options
-      sp.weeklyValue = Math.round(sp.weeklyValue * (1 + i * 0.06) * 100) / 100;
+      sp.seasonsLeft = cfg.terms[i]; // short/medium/long-term options
+      sp.weeklyValue = Math.round(sp.weeklyValue * (1 + i * 0.06) * 1e5) / 1e5;
       offers.push(sp);
     }
     return offers;
@@ -2098,7 +2119,7 @@ const APP = (() => {
     const rep  = Math.max(1, Math.min(5, Math.round(club.rep)));
     const weeklyTV      = FIN_TV_LEAGUE[leagueLevel(club)] / 52;
     const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
-    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + (fin.sleeve?.weeklyValue || 0) + (fin.stadium?.weeklyValue || 0) + weeklyKitDeal;
     const weeklyWages   = club.players.reduce((s, p) => s + p.wage, 0) / 1000;
     const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep] + (gameState.scouts || []).reduce((s, sc) => s + (sc.weeklyWage || 0) / 1000, 0);
     const income   = (weeklyTV + weeklySponsor) * weeks;
@@ -2208,6 +2229,15 @@ const APP = (() => {
     // Decrement sponsor/kit seasons
     if (fin.sponsor) { fin.sponsor.seasonsLeft--; if (fin.sponsor.seasonsLeft <= 0) fin.sponsorNeedsRenewal = true; }
     if (fin.kitDeal) { fin.kitDeal.seasonsLeft--; if (fin.kitDeal.seasonsLeft <= 0) fin.kitNeedsRenewal = true; }
+    ['sleeve', 'stadium'].forEach(slot => {
+      if (fin[slot]) {
+        fin[slot].seasonsLeft--;
+        if (fin[slot].seasonsLeft <= 0) {
+          notify(`${SPONSOR_SLOTS[slot].label} deal with ${fin[slot].name} has expired — sell the slot again in Finances.`, 'warning');
+          fin[slot] = null;
+        }
+      }
+    });
     return { prize, euroPrize };
   }
 
@@ -2282,7 +2312,7 @@ const APP = (() => {
     offer.negotiated = true;
     if (Math.random() < chance) {
       const uplift = 0.12 + Math.random() * 0.18;
-      offer[valueKey] = Math.round(offer[valueKey] * (1 + uplift) * 100) / 100;
+      offer[valueKey] = Math.round(offer[valueKey] * (1 + uplift) * 1e5) / 1e5;
       return { ok: true, uplift };
     }
     if (Math.random() < 0.5) return { ok: false, withdrawn: false };
@@ -2376,6 +2406,59 @@ const APP = (() => {
     });
   }
 
+  // Sell an open commercial slot (sleeve / stadium naming rights)
+  function showSlotSponsorModal(slot) {
+    const fin = gameState.finances;
+    if (!fin || fin[slot]) return;
+    const cfg = SPONSOR_SLOTS[slot];
+    const offers = genSponsorOffers(gameState.myClub, fin.boardConfidence, !!fin.lastSeasonGood, slot);
+    const tierLabels = ['', 'Regional', 'National', 'Global'];
+    showDealModal({
+      title: `${cfg.label} Sponsorship`,
+      blurb: `Sell your ${cfg.label.toLowerCase()} to a commercial partner. Longer terms lock in today's rate — risky if you expect promotion.`,
+      offers,
+      valueKey: 'weeklyValue',
+      valueFmt: (o) => `${money(o.weeklyValue)}/wk <span style="font-size:11px;color:var(--text-muted)">(${money(o.weeklyValue * 52)}/season)</span>`,
+      subLine:  (o) => `${tierLabels[o.tier]} partner · ${o.seasonsLeft} season contract`,
+      onAccept: (sp) => {
+        fin[slot] = sp;
+        notify(`${cfg.label} sold to ${sp.name} — ${money(sp.weeklyValue)}/wk for ${sp.seasonsLeft} season(s)!`, 'success');
+      },
+    });
+  }
+
+  // Buy out a sponsor contract early: costs 50% of the deal's remaining value.
+  function terminateSponsorDeal(slot) {
+    const fin  = gameState.finances;
+    const deal = slot === 'shirt' ? fin?.sponsor : fin?.[slot];
+    if (!deal) return;
+    const penalty = Math.round(deal.weeklyValue * 52 * deal.seasonsLeft * 0.5 * 100) / 100;
+    const cfg = SPONSOR_SLOTS[slot];
+    showModal(`
+      <div style="max-width:360px">
+        <h2 style="margin-bottom:8px">Terminate ${cfg.label} Deal</h2>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Buy out the ${esc(deal.name)} contract early so you can re-sell the slot at current market rates.</p>
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Remaining value</span><span>${money(deal.weeklyValue * 52 * deal.seasonsLeft)} (${deal.seasonsLeft} season${deal.seasonsLeft !== 1 ? 's' : ''})</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Buyout penalty (50%)</span><span style="color:var(--accent-red)">−${money(penalty)}</span></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="spn-term-confirm" class="btn-primary" style="flex:1">Pay ${money(penalty)} &amp; Terminate</button>
+          <button id="spn-term-cancel" class="btn-secondary" style="flex:1">Cancel</button>
+        </div>
+      </div>`);
+    $('spn-term-cancel').addEventListener('click', closeModal);
+    $('spn-term-confirm').addEventListener('click', () => {
+      fin.balance = Math.round((fin.balance - penalty) * 100) / 100;
+      if (slot === 'shirt') { fin.sponsor = null; fin.sponsorNeedsRenewal = true; }
+      else fin[slot] = null;
+      notify(`${cfg.label} deal with ${deal.name} terminated — ${money(penalty)} buyout paid.`, 'warning');
+      closeModal();
+      renderView('finances');
+      updateSidebar();
+    });
+  }
+
   /* ---------------------------------------------
      FINANCES — view
      --------------------------------------------- */
@@ -2403,7 +2486,7 @@ const APP = (() => {
     const weeklyWages   = club.players.reduce((s, p) => s + p.wage, 0) / 1000;
     const weeklyTV      = FIN_TV_LEAGUE[level] / 52;
     const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
-    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + (fin.sleeve?.weeklyValue || 0) + (fin.stadium?.weeklyValue || 0) + weeklyKitDeal;
     const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep];
     const weeklyIncome  = weeklyTV + weeklySponsor;
     const weeklyExpense = weeklyWages + weeklyStaff;
@@ -2514,6 +2597,8 @@ const APP = (() => {
           <div class="fin-cashflow">
             <div class="fin-cf-row"><span class="fin-cf-label">TV Broadcast <span style="font-size:10px;color:var(--text-muted)">(${esc(DATA.LEAGUES[club.league]?.name || '')} equal share)</span></span><span class="fin-cf-pos">+${money(weeklyTV)}/wk</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Shirt Sponsor</span><span class="fin-cf-pos">+${money(fin.sponsor?.weeklyValue||0)}/wk</span></div>
+            ${fin.sleeve ? `<div class="fin-cf-row"><span class="fin-cf-label">Sleeve Sponsor</span><span class="fin-cf-pos">+${money(fin.sleeve.weeklyValue)}/wk</span></div>` : ''}
+            ${fin.stadium ? `<div class="fin-cf-row"><span class="fin-cf-label">Stadium Naming</span><span class="fin-cf-pos">+${money(fin.stadium.weeklyValue)}/wk</span></div>` : ''}
             <div class="fin-cf-row"><span class="fin-cf-label">Kit Deal</span><span class="fin-cf-pos">+${money(weeklyKitDeal)}/wk</span></div>
             <div class="fin-cf-divider"></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Player Wages</span><span class="fin-cf-neg">−${money(weeklyWages)}/wk</span></div>
@@ -2543,23 +2628,59 @@ const APP = (() => {
 
       <div class="finances-grid">
         <div class="card">
-          <div class="card-title">Shirt Sponsor ${fin.sponsorNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
-          ${fin.sponsor && !fin.sponsorNeedsRenewal ? `
-            <div class="fin-sponsor-block">
-              <div class="fin-sponsor-tier tier-${fin.sponsor.tier}">${tierLabels[fin.sponsor.tier]}</div>
-              <div class="fin-sponsor-name">${esc(fin.sponsor.name)}</div>
-              <div class="fin-sponsor-value">${money(fin.sponsor.weeklyValue)}/wk · ${money(fin.sponsor.weeklyValue*52)}/year</div>
-              <div class="fin-sponsor-left">${fin.sponsor.seasonsLeft} season${fin.sponsor.seasonsLeft!==1?'s':''} remaining</div>
-              ${fin.sponsor.clauses?.length ? `<div class="stat-label" style="margin-top:6px;color:var(--accent-gold)">Clauses: ${fin.sponsor.clauses.map(clauseLabel).join(' · ')}</div>` : ''}
-            </div>` : `<div class="stat-label" style="margin-top:8px;color:var(--accent-red)">No shirt sponsor — choose one now.</div>`}
-          ${fin.sponsorNeedsRenewal || !fin.sponsor ? `<button id="fin-btn-pick-sponsor" class="btn-primary btn-sm" style="margin-top:10px">Pick Sponsor</button>` : ''}
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-            <div class="stat-label" style="color:var(--text-muted);margin-bottom:4px">Kit Manufacturer ${fin.kitNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
-            ${fin.kitDeal && !fin.kitNeedsRenewal ? `
-              <div style="font-weight:600">${esc(fin.kitDeal.name)}</div>
-              <div class="stat-label">${money(fin.kitDeal.annualValue)}/season · ${fin.kitDeal.seasonsLeft} season${fin.kitDeal.seasonsLeft!==1?'s':''} left</div>`
-              : `<div class="stat-label" style="color:var(--accent-red)">No kit deal — negotiate one now.</div>`}
-            ${fin.kitNeedsRenewal || !fin.kitDeal ? `<button id="fin-btn-pick-kit" class="btn-primary btn-sm" style="margin-top:8px">Negotiate Kit Deal</button>` : ''}
+          <div class="card-title">Commercial Partners</div>
+          <div class="stat-label" style="margin-bottom:10px">Manage the club's sponsorship deals. Sell open slots, terminate deals early (50% buyout) to re-sell at better rates, and negotiate every contract.</div>
+
+          <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div>
+                <div class="stat-label" style="color:var(--text-muted)">Shirt Front ${fin.sponsorNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
+                ${fin.sponsor && !fin.sponsorNeedsRenewal
+                  ? `<div style="font-weight:600">${esc(fin.sponsor.name)} <span class="fin-sponsor-tier tier-${fin.sponsor.tier}" style="font-size:10px">${tierLabels[fin.sponsor.tier]}</span></div>
+                     <div class="stat-label">${money(fin.sponsor.weeklyValue)}/wk · ${money(fin.sponsor.weeklyValue*52)}/season · ${fin.sponsor.seasonsLeft} season${fin.sponsor.seasonsLeft!==1?'s':''} left</div>
+                     ${fin.sponsor.clauses?.length ? `<div class="stat-label" style="color:var(--accent-gold)">Clauses: ${fin.sponsor.clauses.map(clauseLabel).join(' · ')}</div>` : ''}`
+                  : `<div class="stat-label" style="color:var(--accent-red)">Slot open — no shirt sponsor.</div>`}
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0">
+                ${fin.sponsorNeedsRenewal || !fin.sponsor
+                  ? `<button id="fin-btn-pick-sponsor" class="btn-primary btn-sm">Negotiate</button>`
+                  : `<button class="fin-btn-terminate btn-secondary btn-sm" data-slot="shirt">Terminate</button>`}
+              </div>
+            </div>
+          </div>
+
+          ${['sleeve', 'stadium'].map(slot => {
+            const deal = fin[slot];
+            return `
+            <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                <div>
+                  <div class="stat-label" style="color:var(--text-muted)">${SPONSOR_SLOTS[slot].label}</div>
+                  ${deal
+                    ? `<div style="font-weight:600">${esc(deal.name)} <span class="fin-sponsor-tier tier-${deal.tier}" style="font-size:10px">${tierLabels[deal.tier]}</span></div>
+                       <div class="stat-label">${money(deal.weeklyValue)}/wk · ${money(deal.weeklyValue*52)}/season · ${deal.seasonsLeft} season${deal.seasonsLeft!==1?'s':''} left</div>`
+                    : `<div class="stat-label">Slot open — est. market value ${money(sponsorMarketAnnual(club) * SPONSOR_SLOTS[slot].share)}/season.</div>`}
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  ${deal
+                    ? `<button class="fin-btn-terminate btn-secondary btn-sm" data-slot="${slot}">Terminate</button>`
+                    : `<button class="fin-btn-sell-slot btn-primary btn-sm" data-slot="${slot}">Sell Slot</button>`}
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+
+          <div style="padding:10px 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div>
+                <div class="stat-label" style="color:var(--text-muted)">Kit Manufacturer ${fin.kitNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
+                ${fin.kitDeal && !fin.kitNeedsRenewal
+                  ? `<div style="font-weight:600">${esc(fin.kitDeal.name)}</div>
+                     <div class="stat-label">${money(fin.kitDeal.annualValue)}/season · ${fin.kitDeal.seasonsLeft} season${fin.kitDeal.seasonsLeft!==1?'s':''} left</div>`
+                  : `<div class="stat-label" style="color:var(--accent-red)">No kit deal — negotiate one now.</div>`}
+              </div>
+              ${fin.kitNeedsRenewal || !fin.kitDeal ? `<button id="fin-btn-pick-kit" class="btn-primary btn-sm" style="flex-shrink:0">Negotiate</button>` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -2675,6 +2796,25 @@ const APP = (() => {
         obs.observe(document.getElementById('modal-overlay'), { attributes: true, attributeFilter: ['class'] });
       });
     }
+
+    // Sell open commercial slots (sleeve / stadium)
+    m.querySelectorAll('.fin-btn-sell-slot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        showSlotSponsorModal(btn.dataset.slot);
+        const obs = new MutationObserver(() => {
+          if (document.getElementById('modal-overlay').classList.contains('hidden')) {
+            obs.disconnect();
+            renderView('finances');
+          }
+        });
+        obs.observe(document.getElementById('modal-overlay'), { attributes: true, attributeFilter: ['class'] });
+      });
+    });
+
+    // Terminate active sponsor deals (50% buyout)
+    m.querySelectorAll('.fin-btn-terminate').forEach(btn => {
+      btn.addEventListener('click', () => terminateSponsorDeal(btn.dataset.slot));
+    });
 
     // Negotiate kit deal
     const pickKitBtn = document.getElementById('fin-btn-pick-kit');
