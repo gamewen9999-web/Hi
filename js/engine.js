@@ -4,6 +4,23 @@ const ENGINE = (() => {
 
   function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  const INJURY_TYPES = [
+    { id: 'knock',     label: 'Knock',           minWeeks: 1,  maxWeeks: 2,  potDrop: 0, weight: 35, severity: 'minor'    },
+    { id: 'strain',    label: 'Muscle Strain',   minWeeks: 2,  maxWeeks: 4,  potDrop: 0, weight: 28, severity: 'minor'    },
+    { id: 'ankle',     label: 'Ankle Sprain',    minWeeks: 3,  maxWeeks: 6,  potDrop: 0, weight: 18, severity: 'moderate' },
+    { id: 'hamstring', label: 'Hamstring Tear',  minWeeks: 4,  maxWeeks: 8,  potDrop: 0, weight: 12, severity: 'moderate' },
+    { id: 'broken',    label: 'Broken Bone',     minWeeks: 8,  maxWeeks: 16, potDrop: 1, weight: 4,  severity: 'serious'  },
+    { id: 'knee',      label: 'Knee Ligament',   minWeeks: 14, maxWeeks: 28, potDrop: 2, weight: 3,  severity: 'serious'  },
+    { id: 'acl',       label: 'ACL Rupture',     minWeeks: 26, maxWeeks: 52, potDrop: 3, weight: 1,  severity: 'career'   },
+  ];
+
+  function pickWeighted(types) {
+    const total = types.reduce((s, t) => s + t.weight, 0);
+    let r = Math.random() * total;
+    for (const t of types) { r -= t.weight; if (r <= 0) return t; }
+    return types[types.length - 1];
+  }
   function goalsFromXG(xg) {
     // Box-Muller normal distribution centred on xg, variance = xg
     const u1 = Math.random(), u2 = Math.random();
@@ -32,14 +49,35 @@ const ENGINE = (() => {
     const fixtures = []; let fid = 0;
     const seasonStart = new Date(2025, 7, 9);
 
+    // Top-flight leagues stretch to May 18 to run alongside European knockout rounds.
+    // Lower leagues keep a natural 7-day weekly cadence.
+    const seasonEndTarget = new Date(2026, 4, 18); // May 18
+    const winterBreakStart = new Date(2025, 11, 21); // Dec 21
+
     Object.keys(DATA.LEAGUES).forEach(lid => {
+      const leagueDef = DATA.LEAGUES[lid];
       const clubs = Object.values(gameState.clubs).filter(c => c.league === lid);
       if (clubs.length < 4) return;
       const home = roundRobin(clubs);
       const away = home.map(r => r.map(m => ({ home: m.away, away: m.home })));
-      [...home, ...away].forEach((round, ri) => {
+      const allRounds = [...home, ...away];
+      // Only top-flight (level 1) leagues need to reach May — they share the calendar
+      // with European competition. Lower leagues run at a flat 7-day cadence.
+      let winterBreakDays = 0;
+      if (leagueDef && leagueDef.level === 1) {
+        const naturalEnd = new Date(seasonStart);
+        naturalEnd.setDate(naturalEnd.getDate() + (allRounds.length - 1) * 7);
+        winterBreakDays = Math.max(0, Math.round((seasonEndTarget - naturalEnd) / 86400000));
+      }
+      allRounds.forEach((round, ri) => {
         const d = new Date(seasonStart);
-        d.setDate(d.getDate() + ri * 7);
+        let days = ri * 7;
+        if (winterBreakDays > 0) {
+          const rawDate = new Date(seasonStart);
+          rawDate.setDate(rawDate.getDate() + days);
+          if (rawDate > winterBreakStart) days += winterBreakDays;
+        }
+        d.setDate(d.getDate() + days);
         round.forEach(m => {
           fixtures.push({ id: fid++, leagueId: lid, home: m.home, away: m.away,
             date: new Date(d), played: false, homeScore: null, awayScore: null,
@@ -52,7 +90,13 @@ const ENGINE = (() => {
   }
 
   /* ---- MATCH SIMULATION ---- */
-  function effectiveRating(club) { return club.sqRating || 70; }
+  function effectiveRating(club) {
+    if (club.players && club.players.length) {
+      const avg = club.players.reduce((s, p) => s + (p.ovr || 60), 0) / club.players.length;
+      return Math.round(avg);
+    }
+    return club.sqRating || 70;
+  }
 
   // Formation tactical attributes: att = attacking weight (0–4), def = defensive weight (0–4).
   // Baseline is 2 = neutral. Each point of advantage in a matchup = ±5% xG swing.
@@ -229,14 +273,31 @@ const ENGINE = (() => {
     return 'ATT';
   }
 
+  // Positional depth: lower = more defensive, higher = more attacking.
+  // Used to compute fine-grained OOP distance between any two positions.
+  const POS_DEPTH = {
+    CB: 2, RB: 2.5, LB: 2.5, RWB: 3, LWB: 3,
+    CDM: 4,
+    CM: 5, RM: 5.5, LM: 5.5,
+    CAM: 6.5, RW: 7, LW: 7,
+    CF: 8, ST: 8.5,
+  };
+
   // Stat effectiveness multiplier when a player plays out of position.
-  // Natural position: 1.0 | Same group: 0.88 | Different group: 0.72 | GK/outfield swap: 0.50
+  // Scale: 1.0 (natural) → 0.93 (mirror) → 0.88 (adjacent) → 0.80 → 0.70 → 0.58 → 0.45 → 0.35 (GK swap)
   function oopFactor(playerPos, slotPos) {
     if (!slotPos || playerPos === slotPos) return 1.0;
-    const pg = posGroup(playerPos), sg = posGroup(slotPos);
-    if (pg === 'GK' || sg === 'GK') return 0.50;
-    if (pg === sg) return 0.88;
-    return 0.72;
+    if (playerPos === 'GK' || slotPos === 'GK') return 0.35;
+    const pd = POS_DEPTH[playerPos] ?? 5;
+    const sd = POS_DEPTH[slotPos] ?? 5;
+    const dist = Math.abs(pd - sd);
+    if (dist === 0)   return 0.93;  // mirror pos e.g. RB↔LB, RW↔LW
+    if (dist <= 1)    return 0.88;  // adjacent e.g. CM↔CDM, ST↔CF, CM↔RM
+    if (dist <= 2)    return 0.80;  // nearby zone e.g. CB↔CDM, CAM↔ST, RW↔CAM
+    if (dist <= 3)    return 0.70;  // cross-zone e.g. CB↔CM, CDM↔CAM, CM↔ST
+    if (dist <= 4.5)  return 0.58;  // major cross e.g. CB↔MID, CDM↔striker
+    if (dist <= 6)    return 0.45;  // extreme e.g. CB↔winger, CDM↔striker
+    return 0.35;                    // CB↔ST or similar extremes
   }
 
   // Average a stat across a subset of the XI (or squad if no XI given).
@@ -321,9 +382,17 @@ const ENGINE = (() => {
     // Pace: faster team presses harder, slightly reduces opponent xG (±4%)
     const hPaceMod = 1.0 - ((avgStat(awayClub, aXI, 'pace', aSlotPos) - 65) / 65) * 0.04;
     const aPaceMod = 1.0 - ((avgStat(homeClub, hXI, 'pace', hSlotPos) - 65) / 65) * 0.04;
+    // Fitness modifier: tired squads underperform (80% quality at 0 energy → 100% at full)
+    const avgFit = (club, xi) => {
+      const pool = xi ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
+                      : club.players.slice(0, 11);
+      return pool.length ? pool.reduce((s, p) => s + (p.fitness ?? 80), 0) / pool.length : 80;
+    };
+    const hFitMult = 0.80 + (avgFit(homeClub, hXI) / 100) * 0.20;
+    const aFitMult = 0.80 + (avgFit(awayClub, aXI) / 100) * 0.20;
     // Effective xG after all stat adjustments
-    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod);
-    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod);
+    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod * hFitMult);
+    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod * aFitMult);
 
     // Match-day noise: teams routinely over/underperform xG (range ×0.55–1.45)
     const noise = () => 0.55 + Math.random() * 0.9;
@@ -383,6 +452,14 @@ const ENGINE = (() => {
         } else if (r < yellowP) {
           events.push({ min: min+1, type: 'yellow', team, player: tackler });
         }
+        // Bad tackles can injure the target
+        const injP = isSlide ? 0.12 : 0.04;
+        const targetTeam = tacklerClub === homeClub ? 'away' : 'home';
+        const alreadyHurt = events.some(ev => ev.type === 'injury' && ev.player?.id === target?.id);
+        if (target && !target.injured && !alreadyHurt && Math.random() < injP) {
+          const contactTypes = INJURY_TYPES.filter(t => t.severity === 'minor' || t.severity === 'moderate');
+          events.push({ min: min+1, type: 'injury', team: targetTeam, player: target, injuryType: pickWeighted(contactTypes).id });
+        }
       }
     };
 
@@ -395,6 +472,29 @@ const ENGINE = (() => {
         rand(4, 88)
       );
     }
+
+    // Injuries — chance scales with low fitness and prior injuries (max 1 per team)
+    const tryInjury = (club, xi, team) => {
+      const pool = (xi ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
+                       : club.players.slice(0, 11))
+        .filter(p => !p.injured)
+        .sort(() => Math.random() - 0.5);
+      for (const p of pool) {
+        const fitness  = p.fitness ?? 80;
+        const injCount = p.careerInjuries || 0;
+        // base 1.5%; low energy multiplies risk up to 5×; prior injuries add 15% each
+        const fatigueMult = 1 + Math.max(0, (80 - fitness) / 20);
+        const historyMult = 1 + injCount * 0.15;
+        const chance = 0.015 * fatigueMult * historyMult;
+        if (Math.random() < chance) {
+          const type = pickWeighted(INJURY_TYPES);
+          events.push({ min: rand(5, 89), type: 'injury', team, player: p, injuryType: type.id });
+          break;
+        }
+      }
+    };
+    tryInjury(homeClub, hXI, 'home');
+    tryInjury(awayClub, aXI, 'away');
 
     // Offsides (3-5 per match)
     for (let i = 0; i < rand(3, 5); i++) {
@@ -717,10 +817,21 @@ const ENGINE = (() => {
         if (seen.has(p.id)) return;
         const expiring = (p.contract || 4) <= 1 && !p.loyal;
         const wantsMove = !!p.transferListed;
-        const random = Math.random() < 0.05;
-        if (expiring || wantsMove || random) {
+        // High-OVR expiring players often get extended — not all appear on market
+        // OVR<70: always show if expiring; OVR70-80: 45% chance; OVR80+: 20% chance
+        const showExpiring = expiring && (p.ovr < 70 || Math.random() < (p.ovr < 80 ? 0.45 : 0.20));
+        // Random listing: lower-league players appear more often (they move more)
+        // OVR<55=18%, 55-60=10%, 60-65=4%, 65-70=1.5%, 70-75=0.4%, 75+=0.1%
+        const randomChance = p.ovr < 55
+          ? 0.18
+          : Math.max(0.001, 0.10 * Math.pow(0.80, Math.max(0, p.ovr - 55)));
+        const random = !expiring && !wantsMove && Math.random() < randomChance;
+        if (showExpiring || wantsMove || random) {
           seen.add(p.id);
-          listed.push({ ...p, clubId: club.id, clubName: club.name, expiring, wantsMove });
+          // ±15% price noise so not all players show the same round value
+          const priceMult = 0.85 + Math.random() * 0.30;
+          const displayValue = Math.max(0.01, Math.round(p.value * priceMult * 100) / 100);
+          listed.push({ ...p, value: displayValue, trueValue: p.value, clubId: club.id, clubName: club.name, expiring, wantsMove });
         }
       });
     });
@@ -736,18 +847,20 @@ const ENGINE = (() => {
      A negotiation has two phases: agree a fee with the selling club, then
      agree personal terms (wages) with the player. Fees are in £m, wages £k/wk. */
   function startNegotiation(player, sellerClub) {
-    // Show market value as the listed price; minFee gives real room to negotiate.
     const youngBoost = player.age <= 23 ? 0.06 : 0;
     const potBoost = (player.pot - player.ovr) >= 8 ? 0.04 : 0;
     const repBoost = (sellerClub.rep >= 4 && player.ovr >= 80) ? 0.04 : 0;
-    const minMult = Math.max(0.68, 0.72 + youngBoost + potBoost + repBoost + rand(0, 8) / 100);
+    // Club asks 12-20% above market; won't accept below 82-93% of value
+    const asking = Math.round(player.value * (1.12 + rand(0, 8) / 100) * 10) / 10;
+    const minMult = Math.max(0.82, 0.87 + youngBoost + potBoost + repBoost + rand(0, 6) / 100);
     const minFee = Math.max(0.1, Math.round(player.value * minMult * 10) / 10);
-    const wageDemand = Math.max(5, Math.round(player.wage * (1.10 + rand(3, 20) / 100)));
+    // Player wants 20-40% more than current wage
+    const wageDemand = Math.max(0.5, Math.round(player.wage * (1.25 + rand(3, 20) / 100) * 10) / 10);
     return {
-      asking: player.value,
+      asking,
       minFee,
       wageDemand,
-      minWage: Math.max(5, Math.round(wageDemand * 0.88)),
+      minWage: Math.max(0.5, Math.round(wageDemand * 0.92 * 10) / 10),
       feeRound: 0,
       wageRound: 0,
     };
@@ -756,8 +869,8 @@ const ENGINE = (() => {
   function evaluateFeeOffer(neg, offer) {
     neg.feeRound++;
     if (offer >= neg.minFee) return { decision: 'accept' };
-    if (neg.feeRound >= 6) return { decision: 'walk' };
-    if (offer >= neg.minFee * 0.62) {
+    if (neg.feeRound >= 4) return { decision: 'walk' };
+    if (offer >= neg.minFee * 0.78) {
       const midpoint = (neg.asking + neg.minFee) / 2;
       const counter = Math.max(neg.minFee, Math.round(((offer + midpoint) / 2) * 10) / 10);
       neg.asking = counter;
@@ -769,9 +882,9 @@ const ENGINE = (() => {
   function evaluateWageOffer(neg, offer) {
     neg.wageRound++;
     if (offer >= neg.minWage) return { decision: 'accept' };
-    if (neg.wageRound >= 6) return { decision: 'walk' };
-    if (offer >= neg.minWage * 0.65) {
-      const counter = Math.max(neg.minWage, Math.round(offer * 0.4 + neg.wageDemand * 0.6));
+    if (neg.wageRound >= 4) return { decision: 'walk' };
+    if (offer >= neg.minWage * 0.78) {
+      const counter = Math.max(neg.minWage, Math.round(offer * 0.35 + neg.wageDemand * 0.65));
       neg.wageDemand = counter;
       return { decision: 'counter', counter };
     }
@@ -786,7 +899,7 @@ const ENGINE = (() => {
     getTransferMarket, isTransferWindowOpen,
     startNegotiation, evaluateFeeOffer, evaluateWageOffer,
     buildCustomFormation, deriveAITactics, FORM_ATTRS, PRESS_PRESET, STYLE_ATK,
-    oopFactor, posGroup,
+    oopFactor, posGroup, INJURY_TYPES,
   };
 
 })();

@@ -35,9 +35,9 @@ const APP = (() => {
   };
 
   const SCOUT_TIERS = [
-    { level: 1, label: 'Basic',    hireCost: 0.2, weeklyWage:  5, reportEvery: 4, findMin: 2, findMax: 3,  ovrNoise: 8, desc: 'Limited range, rough assessments' },
-    { level: 2, label: 'Standard', hireCost: 0.5, weeklyWage: 12, reportEvery: 3, findMin: 4, findMax: 6,  ovrNoise: 3, desc: 'Good coverage, reliable reports' },
-    { level: 3, label: 'Elite',    hireCost: 1.2, weeklyWage: 25, reportEvery: 2, findMin: 7, findMax: 11, ovrNoise: 1, desc: 'Global reach, precise assessments' },
+    { level: 1, label: 'Basic',    hireCost: 0.2, weeklyWage:  5, reportEvery: 6, findMin: 1, findMax: 1, ovrNoise: 10, potNoise: 15, desc: 'Limited range, rough assessments' },
+    { level: 2, label: 'Standard', hireCost: 0.5, weeklyWage: 12, reportEvery: 5, findMin: 1, findMax: 2, ovrNoise:  4, potNoise:  6, desc: 'Good coverage, reliable reports' },
+    { level: 3, label: 'Elite',    hireCost: 1.2, weeklyWage: 25, reportEvery: 4, findMin: 2, findMax: 3, ovrNoise:  1, potNoise:  2, desc: 'Global reach, precise assessments' },
   ];
 
   const COUNTRY_LEAGUES = [
@@ -49,6 +49,51 @@ const APP = (() => {
   ];
 
   const KO_DATE = new Date(2026, 1, 17);   // European knockout resolves after this
+
+  const INJURY_TYPES = ENGINE.INJURY_TYPES;
+  const FITNESS_DRAIN_STARTER = 13;   // fitness lost per match for starters
+  const FITNESS_DRAIN_SUB     = 7;    // fitness lost for players who came on as subs
+  const FITNESS_RECOVER_REST  = 5;    // fitness gained by bench players per match
+  const FITNESS_RECOVER_WEEK  = 10;   // fitness recovered per week of rest
+
+  /* ----- FINANCIAL CONSTANTS ----- */
+  // TV broadcast: equal share per club, identical for every club in the same division.
+  // Indexed by league level: 1=PL, 2=Championship, 3=L1, 4=L2, 5=National League.
+  const FIN_TV_LEAGUE    = [0, 95, 8.5, 1.6, 1.0, 0.4];   // £m/season equal share
+  const FIN_MATCHDAY_LEAGUE = [0, 32, 9, 2.8, 1.1, 0.35]; // £m/season gate income at standard prices, by league level
+  const FIN_STADIUM_MULT = [0, 0.55, 0.75, 1.0, 1.35, 1.8]; // fanbase/stadium size multiplier by club rep
+  const FIN_INIT_BAL    = [0,  0.3,  2,  10,   40, 100];  // starting bank balance £m
+  const FIN_BASE_GRANT  = [0,  0.3,  2,   8,   30,  80];  // base board transfer grant £m
+  // Merit payments: end-of-season TV merit money by final league position (level 1 values, scaled down per level)
+  const PRIZE_BY_POS    = [56,53,50,47,44,41,38,35,32,29,26,23,20,17,14,11,8,6,4,3];
+  const PRIZE_LEVEL_MULT= [1, 0.06, 0.015, 0.005, 0.0012];
+  // Ticket pricing tiers. attEffect = attendance change; fans in lower leagues are more price-sensitive.
+  const TICKET_TIERS = {
+    cheap:    { label: 'Cheap',    mult: 0.75, attEffect: +0.10, desc: 'Low prices — packed stands, less income, fans love it.' },
+    standard: { label: 'Standard', mult: 1.00, attEffect:  0,    desc: 'Balanced pricing — steady income and attendance.' },
+    high:     { label: 'High',     mult: 1.25, attEffect: -0.06, desc: 'Pricey — more income per fan, some empty seats.' },
+    premium:  { label: 'Premium',  mult: 1.50, attEffect: -0.14, desc: 'Top prices — maximum yield, attendance suffers (risky in lower leagues).' },
+  };
+  function ticketTier(fin) {
+    const key = fin?.ticketPricing === 'budget' ? 'cheap' : (fin?.ticketPricing || 'standard');
+    return TICKET_TIERS[key] ? { key, ...TICKET_TIERS[key] } : { key: 'standard', ...TICKET_TIERS.standard };
+  }
+  function leagueLevel(club) { return DATA.LEAGUES[club.league]?.level || 1; }
+  // Effective matchday revenue multiplier for a tier: price × attendance response (stronger in lower leagues)
+  function ticketRevenueMult(tierKey, level) {
+    const t = TICKET_TIERS[tierKey] || TICKET_TIERS.standard;
+    const elasticity = 1 + (level - 1) * 0.35;
+    return t.mult * Math.max(0.4, 1 + t.attEffect * elasticity);
+  }
+  function matchdayBase(club) { // £m per season at standard prices
+    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
+    return FIN_MATCHDAY_LEAGUE[leagueLevel(club)] * FIN_STADIUM_MULT[rep];
+  }
+  const SPONSORS = [
+    { tier:1, names:['RegioMedia','CityFit Gym','LocalBank','TownBrew','MetroGas','CoastAir'] },
+    { tier:2, names:['SportsBet Online','NationWide Auto','TelecomPlus','Premier Foods','BritAir','HealthFirst'] },
+    { tier:3, names:['GlobalTech Corp','MegaAuto Group','Pinnacle Finance','CryptoX Global','AeroLine Intl','Nexus Energy'] },
+  ];
 
   /* ---------------------------------------------
      UTIL
@@ -254,6 +299,10 @@ const APP = (() => {
         ${crestURL(c) ? `<div class="club-card-badge crest">${crestImg(c)}</div>` : `<div class="club-card-badge" style="background:${hex(c.color)};color:${textOn(c.color)}">${DATA.getInitials(c.name)}</div>`}
         <div class="club-card-name">${esc(c.name)}</div>
         <div class="club-card-rep">${repStars(c.rep)}</div>
+        <div class="club-card-stats">
+          <span class="club-card-stat"><span class="ccs-label">OVR</span><span class="ccs-val">${c.sqRating}</span></span>
+          <span class="club-card-stat"><span class="ccs-label">Wage</span><span class="ccs-val">${money(c.wage)}/wk</span></span>
+        </div>
       </div>`).join('') || `<div class="empty-state"><div class="empty-state-text">No clubs found</div></div>`;
 
     grid.querySelectorAll('.club-card').forEach(card => {
@@ -268,8 +317,7 @@ const APP = (() => {
     setBadgeEl($('confirm-badge'), c);
     $('confirm-name').textContent = c.name;
     $('confirm-league').textContent = league.name + ' · ' + league.country;
-    $('confirm-rep').innerHTML = repStars(c.rep);
-    $('confirm-budget').textContent = money(c.budget);
+    $('confirm-rep-stars').innerHTML = repStars(c.rep);
     $('confirm-wage').textContent = money(c.wage) + '/wk';
     $('confirm-rating').textContent = c.sqRating;
     $('club-selector-panel').classList.add('hidden');
@@ -288,24 +336,28 @@ const APP = (() => {
       myClubId: clubId,
       myClub: clubs[clubId],
       slotId: ui.pendingSlotId || 'career_1',
-      currentDate: new Date(2025, 7, 9),
+      currentDate: new Date(2025, 6, 1), // start in July pre-season
       fixtures: [],
       transferLog: [],
       season: 1,
+      preseason: true,
+      sacked: false,
+      pendingOffers: [],
       tactics: { formation: '4-3-3', mentality: 'balanced', pressing: 'medium', style: 'balanced', lineup: [], customFormation: null, excluded: [] },
       scouts: [],
       scoutBlocked: {},
+      inbox: [],
+      finances: null,
+      freeAgents: [],
+      preContracts: [],
     };
+    gameState.finances = initFinances(clubs[clubId]);
 
-    ENGINE.setupEuropean(gameState);
-    ENGINE.setupCups(gameState);
-    Object.values(gameState.european).forEach(comp => comp.koDate = KO_DATE);
-    gameState.fixtures = ENGINE.generateSchedule(gameState);
     gameState.tactics.lineup = autoPickXI(gameState.myClub, gameState.tactics.formation);
     gameState.market = ENGINE.getTransferMarket(gameState);
-    setBoardObjective(gameState);
+    gameState.freeAgents = DATA.generateFreeAgents(14);
     ui.tableLeague = gameState.myClub.league;
-    ui.euroTab = gameState.myEuropeanComp || 'champions_league';
+    ui.euroTab = 'champions_league';
 
     initGameChrome();
     showScreen('game');
@@ -317,7 +369,7 @@ const APP = (() => {
   let autoSaveInterval = null;
   function setAutoSaveRunning(on) {
     clearInterval(autoSaveInterval);
-    autoSaveInterval = on ? setInterval(autoSave, 1000) : null;
+    autoSaveInterval = on ? setInterval(autoSave, 30000) : null;
   }
   function initGameChrome() {
     setAutoSaveRunning(true);
@@ -330,11 +382,19 @@ const APP = (() => {
       $('btn-simulate').addEventListener('click', () => runSimulation());
       $('btn-halftime').addEventListener('click', () => {
         if (!ui.match) return;
+        applyHalftimeChanges();
+        $('halftime-panel').classList.add('hidden');
+        $('match-events-inner').classList.remove('hidden');
         $('btn-halftime').classList.add('hidden');
         $('btn-pause').classList.remove('hidden');
         $('btn-speed').classList.remove('hidden');
+        $('btn-subs').classList.remove('hidden');
         running = false;
         runSimulation();
+      });
+      $('btn-subs').addEventListener('click', () => {
+        if (!ui.match) return;
+        showSubsModal();
       });
       $('btn-pause').addEventListener('click', () => {
         if (!ui.match) return;
@@ -353,11 +413,22 @@ const APP = (() => {
         ui.match.speed = ui.match.speed === 2 ? 1 : 2;
         $('btn-speed').textContent = ui.match.speed === 2 ? '1×' : '2×';
         $('btn-speed').classList.toggle('active', ui.match.speed === 2);
+        if (ui.match.simTimer && ui.match.tick) {
+          clearTimeout(ui.match.simTimer);
+          ui.match.simTimer = setTimeout(ui.match.tick, ui.match.speed === 2 ? 500 : 1000);
+        }
       });
       $('btn-continue-after-match').addEventListener('click', advanceAfterMatch);
 
-      // Save / Main-menu controls injected into the sidebar footer
+      // Inject balance + board confidence into sidebar
       const sb = document.querySelector('.sidebar-bottom');
+      const finInfo = document.createElement('div');
+      finInfo.style.cssText = 'margin-bottom:6px';
+      finInfo.innerHTML = `
+        <div class="sb-budget-block"><span class="sb-budget-label">Club Balance</span><span id="sb-balance" class="sb-budget-val">—</span></div>
+        <div class="sb-budget-block" style="margin-top:3px"><span class="sb-budget-label">Board Confidence</span><span id="sb-confidence" class="sb-budget-val" style="color:var(--accent-gold)">—</span></div>`;
+      sb.insertBefore(finInfo, sb.firstChild);
+      // Save / Main-menu controls
       const actions = document.createElement('div');
       actions.style.cssText = 'display:flex;gap:6px;margin-top:4px';
       actions.innerHTML = `
@@ -371,18 +442,34 @@ const APP = (() => {
     }
     const c = gameState.myClub;
     setBadgeEl($('sb-badge'), c);
-    $('sb-club-name').textContent = c.shortName;
+    $('sb-club-name').textContent = c.name;
     $('sb-league-name').textContent = DATA.LEAGUES[c.league].name;
     const col = hex(c.color);
     $('sb-badge').style.boxShadow = `0 4px 16px ${col}40`;
   }
 
+  function recalcSqRating(club) {
+    if (!club || !club.players || !club.players.length) return;
+    club.sqRating = Math.round(club.players.reduce((s, p) => s + (p.ovr || 60), 0) / club.players.length);
+  }
+
   function updateSidebar() {
     const d = gameState.currentDate;
     $('sb-date').textContent = MONTHS_SHORT[d.getMonth()] + ' ' + d.getFullYear();
-    $('sb-budget').textContent = money(gameState.myClub.budget);
     const pos = ENGINE.getMyPosition(gameState);
     $('sb-position').textContent = pos ? ordinal(pos) : '—';
+    const fin = gameState.finances;
+    const balEl = $('sb-balance');
+    if (balEl && fin) {
+      balEl.textContent = money(fin.balance);
+      balEl.style.color = fin.balance >= 0 ? 'var(--accent)' : 'var(--accent-red)';
+    }
+    const hapEl = $('sb-confidence');
+    if (hapEl && fin) {
+      const h = fin.boardConfidence;
+      hapEl.textContent = h + '%';
+      hapEl.style.color = h >= 70 ? 'var(--accent)' : h >= 40 ? 'var(--accent-gold)' : 'var(--accent-red)';
+    }
   }
 
   function ordinal(n) {
@@ -410,7 +497,8 @@ const APP = (() => {
     const form = typeof formationKey === 'object'
       ? formationKey
       : (DATA.FORMATIONS[formationKey] || DATA.FORMATIONS['4-3-3']);
-    const excluded = new Set(excludedIds);
+    const injured = new Set(club.players.filter(p => p.injured).map(p => p.id));
+    const excluded = new Set([...excludedIds, ...injured]);
     const used = new Set();
     const xi = [];
     form.positions.forEach(slot => {
@@ -437,6 +525,7 @@ const APP = (() => {
         dashboard: renderDashboard, squad: renderSquad, tactics: renderTactics,
         fixtures: renderFixtures, table: renderTable, transfers: renderTransfers,
         european: renderEuropean, finances: renderFinances, scout: renderScout,
+        season_review: renderSeasonReview,
       }[v] || renderDashboard);
       renderer(m);
     } catch (err) {
@@ -456,6 +545,51 @@ const APP = (() => {
     const pos = ENGINE.getMyPosition(gameState);
     const next = ENGINE.getNextFixture(gameState);
 
+    if (gameState.preseason) {
+      const d = gameState.currentDate;
+      const seasonYear = 2025 + gameState.season - 1;
+      const seasonStart = new Date(seasonYear, 7, 9);
+      const daysLeft = Math.max(0, Math.round((seasonStart - d) / 86400000));
+      const canStart = d >= seasonStart;
+      const isSacked = gameState.sacked;
+      const sackedBanner = isSacked ? `<div class="sacked-banner" style="margin-bottom:14px"><span class="sacked-banner-icon">✗</span><div><div class="sacked-banner-title">Contract Terminated</div><div class="sacked-banner-msg">You have been sacked. You may browse the club but cannot progress.</div></div></div>` : '';
+      m.innerHTML = `
+        <div class="view-header">
+          <div><div class="view-title">Pre-Season</div><div class="view-subtitle">${esc(club.name)} · Season ${gameState.season}</div></div>
+        </div>
+        ${sackedBanner}
+        <div class="next-match-card" style="text-align:center">
+          <div class="next-match-header" style="justify-content:center">
+            <span class="next-match-comp" style="font-size:13px;letter-spacing:1px">SUMMER TRANSFER WINDOW OPEN</span>
+          </div>
+          <div style="margin:18px 0">
+            <div class="stat-big" style="font-size:36px">${canStart ? 'Ready!' : daysLeft + ' days'}</div>
+            <div class="stat-label">${canStart ? 'Season is ready to begin' : 'until season ' + gameState.season + ' kicks off'}</div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:18px">${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}</div>
+          <div class="nm-actions" style="gap:10px">
+            ${isSacked
+              ? `<button class="btn-secondary btn-lg" id="sr-menu" style="flex:1">Return to Main Menu</button>`
+              : canStart
+                ? `<button class="btn-primary btn-lg" id="dash-begin-season" style="flex:1">▶ Begin Season ${gameState.season}</button>`
+                : `<button class="btn-secondary btn-lg" id="dash-advance-week" style="flex:1">⏩ Advance One Week</button>`
+            }
+          </div>
+        </div>
+        <div class="dashboard-grid-2">
+          <div class="card"><div class="card-title">Squad Value</div><div class="stat-big" style="font-size:24px">${money(club.players.reduce((s, p) => s + p.value, 0))}</div><div class="stat-label">${club.players.length} players</div></div>
+          <div class="card"><div class="card-title">Club Balance</div><div class="stat-big" style="font-size:24px">${money(gameState.finances?.balance ?? club.budget)}</div><div class="stat-label">Available to spend</div></div>
+        </div>`;
+      if (isSacked) {
+        m.querySelector('#sr-menu').addEventListener('click', () => { setAutoSaveRunning(false); gameState = null; showScreen('start'); });
+      } else if (canStart) {
+        m.querySelector('#dash-begin-season').addEventListener('click', beginSeasonFromPreseason);
+      } else {
+        m.querySelector('#dash-advance-week').addEventListener('click', advancePreseasonWeek);
+      }
+      return;
+    }
+
     let nextHtml = '';
     if (next) {
       const home = gameState.clubs[next.home], away = gameState.clubs[next.away];
@@ -467,25 +601,55 @@ const APP = (() => {
             <span class="next-match-date">${fmtDate(next.date)}</span>
           </div>
           <div class="next-match-teams">
-            <div class="nm-team">${badge(home,'nm-badge')}<span class="nm-name">${esc(home.shortName)}</span><span class="nm-rating">OVR ${home.sqRating}</span></div>
+            <div class="nm-team">${badge(home,'nm-badge')}<span class="nm-name">${esc(home.name)}</span><span class="nm-rating">OVR ${home.sqRating}</span></div>
             <div class="nm-vs">VS</div>
-            <div class="nm-team">${badge(away,'nm-badge')}<span class="nm-name">${esc(away.shortName)}</span><span class="nm-rating">OVR ${away.sqRating}</span></div>
+            <div class="nm-team">${badge(away,'nm-badge')}<span class="nm-name">${esc(away.name)}</span><span class="nm-rating">OVR ${away.sqRating}</span></div>
           </div>
           <div class="nm-venue">${myIsHome ? 'Home fixture' : 'Away fixture'}</div>
-          <div class="nm-actions"><button class="btn-primary btn-lg" id="dash-play" style="flex:1">▶ Play Match</button></div>
+          <div class="nm-actions">${gameState.sacked
+            ? `<button class="btn-secondary btn-lg" style="flex:1;opacity:0.5;cursor:not-allowed" disabled>▶ Play Match</button>
+               <button class="btn-gold btn-lg" id="dash-return-menu">Return to Menu</button>`
+            : `<button class="btn-primary btn-lg" id="dash-play" style="flex:1">▶ Play Match</button>`
+          }</div>
         </div>`;
     } else {
       nextHtml = `<div class="next-match-card"><div class="empty-state"><div class="empty-state-text">Season complete — no fixtures remaining.</div></div></div>`;
     }
 
     const topScorer = [...club.players].sort((a, b) => b.goals - a.goals)[0];
+    const inbox = gameState.inbox || [];
+    const unreadCount = inbox.filter(x => !x.read).length;
+    const inboxTypeIcon = { transfer_request: '↑', contract_expiry: '⚠', club_news: '◈' };
+
+    const inboxHtml = inbox.length === 0 ? '' : `
+      <div class="card inbox-card">
+        <div class="inbox-header">
+          <div class="card-title">Inbox</div>
+          ${unreadCount > 0 ? `<span class="inbox-unread-badge">${unreadCount}</span>` : ''}
+        </div>
+        ${inbox.slice(0, 5).map(msg => `
+          <div class="inbox-msg ${msg.read ? '' : 'unread'} ${msg.type}" data-msgid="${msg.id}">
+            <span class="inbox-msg-icon">${inboxTypeIcon[msg.type] || '●'}</span>
+            <div class="inbox-msg-body">
+              <div class="inbox-msg-title">${esc(msg.title)}</div>
+              <div class="inbox-msg-sub">${esc(msg.body)}</div>
+              <div class="inbox-msg-date">${msg.date}</div>
+            </div>
+            <div class="inbox-msg-actions">
+              ${msg.playerId ? `<button class="btn-secondary btn-sm inbox-view-btn" data-pid="${msg.playerId}">View</button>` : ''}
+              <button class="btn-secondary btn-sm inbox-dismiss-btn" data-msgid="${msg.id}">✕</button>
+            </div>
+          </div>`).join('')}
+        ${inbox.length > 5 ? `<div class="inbox-more">+${inbox.length - 5} older messages</div>` : ''}
+      </div>`;
 
     m.innerHTML = `
       <div class="view-header">
-        <div><div class="view-title">Dashboard</div><div class="view-subtitle">${esc(club.name)} · Season ${gameState.season}</div></div>
+        <div><div class="view-title">Dashboard</div><div class="view-subtitle">${esc(club.name)} · Season ${gameState.season}</div><div class="view-rep-stars">${repStars(club.rep)}</div></div>
         <div class="form-guide">${formGuide(club.form)}</div>
       </div>
       ${nextHtml}
+      ${inboxHtml}
       <div class="dashboard-grid">
         <div class="card"><div class="card-title">League Position</div><div class="stat-big">${pos ? ordinal(pos) : '—'}</div><div class="stat-label">${DATA.LEAGUES[club.league].name}</div></div>
         <div class="card"><div class="card-title">Points</div><div class="stat-big">${ts.points}</div><div class="stat-label">${ts.played} played · ${ts.won}W ${ts.drawn}D ${ts.lost}L</div></div>
@@ -513,12 +677,28 @@ const APP = (() => {
           ${topScorer && topScorer.goals > 0
             ? `<div class="stat-big">${topScorer.goals}</div><div class="stat-label">${esc(topScorer.name)} · ${topScorer.assists} assists</div>`
             : `<div class="stat-label">No goals scored yet.</div>`}
-          <div class="card-title" style="margin-top:18px">Transfer Budget</div>
-          <div class="stat-big" style="font-size:26px">${money(club.budget)}</div>
+          <div class="card-title" style="margin-top:18px">Club Balance</div>
+          <div class="stat-big" style="font-size:26px">${money(gameState.finances?.balance ?? club.budget)}</div>
         </div>
       </div>`;
 
-    if (next) $('dash-play').addEventListener('click', playNextMatch);
+    if (next && !gameState.sacked) $('dash-play')?.addEventListener('click', playNextMatch);
+    if (gameState.sacked) $('dash-return-menu')?.addEventListener('click', () => { setAutoSaveRunning(false); gameState = null; showScreen('start'); });
+
+    // Inbox interactions
+    m.querySelectorAll('.inbox-msg').forEach(el => {
+      const msg = inbox.find(x => x.id === el.dataset.msgid);
+      if (msg) msg.read = true;
+    });
+    m.querySelectorAll('.inbox-dismiss-btn').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      gameState.inbox = (gameState.inbox || []).filter(x => x.id !== btn.dataset.msgid);
+      renderDashboard(m);
+    }));
+    m.querySelectorAll('.inbox-view-btn').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showPlayerModal(btn.dataset.pid);
+    }));
   }
 
   function gd(ts) { return ts.gf - ts.ga; }
@@ -533,7 +713,7 @@ const APP = (() => {
       const opp = gameState.clubs[r.opp];
       const res = r.gf > r.ga ? 'W' : r.gf === r.ga ? 'D' : 'L';
       return `<div class="result-item">
-        <div class="result-teams-mini">${badge(opp,'table-badge')}<span>${r.home ? 'vs' : '@'} ${esc(opp.shortName)}</span></div>
+        <div class="result-teams-mini">${badge(opp,'table-badge')}<span>${r.home ? 'vs' : '@'} ${esc(opp.name)}</span></div>
         <span class="result-score-mini ${res}">${r.gf} – ${r.ga}</span></div>`;
     }).join('');
   }
@@ -563,14 +743,20 @@ const APP = (() => {
           <th>#</th>
           <th class="sortable" data-s="name">Name</th>
           <th>Pos</th>
-          <th class="sortable" data-s="ovr">OVR</th>
-          <th class="sortable" data-s="age">Age</th>
-          <th class="sortable" data-s="goals">Gls</th>
-          <th>Ast</th><th>Apps</th>
-          <th class="sortable" data-s="value">Value</th>
+          <th class="sortable th-c" data-s="ovr">OVR</th>
+          <th class="sortable th-c" data-s="age">Age</th>
+          <th class="sortable th-c" data-s="goals">Gls</th>
+          <th class="th-c">Ast</th><th class="th-c">Apps</th>
+          <th class="th-c">Fitness</th>
         </tr></thead>
-        <tbody>${players.map((p, i) => `
-          <tr data-id="${p.id}">
+        <tbody>${players.map((p, i) => {
+          const fit = p.fitness ?? 80;
+          const fitCls = fit >= 80 ? 'fit-high' : fit >= 55 ? 'fit-mid' : fit >= 30 ? 'fit-low' : 'fit-critical';
+          const statusCell = p.injured
+            ? (() => { const inj = INJURY_TYPES.find(t => t.id === p.injuryType); return `<span class="inj-badge inj-${inj?.severity || 'minor'}">${inj?.label || 'Injured'} ${p.injuryWeeks}w</span>`; })()
+            : `<div class="fit-bar-wrap"><div class="fit-bar ${fitCls}" style="width:${fit}%"></div></div>`;
+          return `
+          <tr data-id="${p.id}" class="${p.injured ? 'row-injured' : ''}">
             <td class="player-num">${i + 1}</td>
             <td class="player-name-cell">${esc(p.name)}<span class="player-nat">${esc(p.nationality)}</span></td>
             <td><span class="pos-badge ${posClass(p.pos)}">${p.pos}</span></td>
@@ -579,8 +765,9 @@ const APP = (() => {
             <td class="stat-mini">${p.goals}</td>
             <td class="stat-mini">${p.assists}</td>
             <td class="stat-mini">${p.appearances}</td>
-            <td class="value-cell">${money(p.value)}</td>
-          </tr>`).join('')}</tbody>
+            <td>${statusCell}</td>
+          </tr>`;
+        }).join('')}</tbody>
       </table>`;
 
     m.querySelectorAll('.squad-filter-btn').forEach(b => b.addEventListener('click', () => { ui.squadFilter = b.dataset.f; renderSquad(m); }));
@@ -624,9 +811,17 @@ const APP = (() => {
         <div class="pitch-player-circle empty-slot">${slot.pos}</div></div>`;
       const sel = swapSel === p.id ? ' swap-sel' : '';
       const dim = swapMode && swapSel && swapSel !== p.id ? ' swap-dim' : '';
-      return `<div class="pitch-player${sel}${dim}" data-id="${p.id}" style="left:${slot.x}%;top:${slot.y}%">
-        <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}">${p.ovr}</div>
-        <div class="pitch-player-name">${esc(p.lastName)}</div></div>`;
+      const oopF  = ENGINE.oopFactor(p.pos, slot.pos);
+      const oopLvl = oopF >= 1.0 ? '' : oopF >= 0.88 ? 'oop-minor' : oopF >= 0.70 ? 'oop-moderate' : oopF >= 0.48 ? 'oop-severe' : 'oop-extreme';
+      const oopCls = oopLvl ? ` ${oopLvl}` : '';
+      const effOvr  = oopLvl ? Math.round(p.ovr * oopF) : p.ovr;
+      const oopTag  = oopLvl
+        ? `<div class="pitch-player-oop ${oopLvl}">${slot.pos} &minus;${Math.round((1 - oopF) * 100)}%</div>`
+        : '';
+      return `<div class="pitch-player${sel}${dim}${oopCls}" data-id="${p.id}" style="left:${slot.x}%;top:${slot.y}%">
+        <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}${oopCls}" title="${p.name} (${p.pos}) playing ${slot.pos} · effective OVR ${effOvr}">${effOvr}</div>
+        <div class="pitch-player-name">${esc(p.lastName)}</div>
+        ${oopTag}</div>`;
     }).join('');
 
     const benchPlayers = club.players.filter(p => !lineupSet.has(p.id));
@@ -649,6 +844,7 @@ const APP = (() => {
         <div class="tactics-pitch-container">
           <div class="pitch-swap-bar">
             <span class="pitch-swap-hint">${swapHint}</span>
+            <button id="pitch-auto-xi-btn" class="btn-secondary">Auto XI</button>
             <button id="pitch-swap-btn" class="${swapMode ? 'btn-warning' : 'btn-secondary'}">${swapMode ? 'Cancel' : 'Swap'}</button>
           </div>
           <div class="tactics-pitch">
@@ -658,7 +854,6 @@ const APP = (() => {
             </div>
             ${pitchPlayers}
           </div>
-          <div class="bench-row">${benchChips || '<span class="bench-empty">No bench players</span>'}</div>
         </div>
         <div class="tactics-options-panel">
           <div class="tac-inner-tab-row">
@@ -668,6 +863,17 @@ const APP = (() => {
           <div id="tac-inner-body"></div>
         </div>
       </div>`;
+
+    // Inner tab buttons (Tactics / Squad)
+    m.querySelectorAll('.tac-inner-tab-btn').forEach(btn => btn.addEventListener('click', () => {
+      ui.tacticsTab = btn.dataset.inner; renderTactics(m);
+    }));
+
+    // Auto XI button
+    $('pitch-auto-xi-btn').addEventListener('click', () => {
+      tac.excluded = []; tac.lineup = autoPickXI(club, activeTacticForm(), []);
+      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
+    });
 
     // Swap button
     $('pitch-swap-btn').addEventListener('click', () => {
@@ -693,7 +899,6 @@ const APP = (() => {
     }
 
     m.querySelectorAll('.pitch-player:not(.pitch-empty)').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
-    m.querySelectorAll('.bench-chip').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
     m.querySelectorAll('.pitch-empty').forEach(el => el.addEventListener('click', () => {
       if (!ui.swapSel) return;
       const slot = parseInt(el.dataset.slot);
@@ -790,7 +995,7 @@ const APP = (() => {
             <div class="scout-opp-row">
               ${badge(opp, 'scout-badge')}
               <div class="scout-opp-info">
-                <span class="scout-opp-name">${esc(opp.shortName)}</span>
+                <span class="scout-opp-name">${esc(opp.name)}</span>
                 <div class="scout-form">${formDots || '<span style="font-size:10px;color:var(--text-muted)">No data</span>'}</div>
               </div>
               <div class="scout-ovr-block"><span class="scout-ovr-val">${opp.sqRating}</span><span class="scout-ovr-label">OVR</span></div>
@@ -888,6 +1093,7 @@ const APP = (() => {
     const filterKey = ui.tacSquadFilter || 'all';
     const sortKey   = ui.tacSquadSort   || 'ovr';
     const filters = [['all','All'],['GK','GK'],['DEF','DEF'],['MID','MID'],['ATT','ATT']];
+    const swapSel = ui.swapSel || null;
 
     let players = [...club.players];
     if (filterKey !== 'all') players = players.filter(p => group(p.pos) === filterKey);
@@ -898,23 +1104,34 @@ const APP = (() => {
     const rows = players.map(p => {
       const inXI = lineupSet.has(p.id);
       const isExcluded = excluded.has(p.id);
+      const isSel = swapSel === p.id;
       const slotPos = slotMap[p.id];
-      const isOOP = inXI && slotPos && ENGINE.posGroup(p.pos) !== ENGINE.posGroup(slotPos) && slotPos !== p.pos;
-      const oopF = isOOP ? ENGINE.oopFactor(p.pos, slotPos) : 1.0;
-      const oopBadge = isOOP ? `<span class="oop-badge">${Math.round(oopF*100)}%</span>` : '';
+      const oopF    = inXI && slotPos ? ENGINE.oopFactor(p.pos, slotPos) : 1.0;
+      const isOOP   = oopF < 1.0;
+      const oopLvl  = !isOOP ? '' : oopF >= 0.88 ? 'oop-badge-minor' : oopF >= 0.70 ? 'oop-badge-moderate' : oopF >= 0.48 ? 'oop-badge-severe' : 'oop-badge-extreme';
+      const oopBadge = isOOP ? `<span class="oop-badge ${oopLvl}" title="Playing ${slotPos}, effective OVR ${Math.round(p.ovr * oopF)}">${slotPos} &minus;${Math.round((1 - oopF) * 100)}%</span>` : '';
       const potStr = p.pot > p.ovr ? `<span class="squad-pot">${p.pot}↑</span>` : '';
-      let cbClass = inXI ? 'checked' : (isExcluded ? 'excluded-mark' : '');
-      return `<tr class="${inXI?'in-xi':''} ${isExcluded?'excluded':''}" data-pid="${p.id}">
-        <td><div class="tac-cb ${cbClass}" data-pid="${p.id}"></div></td>
+      const rowClass = [inXI ? 'in-xi' : '', isExcluded ? 'excluded' : '', isSel ? 'swap-sel-row' : ''].filter(Boolean).join(' ');
+      const fit = p.fitness ?? 80;
+      const fitCls = fit >= 80 ? 'fit-high' : fit >= 55 ? 'fit-mid' : fit >= 30 ? 'fit-low' : 'fit-critical';
+      const fitCell = p.injured
+        ? (() => { const inj = INJURY_TYPES.find(t => t.id === p.injuryType); return `<span class="inj-badge inj-${inj?.severity||'minor'}">${inj?.label||'Inj'} ${p.injuryWeeks}w</span>`; })()
+        : `<div class="fit-bar-wrap"><div class="fit-bar ${fitCls}" style="width:${fit}%"></div></div>`;
+      return `<tr class="${rowClass}" data-pid="${p.id}" data-inxi="${inXI?'1':''}" data-excl="${isExcluded?'1':''}">
         <td><span class="pos-badge ${posClass(p.pos)}">${p.pos}</span></td>
         <td class="player-name-cell">${esc(p.name)}<span class="player-nat">${esc(p.nationality)}</span></td>
         <td><span class="ovr-badge ${ovrClass(p.ovr)}">${p.ovr}</span>${potStr}${oopBadge}</td>
         <td class="stat-mini">${p.age}</td>
         <td class="stat-mini">${p.goals}</td>
         <td class="stat-mini">${p.assists}</td>
-        <td class="stat-mini">${p.appearances}</td>
+        <td class="stat-mini">${p.appearances || 0}</td>
+        <td>${fitCell}</td>
       </tr>`;
     }).join('');
+
+    const swapHint = swapSel
+      ? `<span class="tac-swap-hint">Now pick a bench player to swap in</span>`
+      : `<span class="tac-swap-hint muted">Click a starting player to swap them out</span>`;
 
     el.innerHTML = `
       <div class="tactics-section">
@@ -924,16 +1141,17 @@ const APP = (() => {
           <span style="font-size:11px;color:var(--text-muted)">${xiCount}/11</span>
           <button class="btn-secondary auto-xi-btn">Auto XI</button>
         </div>
+        ${swapHint}
         <table class="tac-squad-table">
           <thead><tr>
-            <th class="th-cb"></th>
             <th>Pos</th>
             <th class="sortable" data-s="name">Name</th>
             <th class="sortable" data-s="ovr">OVR</th>
             <th class="sortable" data-s="age">Age</th>
             <th class="sortable" data-s="goals">Gls</th>
-            <th>Ast</th>
-            <th>Apps</th>
+            <th class="sortable" data-s="assists">Ast</th>
+            <th class="sortable" data-s="appearances">Apps</th>
+            <th>Fitness</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -948,52 +1166,52 @@ const APP = (() => {
       ui.tacSquadSort = th.dataset.s; renderTacticsSquad(el, m, club, tac, activeForm, lineup, lineupSet, excluded, slotMap);
     }));
 
-    // Click on row → open player modal (but not when clicking checkbox)
-    el.querySelectorAll('tbody tr').forEach(row => row.addEventListener('click', (e) => {
-      if (e.target.closest('.tac-cb')) return;
-      showPlayerModal(row.dataset.pid);
-    }));
+    // Row clicks — swap-first then bench-second interaction
+    el.querySelectorAll('tbody tr').forEach(row => row.addEventListener('click', () => {
+      const pid = row.dataset.pid;
+      const inXI = row.dataset.inxi === '1';
+      const isExcl = row.dataset.excl === '1';
 
-    // Checkbox toggle
-    el.querySelectorAll('.tac-cb').forEach(cb => cb.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const pid = cb.dataset.pid;
-      const form = activeTacticForm();
-      const idx  = tac.lineup.indexOf(pid);
-      if (idx >= 0) {
-        tac.lineup.splice(idx, 1);
-        tac.excluded = [...new Set([...(tac.excluded || []), pid])];
-        const slotPos = form.positions[idx]?.pos;
-        const inXI = new Set(tac.lineup), excl = new Set(tac.excluded);
-        let best = null, bestScore = -1;
-        club.players.forEach(p => {
-          if (inXI.has(p.id) || excl.has(p.id)) return;
-          const sc = posScore(p.pos, slotPos) * 1000 + p.ovr;
-          if (sc > bestScore) { bestScore = sc; best = p; }
-        });
-        if (best) tac.lineup.splice(idx, 0, best.id);
-      } else if (excluded.has(pid)) {
-        tac.excluded = (tac.excluded || []).filter(id => id !== pid);
-        tac.lineup   = autoPickXI(club, form, tac.excluded);
-      } else {
-        const player = club.players.find(p => p.id === pid);
-        if (!player) return;
-        let worstIdx = 0, worstScore = Infinity;
-        form.positions.forEach((slot, i) => {
-          const cur = club.players.find(p => p.id === tac.lineup[i]);
-          const sc  = cur ? posScore(cur.pos, slot.pos) * 1000 + cur.ovr : 0;
-          if (sc < worstScore) { worstScore = sc; worstIdx = i; }
-        });
-        const displaced = tac.lineup[worstIdx];
-        tac.lineup[worstIdx] = pid;
-        if (displaced) tac.excluded = [...new Set([...(tac.excluded || []), displaced])];
+      if (inXI) {
+        // Toggle selection of this starting player
+        ui.swapSel  = (ui.swapSel === pid) ? null : pid;
+        ui.swapMode = !!ui.swapSel;
+        renderTacticsSquad(el, m, club, tac, activeForm, lineup, lineupSet, excluded, slotMap);
+        return;
       }
-      renderTactics(m);
+
+      if (isExcl) {
+        // Un-exclude so player becomes available on bench
+        tac.excluded = (tac.excluded || []).filter(id => id !== pid);
+        ui.swapSel = null; ui.swapMode = false;
+        renderTactics(m); return;
+      }
+
+      // Bench player — complete swap if one is selected
+      if (ui.swapSel) {
+        const fromIdx = tac.lineup.indexOf(ui.swapSel);
+        const toIdx   = tac.lineup.indexOf(pid);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          // Both in XI — swap positions
+          tac.lineup[fromIdx] = pid;
+          tac.lineup[toIdx]   = ui.swapSel;
+        } else if (fromIdx >= 0) {
+          // Bench player comes on, starter goes to bench
+          tac.lineup[fromIdx] = pid;
+          tac.excluded = (tac.excluded || []).filter(id => id !== pid);
+        }
+        ui.swapSel = null; ui.swapMode = false;
+        renderTactics(m); return;
+      }
+
+      // No swap pending — open player modal
+      showPlayerModal(pid);
     }));
 
     el.querySelector('.auto-xi-btn').addEventListener('click', () => {
       tac.excluded = [];
       tac.lineup   = autoPickXI(club, activeTacticForm(), []);
+      ui.swapSel = null; ui.swapMode = false;
       renderTactics(m);
     });
   }
@@ -1042,9 +1260,9 @@ const APP = (() => {
           <div class="fixture-date">${fmtDate(f.date)}</div>
           <div class="fixture-comp">${compName(f)}</div>
           <div class="fixture-teams">
-            <span class="fixture-team-name">${esc(home.shortName)}</span>
+            <span class="fixture-team-name">${esc(home.name)}</span>
             <span class="${scoreCls}">${scoreTxt}</span>
-            <span class="fixture-team-name">${esc(away.shortName)}</span>
+            <span class="fixture-team-name">${esc(away.name)}</span>
           </div>
           <div class="fixture-venue">${myIsHome ? 'H' : 'A'}</div>
         </div>`;
@@ -1113,16 +1331,18 @@ const APP = (() => {
     const _st = m.scrollTop;
     const open = ENGINE.isTransferWindowOpen(gameState);
     const club = gameState.myClub;
+    const offers = gameState.pendingOffers || [];
     const banner = open
       ? `<div class="tw-banner"><span class="tw-dot open-dot"></span> Transfer window is OPEN</div>`
       : `<div class="tw-banner closed"><span class="tw-dot closed-dot"></span> Transfer window is closed (opens Jul–Aug & Jan)</div>`;
 
+    const preContracts = gameState.preContracts || [];
     let listHtml;
     if (ui.transferTab === 'market') {
       let market = gameState.market || [];
       if (ui.transferSearch) market = market.filter(p => p.name.toLowerCase().includes(ui.transferSearch));
       if (ui.transferPos !== 'all') market = market.filter(p => group(p.pos) === ui.transferPos);
-      listHtml = market.slice(0, 80).map(p => `
+      listHtml = market.slice(0, 250).map(p => `
         <div class="transfer-player-item" data-buy="${p.id}" data-club="${p.clubId}">
           <span class="tp-pos pos-badge ${posClass(p.pos)}">${p.pos}</span>
           <div class="tp-info">
@@ -1131,23 +1351,87 @@ const APP = (() => {
           </div>
           <span class="tp-ovr">${p.ovr}</span><span class="tp-value">${money(p.value)}</span>
         </div>`).join('') || emptyList('No players match your filters.');
-    } else {
-      listHtml = [...club.players].sort((a, b) => b.ovr - a.ovr).map(p => `
-        <div class="transfer-player-item" data-sell="${p.id}">
+    } else if (ui.transferTab === 'free') {
+      const agents = gameState.freeAgents || [];
+      listHtml = agents.length
+        ? agents.map(p => `
+        <div class="transfer-player-item" data-fa="${p.id}">
           <span class="tp-pos pos-badge ${posClass(p.pos)}">${p.pos}</span>
-          <div class="tp-info"><div class="tp-name">${esc(p.name)}</div><div class="tp-club">Age ${p.age} · ${money(p.wage)}/wk wage</div></div>
-          <span class="tp-ovr">${p.ovr}</span><span class="tp-value">${money(p.value)}</span>
-        </div>`).join('');
+          <div class="tp-info">
+            <div class="tp-name">${esc(p.name)} <span class="tp-tag exp">Free</span></div>
+            <div class="tp-club">Age ${p.age} · No club</div>
+          </div>
+          <span class="tp-ovr">${p.ovr}</span><span class="tp-value">Free</span>
+        </div>`).join('')
+        : emptyList('No free agents available right now.');
+    } else if (ui.transferTab === 'presign') {
+      listHtml = preContracts.length
+        ? preContracts.map(pc => `
+        <div class="transfer-player-item">
+          <span class="tp-pos pos-badge ${posClass(pc.playerData.pos)}">${pc.playerData.pos}</span>
+          <div class="tp-info">
+            <div class="tp-name">${esc(pc.playerData.name)} <span class="tp-tag listed">Pre-contract</span></div>
+            <div class="tp-club">Age ${pc.playerData.age} · ${esc(pc.sellerName || 'Free Agent')} · Fee: ${pc.agreedFee > 0 ? money(pc.agreedFee) : 'Free'} · ${money(pc.agreedWage/1000)}/wk</div>
+          </div>
+          <span class="tp-ovr">${pc.playerData.ovr}</span>
+          <span class="tp-value text-accent">Activates next window</span>
+          <button class="btn-sm btn-secondary presign-cancel" data-pcid="${pc.id}">Cancel</button>
+        </div>`).join('')
+        : emptyList('No pre-contracts signed. During a closed window, pre-sign players from the transfer market to lock them in for the next window.');
+    } else if (ui.transferTab === 'offers') {
+      if (!offers.length) {
+        listHtml = emptyList(open ? 'No offers yet. List players for sale and wait for clubs to bid.' : 'Transfer window is closed — no incoming offers.');
+      } else {
+        listHtml = offers.map(o => `
+          <div class="transfer-player-item offer-item">
+            <span class="tp-pos pos-badge ${posClass(o.playerPos)}">${o.playerPos}</span>
+            <div class="tp-info">
+              <div class="tp-name">${esc(o.playerName)} <span class="tp-tag listed">Offer</span></div>
+              <div class="tp-club">${esc(o.clubName)} · ${o.date} · Market value ${money(o.marketValue || o.listingPrice)}</div>
+            </div>
+            <span class="tp-ovr">${o.playerOvr}</span>
+            <span class="tp-value text-gold">${money(o.fee)}</span>
+            <div class="offer-actions">
+              <button class="btn-primary btn-sm offer-accept" data-oid="${o.id}">Accept</button>
+              <button class="btn-secondary btn-sm offer-counter" data-oid="${o.id}">Counter</button>
+              <button class="btn-secondary btn-sm offer-reject" data-oid="${o.id}">Reject</button>
+            </div>
+          </div>`).join('');
+      }
+    } else {
+      // My Squad — sell tab
+      listHtml = [...club.players].sort((a, b) => b.ovr - a.ovr).map(p => {
+        const isListed = p.listingPrice != null;
+        return `
+        <div class="transfer-player-item">
+          <span class="tp-pos pos-badge ${posClass(p.pos)}">${p.pos}</span>
+          <div class="tp-info">
+            <div class="tp-name">${esc(p.name)}${isListed ? `<span class="tp-tag listed">Listed ${money(p.listingPrice)}</span>` : ''}</div>
+            <div class="tp-club">Age ${p.age} · ${money(p.wage/1000)}/wk</div>
+          </div>
+          <span class="tp-ovr">${p.ovr}</span>
+          <span class="tp-value">${money(p.value)}</span>
+          <button class="btn-sm ${isListed ? 'btn-secondary delist-btn' : 'btn-gold list-btn'}" data-pid="${p.id}">
+            ${isListed ? 'Delist' : 'List'}
+          </button>
+        </div>`;
+      }).join('');
     }
 
+    const offerBadge = offers.length ? ` <span class="offer-badge">${offers.length}</span>` : '';
+    const preBadge = preContracts.length ? ` <span class="offer-badge">${preContracts.length}</span>` : '';
+    const subtitles = { market: 'Transfer Market', sell: 'My Squad', free: 'Free Agents', presign: 'Pre-contracts', offers: 'Incoming Offers' };
     m.innerHTML = `
-      <div class="view-header"><div><div class="view-title">Transfers</div><div class="view-subtitle">${cap(ui.transferTab)}</div></div></div>
+      <div class="view-header"><div><div class="view-title">Transfers</div><div class="view-subtitle">${subtitles[ui.transferTab] || ''}</div></div></div>
       ${banner}
       <div class="transfers-layout">
         <div>
           <div class="transfer-tabs">
-            <button class="transfer-tab ${ui.transferTab==='market'?'active':''}" data-t="market">Transfer Market</button>
+            <button class="transfer-tab ${ui.transferTab==='market'?'active':''}" data-t="market">Market</button>
+            <button class="transfer-tab ${ui.transferTab==='free'?'active':''}" data-t="free">Free Agents</button>
+            <button class="transfer-tab ${ui.transferTab==='presign'?'active':''}" data-t="presign">Pre-sign${preBadge}</button>
             <button class="transfer-tab ${ui.transferTab==='sell'?'active':''}" data-t="sell">My Squad</button>
+            <button class="transfer-tab ${ui.transferTab==='offers'?'active':''}" data-t="offers">Offers${offerBadge}</button>
           </div>
           ${ui.transferTab === 'market' ? `
           <div class="transfer-search">
@@ -1156,13 +1440,16 @@ const APP = (() => {
               ${['all','GK','DEF','MID','ATT'].map(p => `<option value="${p}" ${ui.transferPos===p?'selected':''}>${p==='all'?'All positions':p}</option>`).join('')}
             </select>
           </div>` : ''}
+          ${ui.transferTab === 'free' ? `<div class="tp-hint">Free agents can be signed <b>any time</b> — no transfer window needed.</div>` : ''}
+          ${ui.transferTab === 'presign' ? `<div class="tp-hint">Pre-contracts agreed now <b>activate at the next transfer window</b>. Click market players during a closed window to pre-sign them.</div>` : ''}
+          ${ui.transferTab === 'sell' ? `<div class="tp-hint">Click <b>List</b> to put a player on the market. Clubs will make offers over time.</div>` : ''}
           <div class="transfer-player-list">${listHtml}</div>
         </div>
         <div>
           <div class="budget-panel">
             <div class="card-title">Finances</div>
             <div class="budget-grid">
-              <div class="budget-item"><div class="budget-item-label">Transfer Budget</div><div class="budget-item-val">${money(club.budget)}</div></div>
+              <div class="budget-item"><div class="budget-item-label">Club Balance</div><div class="budget-item-val">${money(gameState.finances?.balance ?? club.budget)}</div></div>
               <div class="budget-item"><div class="budget-item-label">Squad Size</div><div class="budget-item-val">${club.players.length}</div></div>
               <div class="budget-item"><div class="budget-item-label">Squad Value</div><div class="budget-item-val">${money(club.players.reduce((s, p) => s + p.value, 0))}</div></div>
               <div class="budget-item"><div class="budget-item-label">Wage Bill</div><div class="budget-item-val red">${money(club.players.reduce((s, p) => s + p.wage, 0) / 1000)}/wk</div></div>
@@ -1180,11 +1467,16 @@ const APP = (() => {
 
     m.querySelectorAll('.transfer-tab').forEach(b => b.addEventListener('click', () => { ui.transferTab = b.dataset.t; renderTransfers(m); }));
     const search = $('tr-search');
-    if (search) search.addEventListener('input', (e) => { ui.transferSearch = e.target.value.trim().toLowerCase(); renderTransfers(m); search.focus(); });
+    if (search) { let _srchT; search.addEventListener('input', (e) => { ui.transferSearch = e.target.value.trim().toLowerCase(); clearTimeout(_srchT); _srchT = setTimeout(() => { renderTransfers(m); $('tr-search')?.focus(); }, 180); }); }
     const sel = $('tr-pos');
     if (sel) sel.addEventListener('change', (e) => { ui.transferPos = e.target.value; renderTransfers(m); });
     m.querySelectorAll('[data-buy]').forEach(el => el.addEventListener('click', () => showMarketPlayerModal(el.dataset.buy, el.dataset.club)));
-    m.querySelectorAll('[data-sell]').forEach(el => el.addEventListener('click', () => confirmSell(el.dataset.sell)));
+    m.querySelectorAll('[data-fa]').forEach(el => el.addEventListener('click', () => showFreeAgentModal(el.dataset.fa)));
+    m.querySelectorAll('.list-btn').forEach(el => el.addEventListener('click', () => showListingModal(el.dataset.pid)));
+    m.querySelectorAll('.delist-btn').forEach(el => el.addEventListener('click', () => delistPlayer(el.dataset.pid)));
+    m.querySelectorAll('.offer-accept').forEach(el => el.addEventListener('click', () => acceptOffer(el.dataset.oid)));
+    m.querySelectorAll('.offer-counter').forEach(el => el.addEventListener('click', () => showCounterModal(el.dataset.oid)));
+    m.querySelectorAll('.offer-reject').forEach(el => el.addEventListener('click', () => rejectOffer(el.dataset.oid)));
     m.scrollTop = _st;
   }
   function emptyList(text) { return `<div class="empty-state"><div class="empty-state-text">${text}</div></div>`; }
@@ -1201,26 +1493,157 @@ const APP = (() => {
     return 1 - 1 / (1 + gap * gap);
   }
 
+  // How ambitious a player is to leave their current club (0 = content, 1 = desperate to move)
+  // Driven by how far above the club's average they are, age, and potential remaining
+  function playerAmbition(p, club) {
+    const ovrGap = p.ovr - (club.sqRating || 70);
+    const potGap = Math.max(0, (p.pot || p.ovr) - p.ovr);
+    const ageBoost = p.age <= 22 ? 1.5 : p.age <= 26 ? 1.1 : p.age <= 29 ? 0.65 : 0.25;
+    const loyaltyMod = p.loyal ? 0.5 : 1.0;
+    const raw = (ovrGap * 0.045 + potGap * 0.025) * ageBoost * loyaltyMod;
+    return Math.max(0, Math.min(1, raw));
+  }
+
+  function addInboxMsg(type, title, body, opts = {}) {
+    if (!gameState.inbox) gameState.inbox = [];
+    gameState.inbox.unshift({
+      id: `inbox_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      type, title, body,
+      playerId:  opts.playerId  || null,
+      playerPos: opts.playerPos || null,
+      playerOvr: opts.playerOvr || null,
+      date: fmtDate(gameState.currentDate),
+      read: false,
+    });
+    if (gameState.inbox.length > 50) gameState.inbox.length = 50;
+  }
+
+  function generateClubNews() {
+    if (!gameState || !gameState.myClub) return;
+    const club = gameState.myClub;
+    const pos = ENGINE.getMyPosition(gameState);
+    const table = ENGINE.getLeagueTable(gameState, club.league);
+    const total = table.length || 20;
+    const form = (club.form || []).slice(-5);
+    const wins = form.filter(f => f === 'W').length;
+    const losses = form.filter(f => f === 'L').length;
+    const leagueName = DATA.LEAGUES[club.league]?.name || 'the league';
+    const cName = club.name || club.name;
+    const pundits = ['Gary Neville','Alan Shearer','Micah Richards','Ian Wright','Roy Keane','Jamie Carragher','Thierry Henry','Joe Hart'];
+    const pundit = pundits[Math.floor(Math.random() * pundits.length)];
+
+    const items = [];
+
+    // Win streak (4+ wins in last 5)
+    if (wins >= 4 && form.length >= 4) {
+      items.push({
+        title: `${pundit}: "${cName} are flying right now"`,
+        body: `"You can't ignore what ${cName} are doing — ${wins} wins in their last ${form.length} games. They look like genuine contenders in ${leagueName}." — ${pundit}`,
+      });
+    }
+    // Terrible form (4+ losses in last 5)
+    else if (losses >= 4 && form.length >= 4) {
+      items.push({
+        title: `${pundit} questions ${cName}'s direction`,
+        body: `"Something's not right at ${cName}. ${losses} defeats in ${form.length} — the manager needs to find answers fast or this season could unravel." — ${pundit}`,
+      });
+    }
+    // Top of the table
+    if (pos === 1 && form.length >= 3) {
+      items.push({
+        title: `${cName} leading the way in ${leagueName}`,
+        body: `"Top of ${leagueName} and looking comfortable. ${cName} have set the standard this season — it's everyone else's job to catch them." — ${pundit}`,
+      });
+    }
+    // Bottom three (relegation zone)
+    if (pos && pos >= total - 2 && form.length >= 3) {
+      items.push({
+        title: `Relegation fears growing at ${cName}`,
+        body: `"${cName} are in real danger. Down in ${pos === total ? 'last' : ordinal(pos)} place — they need a response quickly or this could end badly." — ${pundit}`,
+      });
+    }
+    // Pundit on squad quality vs league
+    if (Math.random() < 0.25) {
+      const avgOvr = Math.round(club.players.reduce((s, p) => s + p.ovr, 0) / (club.players.length || 1));
+      const leagueAvg = table.reduce((s, c) => s + (c.sqRating || 60), 0) / (table.length || 1);
+      if (avgOvr > leagueAvg + 5) {
+        items.push({
+          title: `${pundit}: "${cName} have quality to spare"`,
+          body: `"Honestly ${cName} look too good for this level. Their squad OVR is well above the division average — if they don't go up, it's a missed opportunity." — ${pundit}`,
+        });
+      } else if (avgOvr < leagueAvg - 5) {
+        items.push({
+          title: `${pundit} worried about ${cName}'s depth`,
+          body: `"${cName} are punching above their weight right now. On paper they're one of the weaker squads in ${leagueName} — the manager deserves credit for keeping them competitive." — ${pundit}`,
+        });
+      }
+    }
+
+    if (items.length === 0) return;
+    const pick = items[Math.floor(Math.random() * items.length)];
+    addInboxMsg('club_news', pick.title, pick.body);
+  }
+
+  function generatePlayerEvents() {
+    if (!gameState || !gameState.myClub) return;
+    const myClub = gameState.myClub;
+    myClub.players.forEach(p => {
+      if (p.inboxedThisSeason || p.injured) return;
+      const ambition = playerAmbition(p, myClub);
+      const ovrGap   = p.ovr - (myClub.sqRating || 70);
+      // Transfer request: meaningfully above squad average, ambitious, not already listed
+      if (ambition >= 0.65 && ovrGap >= 8 && !p.loyal && !p.transferListed && Math.random() < 0.55) {
+        p.transferListed = true;
+        p.wantsMove = true;
+        p.inboxedThisSeason = true;
+        addInboxMsg('transfer_request',
+          `${p.name} requests a transfer`,
+          `${p.name} (${p.pos}, OVR ${p.ovr}) believes he deserves to play at a higher level and has handed in a transfer request.`,
+          { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+        notify(`${p.name} has requested a transfer!`, 'warning');
+      }
+      // Contract warning: expiring contract, player is ambitious enough not to renew
+      else if (p.contract <= 1 && ambition >= 0.35 && !p.inboxedThisSeason && Math.random() < 0.65) {
+        p.inboxedThisSeason = true;
+        addInboxMsg('contract_expiry',
+          `${p.name} is rejecting contract renewal`,
+          `${p.name} (${p.pos}, OVR ${p.ovr}) is unlikely to renew. Act now or he walks on a free transfer at season end.`,
+          { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+        notify(`${p.name} is unlikely to renew his contract!`, 'warning');
+      }
+    });
+  }
+
+  function markTransferBan(playerId) {
+    if (!gameState.transferBans) gameState.transferBans = {};
+    gameState.transferBans[playerId] = true;
+  }
+  function isTransferBanned(playerId) {
+    return !!(gameState.transferBans && gameState.transferBans[playerId]);
+  }
+
   function openNegotiation(playerId, clubId) {
     if (!ENGINE.isTransferWindowOpen(gameState)) return notify('Transfer window is closed.', 'error');
     if (clubId === gameState.myClubId) return;
+    if (isTransferBanned(playerId)) return notify('That player won\'t entertain a move to your club again this season.', 'warning');
     const seller = gameState.clubs[clubId];
     const p = seller && seller.players.find(x => x.id === playerId);
     if (!p) return;
     const rejectChance = prestigeRejectChance(p, gameState.myClub);
     if (rejectChance > 0 && Math.random() < rejectChance) {
       const reason = rejectChance >= 0.65
-        ? `doesn't see ${gameState.myClub.shortName || gameState.myClub.name} as a suitable destination.`
+        ? `doesn't see ${gameState.myClub.name || gameState.myClub.name} as a suitable destination.`
         : `isn't convinced your club is the right move for their career.`;
+      markTransferBan(playerId);
       return notify(`${p.name} ${reason}`, 'warning');
     }
     ui.negotiation = {
       playerId, clubId, stage: 'fee',
       neg: ENGINE.startNegotiation(p, seller),
       agreedFee: null, agreedWage: null, lastFee: null, lastWage: null,
-      msg: `${seller.shortName} are willing to listen to offers for ${p.name}.`,
+      msg: `${seller.name} are willing to listen to offers for ${p.name}.`,
       tone: 'info',
-      msgLog: [{ text: `${seller.shortName} are willing to listen to offers for ${p.name}.`, tone: 'info' }],
+      msgLog: [{ text: `${seller.name} are willing to listen to offers for ${p.name}.`, tone: 'info' }],
     };
     renderNegotiation();
   }
@@ -1231,7 +1654,7 @@ const APP = (() => {
     const p = seller.players.find(x => x.id === N.playerId);
     if (!p) { ui.negotiation = null; return closeModal(); }
     const neg = N.neg;
-    const budget = gameState.myClub.budget;
+    const budget = gameState.finances?.balance ?? gameState.myClub.budget;
     const steps = ['fee', 'terms', 'done'];
     const labels = { fee: 'Transfer Fee', terms: 'Personal Terms', done: 'Done' };
     const stepBar = steps.map((s, i) =>
@@ -1242,9 +1665,10 @@ const APP = (() => {
     if (N.stage === 'fee') {
       body = `
         <div class="neg-row"><span>Market value</span><span class="fw-700 text-gold">${money(p.value)}</span></div>
-        <div class="neg-row"><span>Your transfer budget</span><span class="${budget >= neg.minFee ? '' : 'red'}">${money(budget)}</span></div>
+        <div class="neg-row"><span>Club asking price</span><span class="fw-700">${money(neg.asking)}</span></div>
+        <div class="neg-row"><span>Club balance</span><span class="${budget >= neg.minFee ? '' : 'red'}">${money(budget)}</span></div>
         <div class="neg-field"><label>Your bid (£m)</label>
-          <input id="neg-input" type="number" step="0.5" min="0" value="${N.lastFee != null ? N.lastFee : Math.min(budget, p.value)}"></div>
+          <input id="neg-input" type="number" step="0.5" min="0" value="${N.lastFee != null ? N.lastFee : Math.min(budget, Math.round(p.value * 0.85 * 10) / 10)}"></div>
         <div class="neg-actions">
           <button class="btn-secondary" id="neg-walk">Walk Away</button>
           <button class="btn-primary" id="neg-submit">Submit Bid</button>
@@ -1281,7 +1705,7 @@ const APP = (() => {
       </div>`);
 
     const submit = $('neg-submit'), walk = $('neg-walk'), input = $('neg-input');
-    if (walk) walk.addEventListener('click', () => { ui.negotiation = null; closeModal(); notify('You walked away from the table.', 'info'); });
+    if (walk) walk.addEventListener('click', () => { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); notify('You walked away from the table.', 'info'); });
     const contractSel = $('neg-contract-len');
     if (contractSel) contractSel.addEventListener('change', () => { ui.negotiation.contractLength = parseInt(contractSel.value); });
     if (submit) submit.addEventListener('click', () => {
@@ -1299,16 +1723,17 @@ const APP = (() => {
     const N = ui.negotiation, seller = gameState.clubs[N.clubId];
     N.lastFee = offer;
     N.msgLog.push({ text: `You bid ${money(offer)}.`, tone: 'you' });
-    if (offer > gameState.myClub.budget) {
-      N.msg = `You can't afford a ${money(offer)} bid — budget is ${money(gameState.myClub.budget)}.`; N.tone = 'bad';
+    const balance = gameState.finances?.balance ?? gameState.myClub.budget;
+    if (offer > balance) {
+      N.msg = `Not enough funds — club balance is ${money(balance)}.`; N.tone = 'bad';
       N.msgLog.push({ text: N.msg, tone: N.tone });
       return renderNegotiation();
     }
     const r = ENGINE.evaluateFeeOffer(N.neg, offer);
-    if (r.decision === 'accept') { N.agreedFee = offer; N.stage = 'terms'; N.msg = `${seller.shortName} accept ${money(offer)}! Now agree personal terms with the player.`; N.tone = 'good'; }
-    else if (r.decision === 'counter') { N.msg = `${seller.shortName} reject ${money(offer)}, but would accept ${money(r.counter)}.`; N.tone = 'info'; }
-    else if (r.decision === 'reject') { N.msg = `${seller.shortName} dismiss your ${money(offer)} bid as far too low.`; N.tone = 'bad'; }
-    else { ui.negotiation = null; closeModal(); return notify(`${seller.shortName} have ended negotiations.`, 'warning'); }
+    if (r.decision === 'accept') { N.agreedFee = offer; N.stage = 'terms'; N.msg = `${seller.name} accept ${money(offer)}! Now agree personal terms with the player.`; N.tone = 'good'; }
+    else if (r.decision === 'counter') { N.msg = `${seller.name} reject ${money(offer)}, but would accept ${money(r.counter)}.`; N.tone = 'info'; }
+    else if (r.decision === 'reject') { N.msg = `${seller.name} dismiss your ${money(offer)} bid as far too low.`; N.tone = 'bad'; }
+    else { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); return notify(`${seller.name} have ended negotiations.`, 'warning'); }
     N.msgLog.push({ text: N.msg, tone: N.tone });
     renderNegotiation();
   }
@@ -1322,7 +1747,7 @@ const APP = (() => {
     if (r.decision === 'accept') { N.agreedWage = offer; return completeTransfer(); }
     else if (r.decision === 'counter') { N.msg = `${p.name} rejects ${money(offer / 1000)}/wk but would sign for ${money(N.neg.wageDemand / 1000)}/wk.`; N.tone = 'info'; }
     else if (r.decision === 'reject') { N.msg = `${p.name} is insulted by an offer of just ${money(offer / 1000)}/wk.`; N.tone = 'bad'; }
-    else { ui.negotiation = null; closeModal(); return notify(`${p.name} rejected your contract terms.`, 'warning'); }
+    else { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); return notify(`${p.name} rejected your contract terms.`, 'warning'); }
     N.msgLog.push({ text: N.msg, tone: N.tone });
     renderNegotiation();
   }
@@ -1332,12 +1757,17 @@ const APP = (() => {
     const seller = gameState.clubs[N.clubId];
     const p = seller.players.find(x => x.id === N.playerId);
     if (!p) { ui.negotiation = null; return closeModal(); }
-    if (N.agreedFee > gameState.myClub.budget) { ui.negotiation = null; closeModal(); return notify(`Can't afford the ${money(N.agreedFee)} fee.`, 'error'); }
+    const balanceNow = gameState.finances?.balance ?? gameState.myClub.budget;
+    if (N.agreedFee > balanceNow) { ui.negotiation = null; closeModal(); return notify(`Not enough funds — balance is ${money(balanceNow)}.`, 'error'); }
     seller.players = seller.players.filter(x => x.id !== N.playerId);
     p.wage = N.agreedWage;
     p.contract = N.contractLength || 3;
     gameState.myClub.players.push(p);
-    gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
+    recalcSqRating(gameState.myClub);
+    recalcSqRating(seller);
+    if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance - N.agreedFee) * 10) / 10;
+    else gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
+    recordTransferExpense(N.agreedFee);
     gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
     gameState.transferLog.unshift({ in: true, name: p.name, fee: N.agreedFee });
     notify(`Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
@@ -1346,35 +1776,128 @@ const APP = (() => {
     updateSidebar();
     renderTransfers($('main-content'));
   }
-  function confirmSell(playerId) {
+  function showListingModal(playerId) {
+    if (!ENGINE.isTransferWindowOpen(gameState)) return notify('Transfer window is closed.', 'error');
     const p = gameState.myClub.players.find(x => x.id === playerId);
     if (!p) return;
+    const defaultPrice = p.value;
     showModal(`
       <div style="text-align:center">
-        <h2 style="margin-bottom:8px">Sell ${esc(p.name)}?</h2>
-        <p class="text-muted" style="margin-bottom:18px">Estimated fee: <span class="text-gold fw-700">${money(p.value)}</span></p>
+        <h2 style="margin-bottom:4px">List ${esc(p.name)}</h2>
+        <p class="text-muted" style="margin-bottom:16px">Market value: <span class="text-gold fw-700">${money(p.value)}</span></p>
+        <div class="neg-field" style="margin-bottom:18px">
+          <label>Asking price (£m)</label>
+          <input id="listing-price-input" type="number" step="0.5" min="0.1" value="${defaultPrice}">
+        </div>
+        <p class="text-muted" style="font-size:12px;margin-bottom:18px">Clubs will make offers over time. Higher prices may take longer to attract bids.</p>
         <div class="pm-actions" style="justify-content:center">
-          <button class="btn-secondary" id="sell-cancel">Cancel</button>
-          <button class="btn-gold" id="sell-confirm">Confirm Sale</button>
+          <button class="btn-secondary" id="listing-cancel">Cancel</button>
+          <button class="btn-gold" id="listing-confirm">List for Sale</button>
         </div>
       </div>`);
-    $('sell-cancel').addEventListener('click', closeModal);
-    $('sell-confirm').addEventListener('click', () => { sellPlayer(playerId); closeModal(); });
+    $('listing-cancel').addEventListener('click', closeModal);
+    $('listing-confirm').addEventListener('click', () => {
+      const price = parseFloat($('listing-price-input').value);
+      if (isNaN(price) || price <= 0) return notify('Enter a valid asking price.', 'error');
+      listForSale(playerId, Math.round(price * 10) / 10);
+      closeModal();
+    });
   }
-  function sellPlayer(playerId) {
-    if (!ENGINE.isTransferWindowOpen(gameState)) return notify('Transfer window is closed.', 'error');
-    const idx = gameState.myClub.players.findIndex(x => x.id === playerId);
-    if (idx < 0) return;
-    const p = gameState.myClub.players[idx];
+
+  function listForSale(playerId, price) {
+    const p = gameState.myClub.players.find(x => x.id === playerId);
+    if (!p) return;
+    p.listingPrice = price;
+    notify(`${p.name} listed at ${money(price)}.`, 'success');
+    renderTransfers($('main-content'));
+  }
+
+  function delistPlayer(playerId) {
+    const p = gameState.myClub.players.find(x => x.id === playerId);
+    if (!p) return;
+    p.listingPrice = null;
+    // Remove any pending offers for this player
+    gameState.pendingOffers = (gameState.pendingOffers || []).filter(o => o.playerId !== playerId);
+    notify(`${p.name} removed from transfer list.`, 'info');
+    renderTransfers($('main-content'));
+  }
+
+  function acceptOffer(offerId) {
+    const offers = gameState.pendingOffers || [];
+    const o = offers.find(x => x.id === offerId);
+    if (!o) return;
+    const idx = gameState.myClub.players.findIndex(x => x.id === o.playerId);
+    if (idx < 0) return notify('Player no longer in squad.', 'error');
     if (gameState.myClub.players.length <= 16) return notify('Squad too small to sell more players.', 'error');
+    const p = gameState.myClub.players[idx];
     gameState.myClub.players.splice(idx, 1);
-    gameState.myClub.budget = Math.round((gameState.myClub.budget + p.value) * 10) / 10;
-    gameState.tactics.lineup = gameState.tactics.lineup.filter(id => id !== playerId);
+    recalcSqRating(gameState.myClub);
+    if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance + o.fee) * 10) / 10;
+    else gameState.myClub.budget = Math.round((gameState.myClub.budget + o.fee) * 10) / 10;
+    recordTransferIncome(o.fee);
+    gameState.tactics.lineup = gameState.tactics.lineup.filter(id => id !== o.playerId);
     if (gameState.tactics.lineup.length < 11) gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());
-    gameState.transferLog.unshift({ in: false, name: p.name, fee: p.value });
-    notify(`Sold ${p.name} for ${money(p.value)}.`, 'success');
+    gameState.transferLog.unshift({ in: false, name: o.playerName, fee: o.fee });
+    // Clear all offers for this player
+    gameState.pendingOffers = offers.filter(x => x.playerId !== o.playerId);
+    notify(`${o.playerName} sold to ${o.clubShort} for ${money(o.fee)}!`, 'success');
     updateSidebar();
     renderTransfers($('main-content'));
+  }
+
+  function rejectOffer(offerId) {
+    gameState.pendingOffers = (gameState.pendingOffers || []).filter(o => o.id !== offerId);
+    notify('Offer rejected.', 'info');
+    renderTransfers($('main-content'));
+  }
+
+  function showCounterModal(offerId) {
+    const o = (gameState.pendingOffers || []).find(x => x.id === offerId);
+    if (!o) return;
+    const suggested = Math.round(o.listingPrice * 10) / 10;
+    showModal(`
+      <div style="text-align:center">
+        <h2 style="margin-bottom:4px">Counter Offer</h2>
+        <p class="text-muted" style="margin-bottom:6px">${esc(o.playerName)} · ${esc(o.clubName)}</p>
+        <div class="pm-stats-grid" style="text-align:left;margin-bottom:16px">
+          <div class="pm-stat"><span class="pm-stat-name">Their bid</span><span class="pm-stat-val text-gold">${money(o.fee)}</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Market value</span><span class="pm-stat-val">${money(o.marketValue || o.listingPrice)}</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Your asking</span><span class="pm-stat-val">${money(o.listingPrice)}</span></div>
+        </div>
+        <div class="neg-field" style="margin-bottom:18px">
+          <label>Your counter (£m)</label>
+          <input id="counter-price-input" type="number" step="0.5" min="0.1" value="${suggested}">
+        </div>
+        <div class="pm-actions" style="justify-content:center">
+          <button class="btn-secondary" id="counter-cancel">Cancel</button>
+          <button class="btn-primary" id="counter-submit">Send Counter</button>
+        </div>
+      </div>`);
+    $('counter-cancel').addEventListener('click', closeModal);
+    $('counter-submit').addEventListener('click', () => {
+      const counter = parseFloat($('counter-price-input').value);
+      if (isNaN(counter) || counter <= 0) return notify('Enter a valid price.', 'error');
+      counterOffer(offerId, Math.round(counter * 10) / 10);
+      closeModal();
+    });
+  }
+
+  function counterOffer(offerId, counterFee) {
+    const offers = gameState.pendingOffers || [];
+    const o = offers.find(x => x.id === offerId);
+    if (!o) return;
+    const maxWilling = o.maxWilling || (o.marketValue || o.listingPrice) * 1.15;
+    if (counterFee <= o.fee) {
+      return notify(`${o.clubShort} won't accept less than their bid of ${money(o.fee)}.`, 'error');
+    }
+    if (counterFee <= maxWilling) {
+      o.fee = counterFee;
+      acceptOffer(offerId);
+    } else {
+      gameState.pendingOffers = offers.filter(x => x.id !== offerId);
+      notify(`${o.clubShort} rejected your ${money(counterFee)} counter — they walked away.`, 'warning');
+      renderTransfers($('main-content'));
+    }
   }
 
   /* ---------------------------------------------
@@ -1396,9 +1919,9 @@ const APP = (() => {
             const A = gameState.clubs[t.a], B = gameState.clubs[t.b];
             const mine = t.a === gameState.myClubId || t.b === gameState.myClubId;
             return `<div class="knockout-tie ${mine ? 'my-match' : ''}">
-              <span class="${t.winner===t.a?'fw-700 text-accent':''}">${A ? esc(A.shortName) : '?'}</span>
+              <span class="${t.winner===t.a?'fw-700 text-accent':''}">${A ? esc(A.name) : '?'}</span>
               <span>${t.sa} – ${t.sb}</span>
-              <span class="${t.winner===t.b?'fw-700 text-accent':''}">${B ? esc(B.shortName) : '?'}</span></div>`;
+              <span class="${t.winner===t.b?'fw-700 text-accent':''}">${B ? esc(B.name) : '?'}</span></div>`;
           }).join('')}</div></div>`).join('')}
         ${comp.winner ? `<div class="knockout-round" style="text-align:center"><div class="knockout-round-title">★ Winner</div><div class="stat-big" style="font-size:24px">${esc(gameState.clubs[comp.winner].name)}</div></div>` : ''}
       </div>`;
@@ -1439,44 +1962,764 @@ const APP = (() => {
   function euPts(comp, id) { return comp.groupStats[id]?.pts || 0; }
   function euGd(comp, id) { const s = comp.groupStats[id]; return s ? s.gf - s.ga : 0; }
 
+  /* =============================================
+     FINANCES — helpers
+     ============================================= */
+
+  function initFinances(club) {
+    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
+    return {
+      balance:        FIN_INIT_BAL[rep] || 10,
+      boardConfidence:50,
+      sponsor:        _genSponsor(club, 50, false),
+      kitDeal:        _genKitDeal(club),
+      seasonIncome:   { tv:0, matchday:0, sponsorship:0, prizes:0, sales:0 },
+      seasonExpenses: { wages:0, transfers:0, agentFees:0, staff:0 },
+      weeksElapsed:   0,
+      ffpRolling:     [],
+      sponsorNeedsRenewal: false,
+      kitNeedsRenewal: false,
+      pendingGrant:   null,
+      pendingSponsor: null,
+      history:        [],
+      ticketPricing:  'standard',
+      boardFundsRequested: false,
+      boardConfVoted: false,
+      parachuteYears: 0,
+    };
+  }
+
+  function _genSponsor(club, confidence, goodSeason) {
+    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
+    let tier = rep >= 4 ? 3 : rep >= 3 ? 2 : 1;
+    if (goodSeason && confidence >= 65 && tier < 3) tier++;
+    else if (confidence < 30 && tier > 1) tier--;
+    const pool = SPONSORS[tier - 1];
+    const name = pool.names[Math.floor(Math.random() * pool.names.length)];
+    // Weekly sponsor value in £m: tier1=NL/L2 (£500-3k/wk), tier2=L1/Champ (£8k-50k/wk), tier3=PL (£120k-700k/wk)
+    const ranges = [[0.0005, 0.003], [0.008, 0.05], [0.12, 0.70]];
+    const [lo, hi] = ranges[tier - 1];
+    const repFrac = (club.rep - 1) / 4;
+    const base = lo + (hi - lo) * Math.min(1, repFrac * 1.4 + (goodSeason ? 0.1 : 0));
+    const weeklyValue = Math.round(base * (0.85 + Math.random() * 0.3) * 100) / 100;
+    return { name, tier, weeklyValue, seasonsLeft: Math.floor(Math.random() * 3) + 1,
+             clauses: _genSponsorClauses(club, weeklyValue) };
+  }
+
+  // Performance clauses written into sponsor contracts — bonuses that pay out on results.
+  function _genSponsorClauses(club, weeklyValue) {
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const annual = weeklyValue * 52;
+    const pool = [
+      { type: 'win',       amount: r2(weeklyValue * 1.5) },   // per league win
+      { type: 'title',     amount: r2(annual * 0.50) },        // win the league
+      { type: 'topHalf',   amount: r2(annual * 0.15) },        // finish top half
+    ];
+    if (leagueLevel(club) > 1) pool.push({ type: 'promotion', amount: r2(annual * 0.40) });
+    // Each deal carries 1-2 clauses
+    const n = 1 + (Math.random() < 0.5 ? 1 : 0);
+    const picked = [];
+    while (picked.length < n && pool.length) {
+      picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    return picked;
+  }
+
+  function clauseLabel(c) {
+    return { win: `${money(c.amount)} per league win`,
+             title: `${money(c.amount)} for winning the league`,
+             topHalf: `${money(c.amount)} for a top-half finish`,
+             promotion: `${money(c.amount)} for promotion` }[c.type] || '';
+  }
+
+  function paySponsorClause(type, context) {
+    const fin = gameState.finances;
+    const c = fin?.sponsor?.clauses?.find(c => c.type === type);
+    if (!c) return;
+    fin.balance = Math.round((fin.balance + c.amount) * 100) / 100;
+    fin.seasonIncome.sponsorship = Math.round((fin.seasonIncome.sponsorship + c.amount) * 100) / 100;
+    if (type !== 'win') notify(`Sponsor clause triggered: ${money(c.amount)} from ${fin.sponsor.name} ${context}.`, 'success');
+  }
+
+  function _genKitDeal(club) {
+    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
+    const makers = ['AdiSport','ProKit','StrikeX','NovaSport','EliteKit','AlphaWear'];
+    const name = makers[Math.floor(Math.random() * makers.length)];
+    // Annual kit deal in £m: rep1=£15-30k, rep2=£100-200k, rep3=£700k-1.4m, rep4=£4-8m, rep5=£12-24m
+    const annualValue = [0, 0.02, 0.15, 1.0, 6, 18][rep] * (0.8 + Math.random() * 0.4);
+    return { name, annualValue: Math.round(annualValue * 100) / 100, seasonsLeft: Math.floor(Math.random() * 3) + 2 };
+  }
+
+  function genSponsorOffers(club, confidence, goodSeason) {
+    const offers = [];
+    const usedNames = new Set();
+    for (let i = 0; i < 3; i++) {
+      const sp = _genSponsor(club, confidence - 10 + i * 12, goodSeason && i > 0);
+      if (usedNames.has(sp.name)) sp.name += ' Group';
+      usedNames.add(sp.name);
+      sp.seasonsLeft = i + 1; // 1-yr, 2-yr, 3-yr options
+      sp.weeklyValue = Math.round(sp.weeklyValue * (1 + i * 0.06) * 100) / 100;
+      offers.push(sp);
+    }
+    return offers;
+  }
+
+  function checkWageBudget() {
+    const club = gameState.myClub;
+    const balance = gameState.finances?.balance ?? club.budget;
+    // Wage budget = 5% of current club balance
+    const wageBudget = Math.round(balance * 0.05 * 100) / 100; // in £m/week
+    const actualWages = club.players.reduce((s, p) => s + p.wage, 0) / 1000; // in £m/week
+    if (actualWages > wageBudget) {
+      if (!gameState.wageViolations) gameState.wageViolations = 0;
+      gameState.wageViolations++;
+      const excess = Math.round((actualWages - wageBudget) * 100) / 100;
+      notify(`⚠ Wage warning: wage bill ${money(actualWages)}/wk exceeds budget (${money(wageBudget)}/wk). Reduce wages or sell players. [${gameState.wageViolations}/10]`, 'error');
+      if (gameState.wageViolations >= 10) {
+        // Deduct 10 league points
+        const myStats = club.tableStats;
+        if (myStats) myStats.points = Math.max(0, myStats.points - 10);
+        gameState.wageViolations = 0;
+        notify('⛔ Financial Fair Play breach: 10 points deducted for sustained wage overspend!', 'error');
+      }
+    } else {
+      // Back in compliance — reset counter
+      if (gameState.wageViolations > 0) {
+        gameState.wageViolations = 0;
+        notify('✓ Wage bill back within budget limits.', 'success');
+      }
+    }
+  }
+
+  function tickFinances(weeks) {
+    const fin = gameState.finances;
+    if (!fin) return;
+    const club = gameState.myClub;
+    const rep  = Math.max(1, Math.min(5, Math.round(club.rep)));
+    const weeklyTV      = FIN_TV_LEAGUE[leagueLevel(club)] / 52;
+    const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
+    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklyWages   = club.players.reduce((s, p) => s + p.wage, 0) / 1000;
+    const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep] + (gameState.scouts || []).reduce((s, sc) => s + (sc.weeklyWage || 0) / 1000, 0);
+    const income   = (weeklyTV + weeklySponsor) * weeks;
+    const expenses = (weeklyWages + weeklyStaff) * weeks;
+    fin.balance            = Math.round((fin.balance + income - expenses) * 100) / 100;
+    fin.seasonIncome.tv          += Math.round(weeklyTV * weeks * 100) / 100;
+    fin.seasonIncome.sponsorship += Math.round(weeklySponsor * weeks * 100) / 100;
+    fin.seasonExpenses.wages     += Math.round(weeklyWages * weeks * 100) / 100;
+    fin.seasonExpenses.staff     += Math.round(weeklyStaff * weeks * 100) / 100;
+    fin.weeksElapsed += weeks;
+    if (fin.balance < -10 && fin.balance > -11) {
+      fin.boardConfidence = Math.max(0, fin.boardConfidence - 4);
+      notify('Finances critical — club is deeply in the red! Board confidence falling.', 'error');
+    } else if (fin.balance < 0 && fin.balance > -2) {
+      notify('Club finances are in the red — expenses exceed all income.', 'warning');
+    }
+
+    // Wage cap: 5% of current balance. Track breach weeks and penalise if sustained.
+    const wageCapNow = Math.max(0.01, fin.balance * 0.05);
+    if (weeklyWages > wageCapNow) {
+      fin.overWageCapWeeks = (fin.overWageCapWeeks || 0) + weeks;
+      const w = fin.overWageCapWeeks;
+      if (w >= 6 && w < 7) {
+        addInboxMsg('club_news',
+          'FFP Warning: wage cap breach',
+          `Your weekly wage bill (${money(weeklyWages)}/wk) exceeds 5% of the club balance (${money(wageCapNow)}/wk cap). You have a few weeks to reduce it before points are deducted.`);
+        notify('FFP warning — wages over 5% of club balance. Sort it out.', 'warning');
+      } else if (w >= 10 && w % 4 < weeks) {
+        const deduction = 10;
+        gameState.myClub.tableStats.points = Math.max(0, (gameState.myClub.tableStats.points || 0) - deduction);
+        addInboxMsg('club_news',
+          `${deduction}-point deduction: FFP breach`,
+          `Your wage bill (${money(weeklyWages)}/wk) has exceeded the 5% balance cap for ${Math.round(w)} weeks. A ${deduction}-point deduction has been applied. Reduce wages to stop further penalties.`);
+        notify(`${deduction}-point deduction for sustained FFP breach!`, 'error');
+        fin.boardConfidence = Math.max(0, fin.boardConfidence - 12);
+      }
+    } else {
+      if ((fin.overWageCapWeeks || 0) > 0) fin.overWageCapWeeks = 0;
+    }
+  }
+
+  function awardMatchdayIncome(isHome) {
+    const fin = gameState.finances;
+    if (!fin || !isHome) return;
+    const club = gameState.myClub;
+    const base = matchdayBase(club) / 19; // ~19 home league games
+    const formBonus = (club.form || []).slice(-3).filter(f => f === 'W').length * 0.04;
+    const priceMult = ticketRevenueMult(ticketTier(fin).key, leagueLevel(club));
+    const income = Math.round(base * (1 + formBonus) * priceMult * 100) / 100;
+    fin.balance += income;
+    fin.seasonIncome.matchday += income;
+  }
+
+  function recordTransferExpense(fee) {
+    const fin = gameState.finances;
+    if (!fin) return;
+    const agentFee = Math.round(fee * 0.05 * 10) / 10; // 5% agent fee from balance
+    fin.balance = Math.round((fin.balance - agentFee) * 100) / 100;
+    fin.seasonExpenses.transfers += fee;
+    fin.seasonExpenses.agentFees += agentFee;
+  }
+
+  function recordTransferIncome(fee) {
+    const fin = gameState.finances;
+    if (!fin) return;
+    fin.balance = Math.round((fin.balance + fee) * 100) / 100;
+    fin.seasonIncome.sales += fee;
+  }
+
+  // European prize money modelled on UEFA distributions: participation fee,
+  // per-win money in the league phase, then escalating bonuses per knockout round reached.
+  function calcEuroPrize(euroComp) {
+    if (!euroComp) return 0;
+    const comp = gameState.european?.[euroComp];
+    const myId = gameState.myClubId;
+    if (!comp || !(comp.clubs || []).includes(myId)) return 0;
+    const scale = { champions_league: 1, europa_league: 0.38, conference_league: 0.16 }[euroComp] || 0;
+    let prize = 16;                                              // participation (CL £16m base)
+    prize += (gameState.myClub.europeanStats?.won || 0) * 1.8;   // per league-phase win
+    const stageBonus = { 'Knockout Playoff': 1, 'Round of 16': 9.5, 'Quarter-finals': 11, 'Semi-finals': 13, 'Final': 16.5 };
+    (comp.knockout?.rounds || []).forEach(r => {
+      if ((r.ties || []).some(t => t.a === myId || t.b === myId)) prize += stageBonus[r.name] || 0;
+    });
+    if (comp.winner === myId) prize += 6;
+    return Math.round(prize * scale * 10) / 10;
+  }
+
+  function totalSeasonIncome(fin)   { return Object.values(fin.seasonIncome).reduce((s,v) => s+(v||0), 0); }
+  function totalSeasonExpenses(fin) { return Object.values(fin.seasonExpenses).reduce((s,v) => s+(v||0), 0); }
+
+  function finaliseSeasonFinances(pos, league, euroComp) {
+    const fin = gameState.finances;
+    if (!fin) return { prize: 0, euroPrize: 0 };
+    const posIdx    = Math.max(0, Math.min(pos - 1, PRIZE_BY_POS.length - 1));
+    const levelMult = PRIZE_LEVEL_MULT[Math.min((league.level || 1) - 1, PRIZE_LEVEL_MULT.length - 1)];
+    const prize     = Math.round(PRIZE_BY_POS[posIdx] * levelMult * 10) / 10;
+    const euroPrize  = calcEuroPrize(euroComp);
+    fin.seasonIncome.prizes += prize + euroPrize;
+    fin.balance = Math.round((fin.balance + prize + euroPrize) * 100) / 100;
+    // Sponsor performance clauses settled at season end
+    const tableSize = ENGINE.getLeagueTable(gameState, gameState.myClub.league).length || 20;
+    if (pos === 1) paySponsorClause('title', 'for winning the league');
+    if (pos <= Math.ceil(tableSize / 2)) paySponsorClause('topHalf', 'for a top-half finish');
+    const net = totalSeasonIncome(fin) - totalSeasonExpenses(fin);
+    fin.ffpRolling.push(Math.round(net * 10) / 10);
+    if (fin.ffpRolling.length > 3) fin.ffpRolling.shift();
+    // Decrement sponsor/kit seasons
+    if (fin.sponsor) { fin.sponsor.seasonsLeft--; if (fin.sponsor.seasonsLeft <= 0) fin.sponsorNeedsRenewal = true; }
+    if (fin.kitDeal) { fin.kitDeal.seasonsLeft--; if (fin.kitDeal.seasonsLeft <= 0) fin.kitNeedsRenewal = true; }
+    return { prize, euroPrize };
+  }
+
+  function updateBoardConfidence(verdict, pos, leagueSize) {
+    const fin = gameState.finances;
+    if (!fin) return;
+    if (verdict === 'success')       fin.boardConfidence = Math.min(100, fin.boardConfidence + 18);
+    else if (verdict === 'budget_cut') fin.boardConfidence = Math.max(0, fin.boardConfidence - 18);
+    else if (verdict === 'sacked')   fin.boardConfidence = Math.max(0, fin.boardConfidence - 35);
+    const posRatio = pos / leagueSize;
+    if (pos === 1)             fin.boardConfidence = Math.min(100, fin.boardConfidence + 12);
+    else if (posRatio <= 0.15) fin.boardConfidence = Math.min(100, fin.boardConfidence + 6);
+    else if (posRatio >= 0.85) fin.boardConfidence = Math.max(0,  fin.boardConfidence - 8);
+    if (fin.balance > 50)      fin.boardConfidence = Math.min(100, fin.boardConfidence + 5);
+    else if (fin.balance < -5) fin.boardConfidence = Math.max(0,  fin.boardConfidence - 10);
+    fin.boardConfidence = Math.round(fin.boardConfidence);
+  }
+
+  function calcBoardGrant(club, fin, pos, leagueSize) {
+    const rep  = Math.max(1, Math.min(5, Math.round(club.rep)));
+    const base = FIN_BASE_GRANT[rep] || 8;
+    const h    = fin.boardConfidence;
+    const confMult = h >= 85 ? 1.65 : h >= 70 ? 1.30 : h >= 55 ? 1.05 : h >= 35 ? 0.78 : h >= 20 ? 0.52 : 0.28;
+    const posMult  = (pos / leagueSize) <= 0.05 ? 1.28 : (pos / leagueSize) <= 0.2 ? 1.12 : (pos / leagueSize) >= 0.8 ? 0.82 : 1.0;
+    const balMult  = fin.balance > base * 1.5 ? 1.15 : fin.balance < 0 ? 0.62 : 1.0;
+    return Math.max(0.5, Math.round(base * confMult * posMult * balMult * 10) / 10);
+  }
+
+  function recordFinancialHistory(season, pos, grant) {
+    const fin = gameState.finances;
+    if (!fin) return;
+    fin.history.push({
+      season, pos, grant,
+      income:    Math.round(totalSeasonIncome(fin) * 10) / 10,
+      expenses:  Math.round(totalSeasonExpenses(fin) * 10) / 10,
+      profit:    Math.round((totalSeasonIncome(fin) - totalSeasonExpenses(fin)) * 10) / 10,
+      balance:   Math.round(fin.balance * 10) / 10,
+      confidence:fin.boardConfidence,
+    });
+  }
+
+  function ffpStatus(fin) {
+    if (!fin || !fin.ffpRolling.length) return { ok: true, rolling: 0, label: 'Compliant' };
+    const rolling = fin.ffpRolling.reduce((s, v) => s + (v || 0), 0);
+    const limit   = -105;
+    return { ok: rolling >= limit, rolling: Math.round(rolling * 10) / 10,
+      label: rolling >= 0 ? 'Profitable' : rolling >= -35 ? 'Monitoring' : rolling >= -70 ? 'Warning' : 'Breach Risk' };
+  }
+
+  function genKitOffers(club) {
+    const offers = [];
+    const used = new Set();
+    for (let i = 0; i < 3; i++) {
+      const kd = _genKitDeal(club);
+      if (used.has(kd.name)) kd.name += ' Pro';
+      used.add(kd.name);
+      kd.seasonsLeft = i + 2; // 2/3/4-yr terms
+      kd.annualValue = Math.round(kd.annualValue * (1 + i * 0.05) * 100) / 100;
+      offers.push(kd);
+    }
+    return offers;
+  }
+
+  // Negotiate a sponsor/kit offer: success raises the value; failure may make them walk away.
+  // Chance improves with board confidence and league position.
+  function negotiateDeal(offer, valueKey) {
+    const fin   = gameState.finances;
+    const table = ENGINE.getLeagueTable(gameState, gameState.myClub.league);
+    const pos   = ENGINE.getMyPosition(gameState) || Math.ceil(table.length / 2);
+    const posBonus = (1 - pos / Math.max(table.length, 1)) * 0.25;
+    const chance = 0.35 + (fin?.boardConfidence || 50) / 250 + posBonus;
+    offer.negotiated = true;
+    if (Math.random() < chance) {
+      const uplift = 0.12 + Math.random() * 0.18;
+      offer[valueKey] = Math.round(offer[valueKey] * (1 + uplift) * 100) / 100;
+      return { ok: true, uplift };
+    }
+    if (Math.random() < 0.5) return { ok: false, withdrawn: false };
+    offer.withdrawn = true;
+    return { ok: false, withdrawn: true };
+  }
+
+  // Generic deal-picker modal with Accept + Negotiate per offer.
+  // cfg: { title, blurb, offers, valueKey, valueFmt, subLine, onAccept }
+  function showDealModal(cfg) {
+    const render = () => {
+      showModal(`
+        <div class="sv-modal">
+          <h2 style="margin-bottom:4px">${cfg.title}</h2>
+          <p class="text-muted" style="font-size:12px;margin-bottom:16px">${cfg.blurb}</p>
+          ${cfg.offers.map((o, i) => `
+            <div class="deal-offer-card" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;${o.withdrawn ? 'opacity:.45' : ''}">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                <div>
+                  <div style="font-weight:700;font-size:14px">${esc(o.name)}${o.negotiated && !o.withdrawn ? ' <span style="font-size:10px;color:var(--accent-gold)">NEGOTIATED</span>' : ''}</div>
+                  <div style="font-size:11px;color:var(--text-muted)">${cfg.subLine(o)}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-weight:700;color:var(--accent);font-size:15px">${cfg.valueFmt(o)}</div>
+                </div>
+              </div>
+              ${o.withdrawn
+                ? `<div style="margin-top:8px;font-size:11px;color:var(--accent-red)">Offer withdrawn — they walked away from talks.</div>`
+                : `<div style="display:flex;gap:8px;margin-top:10px">
+                     <button class="deal-accept btn-primary btn-sm" data-idx="${i}" style="flex:1">Accept</button>
+                     <button class="deal-negotiate btn-secondary btn-sm" data-idx="${i}" style="flex:1" ${o.negotiated ? 'disabled' : ''}>${o.negotiated ? 'Final Offer' : 'Negotiate ↑'}</button>
+                   </div>`}
+            </div>`).join('')}
+          <p class="text-muted" style="font-size:11px">Negotiating can raise an offer 12–30%, but push too hard and they may walk away. One attempt per partner.</p>
+        </div>`);
+      document.querySelectorAll('.deal-accept').forEach(btn => btn.addEventListener('click', () => {
+        cfg.onAccept(cfg.offers[parseInt(btn.dataset.idx)]);
+        closeModal();
+        updateSidebar();
+      }));
+      document.querySelectorAll('.deal-negotiate').forEach(btn => btn.addEventListener('click', () => {
+        const o = cfg.offers[parseInt(btn.dataset.idx)];
+        const res = negotiateDeal(o, cfg.valueKey);
+        if (res.ok) notify(`${o.name} agreed to improve their offer by ${Math.round(res.uplift * 100)}%!`, 'success');
+        else if (res.withdrawn) notify(`${o.name} pulled out of negotiations.`, 'error');
+        else notify(`${o.name} held firm — this is their final offer.`, 'warning');
+        render();
+      }));
+    };
+    render();
+  }
+
+  function showSponsorRenewalModal() {
+    const fin = gameState.finances;
+    if (!fin || !fin.sponsorNeedsRenewal) return;
+    const club   = gameState.myClub;
+    const offers = genSponsorOffers(club, fin.boardConfidence, !!fin.lastSeasonGood);
+    const tierLabels = ['', 'Regional', 'National', 'Global'];
+    showDealModal({
+      title: 'Shirt Sponsor Negotiation',
+      blurb: 'Your shirt sponsor deal has expired. Pick a partner — and negotiate for more money if you dare.',
+      offers,
+      valueKey: 'weeklyValue',
+      valueFmt: (o) => `${money(o.weeklyValue)}/wk <span style="font-size:11px;color:var(--text-muted)">(${money(o.weeklyValue * 52)}/season)</span>`,
+      subLine:  (o) => `${tierLabels[o.tier]} sponsor · ${o.seasonsLeft} season contract` +
+        (o.clauses?.length ? `<div style="margin-top:4px;color:var(--accent-gold)">Clauses: ${o.clauses.map(clauseLabel).join(' · ')}</div>` : ''),
+      onAccept: (sp) => {
+        fin.sponsor = sp;
+        fin.sponsorNeedsRenewal = false;
+        notify(`Signed ${sp.name} as shirt sponsor — ${money(sp.weeklyValue)}/wk for ${sp.seasonsLeft} season(s)!`, 'success');
+      },
+    });
+  }
+
+  function showKitRenewalModal() {
+    const fin = gameState.finances;
+    if (!fin || !fin.kitNeedsRenewal) return;
+    const offers = genKitOffers(gameState.myClub);
+    showDealModal({
+      title: 'Kit Manufacturer Negotiation',
+      blurb: 'Your kit deal has expired. Choose a manufacturer — longer terms pay slightly more per year.',
+      offers,
+      valueKey: 'annualValue',
+      valueFmt: (o) => `${money(o.annualValue)}/season`,
+      subLine:  (o) => `Kit manufacturer · ${o.seasonsLeft} season contract`,
+      onAccept: (kd) => {
+        fin.kitDeal = kd;
+        fin.kitNeedsRenewal = false;
+        notify(`Signed ${kd.name} kit deal — ${money(kd.annualValue)}/season for ${kd.seasonsLeft} seasons!`, 'success');
+      },
+    });
+  }
+
   /* ---------------------------------------------
-     FINANCES
+     FINANCES — view
      --------------------------------------------- */
   function renderFinances(m) {
     const club = gameState.myClub;
-    const rep = club.rep;
-    const wageBill = club.players.reduce((s, p) => s + p.wage, 0) / 1000;   // £m/season approx
-    const matchday = rep * 1.4;
-    const sponsor = rep * 3.5;
-    const tv = rep * 6;
-    const prize = rep * 2;
-    const income = matchday + sponsor + tv + prize;
-    const wages = wageBill * 12;
-    const other = rep * 1.5;
-    const expense = wages + other;
-    const profit = income - expense;
-    const maxV = Math.max(income, expense, 1);
-    const bar = (label, val, cls) => `<div class="fin-bar-row"><span class="fin-bar-label">${label}</span>
-      <div class="fin-bar-track"><div class="fin-bar-fill ${cls}" style="width:${Math.min(100, val / maxV * 100)}%"></div></div>
-      <span class="fin-bar-val ${cls === 'income' ? 'pos' : 'neg'}">${money(val)}</span></div>`;
+    const fin  = gameState.finances;
 
-    const topEarners = [...club.players].sort((a, b) => b.wage - a.wage).slice(0, 8);
+    // Legacy fallback: no finances object (old save)
+    if (!fin) {
+      const rep = club.rep;
+      const tv = rep * 6, sponsor = rep * 3.5, matchday = rep * 1.4, prize = rep * 2;
+      const income = tv + sponsor + matchday + prize;
+      const wages = club.players.reduce((s,p) => s+p.wage,0)/1000 * 12;
+      const profit = income - wages - rep * 1.5;
+      m.innerHTML = `<div class="view-header"><div><div class="view-title">Finances</div><div class="view-subtitle">Season ${gameState.season} (estimate)</div></div></div>
+        <div class="finances-grid">
+          <div class="card"><div class="card-title">Club Balance</div><div class="stat-big" style="font-size:28px">${money(gameState.finances?.balance ?? club.budget)}</div></div>
+          <div class="card"><div class="card-title">Est. Annual Profit</div><div class="stat-big" style="font-size:28px;color:${profit>=0?'var(--accent)':'var(--accent-red)'}">${money(profit)}</div></div>
+        </div>`;
+      return;
+    }
+
+    const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
+    const level = leagueLevel(club);
+    const weeklyWages   = club.players.reduce((s, p) => s + p.wage, 0) / 1000;
+    const weeklyTV      = FIN_TV_LEAGUE[level] / 52;
+    const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
+    const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep];
+    const weeklyIncome  = weeklyTV + weeklySponsor;
+    const weeklyExpense = weeklyWages + weeklyStaff;
+    const weeklyNet     = weeklyIncome - weeklyExpense;
+
+    const projTV       = FIN_TV_LEAGUE[level];
+    const projSponsor  = weeklySponsor * 52;
+    const projMatchday = matchdayBase(club) * ticketRevenueMult(ticketTier(fin).key, level);
+    const projWages    = weeklyWages * 52;
+    const projStaff    = weeklyStaff * 52;
+    const projPrize    = PRIZE_BY_POS[9] * PRIZE_LEVEL_MULT[Math.min((DATA.LEAGUES[club.league]?.level||1)-1,4)];
+    const projIncome   = projTV + projSponsor + projMatchday + projPrize;
+    const projExpenses = projWages + projStaff;
+    const projProfit   = projIncome - projExpenses;
+
+    const totalInc  = totalSeasonIncome(fin);
+    const totalExp  = totalSeasonExpenses(fin);
+    const seasonNet = totalInc - totalExp;
+    const maxV      = Math.max(projIncome, projExpenses, 1);
+    const bar = (label, val, cls) =>
+      `<div class="fin-bar-row"><span class="fin-bar-label">${label}</span>
+       <div class="fin-bar-track"><div class="fin-bar-fill ${cls}" style="width:${Math.min(100, val/maxV*100)}%"></div></div>
+       <span class="fin-bar-val ${cls==='income'?'pos':'neg'}">${money(val)}</span></div>`;
+
+    const balColor  = fin.balance >= 0 ? 'var(--accent)' : 'var(--accent-red)';
+    const netColor  = seasonNet >= 0 ? 'var(--accent)' : 'var(--accent-red)';
+    const h         = fin.boardConfidence;
+    const hapColor  = h >= 70 ? 'var(--accent)' : h >= 40 ? 'var(--accent-gold)' : 'var(--accent-red)';
+    const hapLabel  = h >= 85 ? 'Delighted' : h >= 70 ? 'Satisfied' : h >= 50 ? 'Steady' : h >= 35 ? 'Concerned' : h >= 20 ? 'Angry' : 'Furious';
+    const ffp       = ffpStatus(fin);
+    const ffpColor  = ffp.ok ? (ffp.rolling >= 0 ? 'var(--accent)' : 'var(--accent-gold)') : 'var(--accent-red)';
+    const tierLabels = ['','Regional','National','Global'];
+
+    const grantNote = (() => {
+      const grant = calcBoardGrant(club, fin, ENGINE.getMyPosition(gameState) || Math.ceil(ENGINE.getLeagueTable(gameState, club.league).length/2), ENGINE.getLeagueTable(gameState, club.league).length || 20);
+      return h >= 70
+        ? `Board pleased — next season's grant est. <strong>${money(grant)}</strong>`
+        : h >= 40
+          ? `Board neutral — next season's grant est. <strong>${money(grant)}</strong>`
+          : `Board unhappy — next season's grant est. <strong>${money(grant)}</strong>. Results must improve.`;
+    })();
+
+    const wageCapWeekly = Math.max(0.01, (fin.balance || 0) * 0.05);
+    const wageUsePct    = Math.min(100, Math.round(weeklyWages / Math.max(wageCapWeekly, 0.01) * 100));
+    const wageBarColor  = wageUsePct >= 95 ? 'var(--accent-red)' : wageUsePct >= 80 ? 'var(--accent-gold)' : 'var(--accent)';
+
+    const tp = ticketTier(fin).key;
+    const mdBase = matchdayBase(club);
+    const leagueTable = ENGINE.getLeagueTable(gameState, club.league);
+    const myPos = ENGINE.getMyPosition(gameState) || Math.ceil(leagueTable.length / 2);
+    const fundReqAmt  = Math.round(calcBoardGrant(club, fin, myPos, leagueTable.length || 20) * 0.38 * 10) / 10;
+    const canRequestFunds = !fin.boardFundsRequested && h >= 25;
+    const investableBalance = Math.max(0, Math.round(fin.balance * 10) / 10);
+
+    const historyHtml = fin.history.length ? `
+      <div class="card">
+        <div class="card-title">Financial History</div>
+        <div style="overflow-x:auto">
+        <table class="league-table" style="font-size:11px;min-width:520px">
+          <thead><tr>
+            <th>Season</th><th>Pos</th><th>Income</th><th>Expenses</th><th>Net</th><th>Balance</th><th>Board Grant</th><th>Conf.</th>
+          </tr></thead>
+          <tbody>${fin.history.map(h => `<tr>
+            <td>${h.season}</td>
+            <td>${ordinal(h.pos)}</td>
+            <td class="text-accent">${money(h.income)}</td>
+            <td style="color:var(--accent-red)">${money(h.expenses)}</td>
+            <td style="color:${h.profit>=0?'var(--accent)':'var(--accent-red)'}">${h.profit>=0?'+':''}${money(h.profit)}</td>
+            <td style="color:${h.balance>=0?'var(--accent)':'var(--accent-red)'}">${money(h.balance)}</td>
+            <td style="color:var(--accent-gold)">${money(h.grant)}</td>
+            <td style="color:${h.confidence>=70?'var(--accent)':h.confidence>=40?'var(--accent-gold)':'var(--accent-red)'}">${h.confidence}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>` : '';
 
     m.innerHTML = `
-      <div class="view-header"><div><div class="view-title">Finances</div><div class="view-subtitle">Season ${gameState.season} projection</div></div></div>
-      <div class="finances-grid">
-        <div class="card"><div class="card-title">Transfer Budget</div><div class="stat-big" style="font-size:28px">${money(club.budget)}</div></div>
-        <div class="card"><div class="card-title">Projected Profit</div><div class="stat-big" style="font-size:28px;color:${profit >= 0 ? 'var(--accent)' : 'var(--accent-red)'}">${money(profit)}</div><div class="stat-label">Income ${money(income)} · Costs ${money(expense)}</div></div>
+      <div class="view-header"><div><div class="view-title">Finances</div><div class="view-subtitle">${esc(club.name)} · Season ${gameState.season}</div></div></div>
+
+      <div class="finances-grid fin-3col">
+        <div class="card">
+          <div class="card-title">Club Balance</div>
+          <div class="stat-big" style="font-size:26px;color:${balColor}">${money(fin.balance)}</div>
+          <div class="stat-label">${fin.balance < 0 ? '⚠ Club is insolvent' : 'Running bank balance'}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Available Funds</div>
+          <div class="stat-big" style="font-size:26px">${money(fin.balance)}</div>
+          <div class="stat-label" style="margin-bottom:10px">Use club balance for transfers</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="fin-btn-req-funds" class="btn-secondary btn-sm" ${canRequestFunds ? "" : "disabled"}>${fin.boardFundsRequested ? "Funds Requested" : h < 25 ? "Board Unwilling" : "Request Funds"}</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Wage Budget</div>
+          <div class="fin-wage-cap">
+            <div class="fin-wage-bar-track"><div class="fin-wage-bar-fill" style="width:${wageUsePct}%;background:${wageBarColor}"></div></div>
+            <div class="fin-wage-cap-labels">
+              <span style="color:${wageBarColor}">${money(weeklyWages)}/wk used</span>
+              <span style="color:var(--text-muted)">${money(wageCapWeekly)}/wk cap</span>
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="finances-grid">
-        <div class="card"><div class="card-title">Income</div><div class="finances-chart-bar">
-          ${bar('TV Rights', tv, 'income')}${bar('Sponsorship', sponsor, 'income')}${bar('Matchday', matchday, 'income')}${bar('Prize Money', prize, 'income')}</div></div>
-        <div class="card"><div class="card-title">Expenditure</div><div class="finances-chart-bar">
-          ${bar('Player Wages', wages, 'expense')}${bar('Other Costs', other, 'expense')}</div></div>
+        <div class="card">
+          <div class="card-title">Weekly Cash Flow</div>
+          <div class="fin-cashflow">
+            <div class="fin-cf-row"><span class="fin-cf-label">TV Broadcast <span style="font-size:10px;color:var(--text-muted)">(${esc(DATA.LEAGUES[club.league]?.name || '')} equal share)</span></span><span class="fin-cf-pos">+${money(weeklyTV)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Shirt Sponsor</span><span class="fin-cf-pos">+${money(fin.sponsor?.weeklyValue||0)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Kit Deal</span><span class="fin-cf-pos">+${money(weeklyKitDeal)}/wk</span></div>
+            <div class="fin-cf-divider"></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Player Wages</span><span class="fin-cf-neg">−${money(weeklyWages)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Staff &amp; Ops</span><span class="fin-cf-neg">−${money(weeklyStaff)}/wk</span></div>
+            <div class="fin-cf-divider"></div>
+            <div class="fin-cf-row fin-cf-total"><span>Weekly Net</span><span style="color:${weeklyNet>=0?'var(--accent)':'var(--accent-red)'};font-weight:700">${weeklyNet>=0?'+':''}${money(weeklyNet)}/wk</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Season To Date</div>
+          <div class="fin-cashflow">
+            <div class="fin-cf-row"><span class="fin-cf-label">TV</span><span class="fin-cf-pos">+${money(fin.seasonIncome.tv)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Sponsorship</span><span class="fin-cf-pos">+${money(fin.seasonIncome.sponsorship)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Matchday</span><span class="fin-cf-pos">+${money(fin.seasonIncome.matchday)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Prizes</span><span class="fin-cf-pos">+${money(fin.seasonIncome.prizes)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Player Sales</span><span class="fin-cf-pos">+${money(fin.seasonIncome.sales)}</span></div>
+            <div class="fin-cf-divider"></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Wages</span><span class="fin-cf-neg">−${money(fin.seasonExpenses.wages)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Transfers</span><span class="fin-cf-neg">−${money(fin.seasonExpenses.transfers)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Agent Fees</span><span class="fin-cf-neg">−${money(fin.seasonExpenses.agentFees)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Staff</span><span class="fin-cf-neg">−${money(fin.seasonExpenses.staff)}</span></div>
+            <div class="fin-cf-divider"></div>
+            <div class="fin-cf-row fin-cf-total"><span>Season Net</span><span style="color:${netColor};font-weight:700">${seasonNet>=0?'+':''}${money(seasonNet)}</span></div>
+          </div>
+        </div>
       </div>
+
+      <div class="finances-grid">
+        <div class="card">
+          <div class="card-title">Shirt Sponsor ${fin.sponsorNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
+          ${fin.sponsor && !fin.sponsorNeedsRenewal ? `
+            <div class="fin-sponsor-block">
+              <div class="fin-sponsor-tier tier-${fin.sponsor.tier}">${tierLabels[fin.sponsor.tier]}</div>
+              <div class="fin-sponsor-name">${esc(fin.sponsor.name)}</div>
+              <div class="fin-sponsor-value">${money(fin.sponsor.weeklyValue)}/wk · ${money(fin.sponsor.weeklyValue*52)}/year</div>
+              <div class="fin-sponsor-left">${fin.sponsor.seasonsLeft} season${fin.sponsor.seasonsLeft!==1?'s':''} remaining</div>
+              ${fin.sponsor.clauses?.length ? `<div class="stat-label" style="margin-top:6px;color:var(--accent-gold)">Clauses: ${fin.sponsor.clauses.map(clauseLabel).join(' · ')}</div>` : ''}
+            </div>` : `<div class="stat-label" style="margin-top:8px;color:var(--accent-red)">No shirt sponsor — choose one now.</div>`}
+          ${fin.sponsorNeedsRenewal || !fin.sponsor ? `<button id="fin-btn-pick-sponsor" class="btn-primary btn-sm" style="margin-top:10px">Pick Sponsor</button>` : ''}
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <div class="stat-label" style="color:var(--text-muted);margin-bottom:4px">Kit Manufacturer ${fin.kitNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
+            ${fin.kitDeal && !fin.kitNeedsRenewal ? `
+              <div style="font-weight:600">${esc(fin.kitDeal.name)}</div>
+              <div class="stat-label">${money(fin.kitDeal.annualValue)}/season · ${fin.kitDeal.seasonsLeft} season${fin.kitDeal.seasonsLeft!==1?'s':''} left</div>`
+              : `<div class="stat-label" style="color:var(--accent-red)">No kit deal — negotiate one now.</div>`}
+            ${fin.kitNeedsRenewal || !fin.kitDeal ? `<button id="fin-btn-pick-kit" class="btn-primary btn-sm" style="margin-top:8px">Negotiate Kit Deal</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="finances-grid">
+        <div class="card">
+          <div class="card-title">Ticket Pricing</div>
+          <div class="stat-label" style="margin-bottom:10px">Set ticket prices — what fans will pay depends on your division. Higher leagues support higher prices; lower-league fans are price-sensitive.</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+            ${Object.entries(TICKET_TIERS).map(([key, t]) => `
+              <button class="fin-ticket-btn btn-sm ${tp===key?'btn-primary':'btn-secondary'}" data-price="${key}" style="flex:1;min-width:90px">${t.label}<br><span style="font-size:10px;opacity:.7">${money(mdBase * ticketRevenueMult(key, level))}/season</span><br><span style="font-size:10px;opacity:.7">${t.attEffect===0?'— attendance':(t.attEffect>0?'+':'')+Math.round(t.attEffect*(1+(level-1)*0.35)*100)+'% attendance'}</span></button>`).join('')}
+          </div>
+          <div class="stat-label">${TICKET_TIERS[tp].desc}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Board Relations</div>
+          <div class="fin-board-meter" style="margin-bottom:8px">
+            <div class="fin-board-track"><div class="fin-board-fill" style="width:${h}%;background:${hapColor}"></div></div>
+            <div class="fin-board-vals"><span>0</span><span style="color:${hapColor};font-weight:700">${hapLabel} · ${h}/100</span><span>100</span></div>
+          </div>
+          <div class="stat-label" style="margin-bottom:10px">${grantNote}</div>
+          <button id="fin-btn-confidence" class="btn-secondary btn-sm" ${!fin.boardConfVoted && h >= 40 ? "" : "disabled"}>${fin.boardConfVoted ? "Vote Already Requested" : h < 40 ? "Board Won't Support" : "Request Vote of Confidence"}</button>
+          ${!ffp.ok ? `<div style="margin-top:10px;padding:8px 10px;background:rgba(255,77,77,0.1);border:1px solid rgba(255,77,77,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">⚠ FFP Warning: 3-year rolling loss ${money(Math.abs(ffp.rolling))} approaching limit.</div>` :
+            ffp.rolling < -35 ? `<div style="margin-top:10px;padding:8px 10px;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:6px;font-size:12px;color:var(--accent-gold)">FFP: Under monitoring — 3yr rolling loss ${money(Math.abs(ffp.rolling))}.</div>` :
+            `<div style="margin-top:10px;font-size:12px;color:var(--accent)">FFP: ${ffp.label} · 3yr rolling ${ffp.rolling>=0?'+':''}${money(ffp.rolling)}</div>`}
+        </div>
+      </div>
+
+      <div class="finances-grid">
+        <div class="card"><div class="card-title">Projected Annual Income</div><div class="finances-chart-bar">
+          ${bar('TV Equal Share', projTV, 'income')}
+          ${bar('Sponsorship', projSponsor, 'income')}
+          ${bar('Matchday', projMatchday, 'income')}
+          ${bar('TV Merit (est.)', projPrize, 'income')}
+        </div></div>
+        <div class="card"><div class="card-title">Projected Annual Costs</div><div class="finances-chart-bar">
+          ${bar('Player Wages', projWages, 'expense')}
+          ${bar('Staff &amp; Ops', projStaff, 'expense')}
+          <div class="fin-bar-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+            <span class="fin-bar-label">Profit</span>
+            <div class="fin-bar-track"></div>
+            <span class="fin-bar-val" style="color:${projProfit>=0?'var(--accent)':'var(--accent-red)'}">${projProfit>=0?'+':''}${money(projProfit)}</span>
+          </div>
+        </div></div>
+      </div>
+
+      ${historyHtml}
+
       <div class="card"><div class="card-title">Top Earners</div><div class="wage-breakdown">
-        ${topEarners.map(p => `<div class="wage-item"><span class="wage-item-name">${esc(p.name)} <span class="text-muted">(${p.pos})</span></span><span class="wage-item-amount">${money(p.wage)}/wk</span></div>`).join('')}
+        ${[...club.players].sort((a,b)=>b.wage-a.wage).slice(0,10).map(p =>
+          `<div class="wage-item">
+            <span class="wage-item-name">${esc(p.name)} <span class="text-muted">(${p.pos}, ${p.age})</span></span>
+            <span class="wage-item-amount">${money(p.wage/1000)}/wk</span>
+          </div>`).join('')}
       </div></div>`;
+
+    // --- Interactive event listeners ---
+
+    // Ticket pricing buttons
+    m.querySelectorAll('.fin-ticket-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        fin.ticketPricing = btn.dataset.price;
+        notify(`Ticket pricing set to ${btn.dataset.price} — matchday income updated.`, 'info');
+        renderView('finances');
+      });
+    });
+
+    // Request board funds
+    const reqFundsBtn = document.getElementById('fin-btn-req-funds');
+    if (reqFundsBtn && canRequestFunds) {
+      reqFundsBtn.addEventListener('click', () => {
+        const confCost = 10;
+        showModal(`
+          <div style="max-width:340px">
+            <h2 style="margin-bottom:8px">Request Board Funds</h2>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Ask the board for a mid-season budget injection. Can only be done once per season.</p>
+            <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Amount granted</span><span style="color:var(--accent);font-weight:700">${money(fundReqAmt)}</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Board confidence cost</span><span style="color:var(--accent-red)">−${confCost}</span></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button id="fin-confirm-req" class="btn-primary" style="flex:1">Confirm Request</button>
+              <button id="fin-cancel-req" class="btn-secondary" style="flex:1">Cancel</button>
+            </div>
+          </div>`);
+        document.getElementById('fin-cancel-req').addEventListener('click', closeModal);
+        document.getElementById('fin-confirm-req').addEventListener('click', () => {
+          fin.balance = Math.round((fin.balance + fundReqAmt) * 100) / 100;
+          fin.boardConfidence = Math.max(0, fin.boardConfidence - confCost);
+          fin.boardFundsRequested = true;
+          closeModal();
+          updateSidebar();
+          notify(`Board granted ${money(fundReqAmt)} — added to club balance.`, 'success');
+          renderView('finances');
+        });
+      });
+    }
+
+
+    // Pick / renew sponsor
+    const pickSponsorBtn = document.getElementById('fin-btn-pick-sponsor');
+    if (pickSponsorBtn) {
+      pickSponsorBtn.addEventListener('click', () => {
+        fin.sponsorNeedsRenewal = true;
+        showSponsorRenewalModal();
+        // Re-render finances after modal closes
+        const obs = new MutationObserver(() => {
+          if (document.getElementById('modal-overlay').classList.contains('hidden')) {
+            obs.disconnect();
+            renderView('finances');
+          }
+        });
+        obs.observe(document.getElementById('modal-overlay'), { attributes: true, attributeFilter: ['class'] });
+      });
+    }
+
+    // Negotiate kit deal
+    const pickKitBtn = document.getElementById('fin-btn-pick-kit');
+    if (pickKitBtn) {
+      pickKitBtn.addEventListener('click', () => {
+        fin.kitNeedsRenewal = true;
+        showKitRenewalModal();
+        const obs = new MutationObserver(() => {
+          if (document.getElementById('modal-overlay').classList.contains('hidden')) {
+            obs.disconnect();
+            renderView('finances');
+          }
+        });
+        obs.observe(document.getElementById('modal-overlay'), { attributes: true, attributeFilter: ['class'] });
+      });
+    }
+
+    // Vote of confidence
+    const confBtn = document.getElementById('fin-btn-confidence');
+    if (confBtn && !fin.boardConfVoted && h >= 40) {
+      confBtn.addEventListener('click', () => {
+        showModal(`
+          <div style="max-width:340px">
+            <h2 style="margin-bottom:8px">Vote of Confidence</h2>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Request a public show of support from the board. Boosts your confidence rating — but can only be done once per season.</p>
+            <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>Confidence boost</span><span style="color:var(--accent);font-weight:700">+12</span></div>
+              <div style="display:flex;justify-content:space-between"><span>New confidence</span><span style="color:var(--accent)">${Math.min(100, h + 12)}/100</span></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button id="fin-confirm-conf" class="btn-primary" style="flex:1">Request Vote</button>
+              <button id="fin-cancel-conf" class="btn-secondary" style="flex:1">Cancel</button>
+            </div>
+          </div>`);
+        document.getElementById('fin-cancel-conf').addEventListener('click', closeModal);
+        document.getElementById('fin-confirm-conf').addEventListener('click', () => {
+          fin.boardConfidence = Math.min(100, fin.boardConfidence + 12);
+          fin.boardConfVoted = true;
+          closeModal();
+          updateSidebar();
+          notify('Board publicly backs the manager — confidence improved!', 'success');
+          renderView('finances');
+        });
+      });
+    }
   }
 
   /* ---------------------------------------------
@@ -1528,7 +2771,7 @@ const APP = (() => {
         <div class="pm-avatar" style="background:${clubColor};color:${clubText}">${DATA.getInitials(p.name)}</div>
         <div class="pm-info">
           <h2>${esc(p.name)}</h2>
-          <p>${esc(p.nationality)} · Age ${p.age}${club && club.id !== gameState.myClubId ? ' · ' + esc(club.shortName || club.name) : ''}</p>
+          <p>${esc(p.nationality)} · Age ${p.age}${club && club.id !== gameState.myClubId ? ' · ' + esc(club.name || club.name) : ''}</p>
           <div class="pm-badges">
             <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
             <span class="ovr-badge ${ovrClass(p.ovr)}">${p.ovr}</span>
@@ -1556,7 +2799,7 @@ const APP = (() => {
       <div id="pm-pane-stats" class="hidden">
         <div class="pm-stats-grid">
           <div class="pm-stat"><span class="pm-stat-name">Market Value</span><span class="pm-stat-val text-gold">${money(p.value)}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage)}/wk</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage/1000)}/wk</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEnd}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Potential</span><span class="pm-stat-val" style="color:${potColor}">${p.pot}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Goals</span><span class="pm-stat-val">${p.goals}</span></div>
@@ -1565,6 +2808,9 @@ const APP = (() => {
           <div class="pm-stat"><span class="pm-stat-name">Morale</span><span class="pm-stat-val">${p.morale}%</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Yellow Cards</span><span class="pm-stat-val">${p.yellowCards || 0}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Red Cards</span><span class="pm-stat-val">${p.redCards || 0}</span></div>
+        </div>
+        <div class="pm-offer-footer" style="margin-top:12px">
+          <button class="btn-secondary" style="width:100%" id="pm-renegotiate-btn">Renegotiate Contract</button>
         </div>
       </div>
     </div>`);
@@ -1581,9 +2827,79 @@ const APP = (() => {
       $('pm-pane-stats').classList.remove('hidden');
       $('pm-pane-ratings').classList.add('hidden');
     });
+
+    const renego = $('pm-renegotiate-btn');
+    if (renego) renego.addEventListener('click', () => {
+      const curWage = p.wage;
+      const curContract = p.contract || 1;
+      const contractEnd = gameState.currentDate.getFullYear() + curContract;
+      // Minimum the player will accept: their current wage (they won't take a cut unless low morale)
+      const minAccept = p.morale < 45 ? Math.round(curWage * 0.85 * 10) / 10 : curWage;
+      // What they ideally want: 10-25% raise based on form and age
+      const wantRaise = p.age < 28 && p.pot > p.ovr ? 1.20 : 1.10;
+      const wantedWage = Math.round(curWage * wantRaise * 10) / 10;
+      showModal(`
+        <div style="max-width:360px">
+          <h2 style="margin-bottom:4px">Renegotiate Contract</h2>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">${esc(p.name)} · ${p.pos} · Age ${p.age}</p>
+          <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Current wage</span><span>${money(curWage/1000)}/wk</span></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Contract expires</span><span>${contractEnd}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Player wants</span><span style="color:var(--accent-gold)">${money(wantedWage/1000)}/wk</span></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Offer wage (£k/wk)</label>
+            <input id="rn-wage-input" type="number" step="1" min="1" value="${Math.round(wantedWage)}"
+              style="width:100%;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Contract length</label>
+            <div style="display:flex;gap:6px">
+              ${[1,2,3,4,5].map(y => `<button class="btn-secondary btn-sm rn-years" data-y="${y}" style="flex:1">${y}yr</button>`).join('')}
+            </div>
+            <div id="rn-years-selected" style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:center">Select contract length</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="rn-offer-btn" class="btn-primary" style="flex:1" disabled>Make Offer</button>
+            <button id="rn-cancel-btn" class="btn-secondary" style="flex:1">Cancel</button>
+          </div>
+        </div>`);
+
+      let chosenYears = null;
+      document.querySelectorAll('.rn-years').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.rn-years').forEach(b => b.classList.remove('active', 'btn-primary'));
+          document.querySelectorAll('.rn-years').forEach(b => b.classList.add('btn-secondary'));
+          btn.classList.remove('btn-secondary');
+          btn.classList.add('btn-primary');
+          chosenYears = parseInt(btn.dataset.y);
+          document.getElementById('rn-years-selected').textContent = `${chosenYears}-year deal until ${gameState.currentDate.getFullYear() + chosenYears}`;
+          document.getElementById('rn-offer-btn').disabled = false;
+        });
+      });
+      document.getElementById('rn-cancel-btn').addEventListener('click', closeModal);
+      document.getElementById('rn-offer-btn').addEventListener('click', () => {
+        const offeredWageUnits = parseFloat(document.getElementById('rn-wage-input').value) || curWage;
+        if (!chosenYears) return;
+        // Acceptance check
+        const accepts = offeredWageUnits >= minAccept;
+        if (!accepts) {
+          notify(`${p.name} rejected the offer — they won't accept a wage cut.`, 'error');
+          closeModal();
+          return;
+        }
+        p.wage = Math.round(offeredWageUnits * 10) / 10;
+        p.contract = chosenYears;
+        p.morale = Math.min(100, p.morale + 8);
+        closeModal();
+        notify(`${p.name} signed a new ${chosenYears}-year deal at ${money(p.wage/1000)}/wk.`, 'success');
+        renderView('squad');
+      });
+    });
   }
 
   function showMarketPlayerModal(playerId, clubId) {
+    if (isTransferBanned(playerId)) return notify('That player won\'t entertain a move to your club again this season.', 'warning');
     const seller = gameState.clubs[clubId];
     if (!seller) return;
     const mkt = (gameState.market || []).find(x => x.id === playerId && x.clubId === clubId);
@@ -1633,13 +2949,14 @@ const APP = (() => {
         <div class="pm-avatar" style="background:${hex(seller.color)};color:${textOn(seller.color)}">${DATA.getInitials(p.name)}</div>
         <div class="pm-info">
           <h2>${esc(p.name)}</h2>
-          <p>${esc(p.nationality)} · Age ${p.age} · ${esc(seller.shortName || seller.name)}</p>
+          <p>${esc(p.nationality)} · Age ${p.age} · ${esc(seller.name || seller.name)}</p>
           <div class="pm-badges">
             <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
             <span class="ovr-badge ${ovrClass(p.ovr)}">${p.ovr}</span>
             ${potGap > 0 ? `<span class="pm-pot-tag" style="color:${potColor}">&#9650;${p.pot}</span>` : ''}
           </div>
           ${statusTag}
+          <div class="pm-prestige-stars">${repStars(playerPrestige(p.ovr))}</div>
         </div>
       </div>
 
@@ -1662,7 +2979,7 @@ const APP = (() => {
       <div id="pm-pane-stats" class="hidden">
         <div class="pm-stats-grid">
           <div class="pm-stat"><span class="pm-stat-name">Market Value</span><span class="pm-stat-val text-gold">${money(p.value)}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage)}/wk</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage/1000)}/wk</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEnd}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Potential</span><span class="pm-stat-val" style="color:${potColor}">${p.pot}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Goals</span><span class="pm-stat-val">${p.goals}</span></div>
@@ -1696,6 +3013,104 @@ const APP = (() => {
       closeModal();
       openNegotiation(playerId, clubId);
     });
+  }
+
+  function showFreeAgentModal(playerId) {
+    if (isTransferBanned(playerId)) return notify('That player won\'t entertain a move to your club again this season.', 'warning');
+    const agents = gameState.freeAgents || [];
+    const p = agents.find(x => x.id === playerId);
+    if (!p) return;
+
+    const myClub = gameState.myClub;
+    const rejectChance = prestigeRejectChance(p, myClub);
+    const isGK = p.pos === 'GK';
+    const attrDefs = isGK
+      ? [['Reflexes','gkReflexes'],['Positioning','gkPositioning'],['Passing','passing'],['Physical','physical'],['Pace','pace']]
+      : [['Pace','pace'],['Shooting','shooting'],['Passing','passing'],['Dribbling','dribbling'],['Defending','defending'],['Physical','physical']];
+    const potRatio = p.ovr > 0 ? p.pot / p.ovr : 1;
+    const potVal = (key) => Math.min(99, Math.round((p.attrs[key] || 0) * potRatio));
+    const potGap = p.pot - p.ovr;
+    const potColor = potGap >= 10 ? 'var(--accent)' : potGap >= 5 ? 'var(--accent-gold)' : 'var(--text-muted)';
+    // Wage: player wants 10-25% above their current wage (no transfer fee)
+    const wantedWage = Math.max(0.5, Math.round(p.wage * (1.12 + rand(0, 13) / 100) * 10) / 10);
+    const minWage = Math.max(0.5, Math.round(p.wage * 0.95 * 10) / 10);
+
+    const barsHtml = attrDefs.map(([name, key]) => {
+      const v = p.attrs[key] || 0, pv = potVal(key);
+      return `<div class="pm-attr-row">
+        <span class="pm-attr-label">${name}</span>
+        <div class="pm-attr-track">
+          <div class="pm-attr-pot-fill" style="width:${pv}%"></div>
+          <div class="pm-attr-fill ${attrClass(v)}" style="width:${v}%"></div>
+        </div>
+        <span class="pm-attr-val">${v}</span>
+        <span class="pm-pot-stat-val">${pv > v ? pv : ''}</span>
+      </div>`;
+    }).join('');
+
+    showModal(`<div class="player-modal">
+      <div class="pm-header">
+        <div class="pm-avatar" style="background:#555;color:#fff">${DATA.getInitials(p.name)}</div>
+        <div class="pm-info">
+          <h2>${esc(p.name)}</h2>
+          <p>${esc(p.nationality)} · Age ${p.age} · Free Agent</p>
+          <div class="pm-badges">
+            <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
+            <span class="ovr-badge ${ovrClass(p.ovr)}">${p.ovr}</span>
+            ${potGap > 0 ? `<span class="pm-pot-tag" style="color:${potColor}">&#9650;${p.pot}</span>` : ''}
+          </div>
+          <span class="market-tag expiring">Free Agent — sign any time</span>
+        </div>
+      </div>
+      <div class="pm-attr-bar-list">${barsHtml}</div>
+      <div class="pm-offer-footer">
+        ${rejectChance >= 0.60 ? `<div class="pm-prestige-warn">Very unlikely to join — club not prestigious enough</div>` : rejectChance >= 0.30 ? `<div class="pm-prestige-warn">May be reluctant to join a club of your stature</div>` : ''}
+        <div class="pm-value-row"><span>Wants</span><span class="text-gold fw-700">${money(wantedWage / 1000)}/wk</span></div>
+        <div class="neg-field" style="margin:10px 0">
+          <label>Your wage offer (£k/wk)</label>
+          <input id="fa-wage-input" type="number" step="0.5" min="0" value="${wantedWage}">
+        </div>
+        <div class="neg-field" style="margin-bottom:14px">
+          <label>Contract length</label>
+          <select id="fa-contract-len">
+            ${[1,2,3,4,5].map(y => `<option value="${y}"${y===3?' selected':''}>${y} year${y>1?'s':''}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn-primary pm-offer-btn" id="fa-sign-btn">Sign Player</button>
+      </div>
+    </div>`);
+
+    $('fa-sign-btn').addEventListener('click', () => {
+      const offeredWage = parseFloat($('fa-wage-input').value);
+      const years = parseInt($('fa-contract-len').value);
+      if (isNaN(offeredWage) || offeredWage <= 0) return notify('Enter a valid wage.', 'error');
+      if (offeredWage < minWage) return notify(`${p.name} won't accept less than ${money(minWage / 1000)}/wk.`, 'error');
+      if (rejectChance > 0 && Math.random() < rejectChance) {
+        markTransferBan(playerId);
+        closeModal();
+        return notify(`${p.name} rejected your approach — your club isn't prestigious enough.`, 'error');
+      }
+      if (offeredWage < wantedWage && Math.random() < 0.45) {
+        markTransferBan(playerId);
+        return notify(`${p.name} turned down ${money(offeredWage / 1000)}/wk — not interested this season.`, 'error');
+      }
+      signFreeAgent(playerId, offeredWage, years);
+    });
+  }
+
+  function signFreeAgent(playerId, agreedWage, years) {
+    const agents = gameState.freeAgents || [];
+    const idx = agents.findIndex(x => x.id === playerId);
+    if (idx === -1) return;
+    const p = { ...agents[idx], wage: agreedWage, contract: years || 3, clubId: gameState.myClubId, clubName: gameState.myClub.name };
+    gameState.myClub.players.push(p);
+    gameState.freeAgents.splice(idx, 1);
+    recalcSqRating(gameState.myClub);
+    gameState.transferLog.unshift({ in: true, name: p.name, fee: 0 });
+    notify(`${p.name} signed on a free transfer on ${money(agreedWage / 1000)}/wk!`, 'success');
+    closeModal();
+    updateSidebar();
+    renderTransfers($('main-content'));
   }
 
   function buildSpiderChart(vals, potVals, labels) {
@@ -1841,7 +3256,7 @@ const APP = (() => {
 
         <div class="scout-opp-right">
           <div class="card">
-            <div class="card-title">${opp.shortName || opp.name} Formation <span class="scout-click-hint">click player</span></div>
+            <div class="card-title">${opp.name || opp.name} Formation <span class="scout-click-hint">click player</span></div>
             <div class="scout-mini-pitch">
               ${pitchDots}
             </div>
@@ -1875,9 +3290,11 @@ const APP = (() => {
       const posOptions = ['any','GK','CB','LB','RB','CDM','CM','CAM','LM','RM','LW','RW','ST','CF'].map(p =>
         `<option value="${p}" ${(s.assignment?.pos||'any')===p?'selected':''}>${p==='any'?'Any position':p}</option>`).join('');
       const ageOptions = [99,30,28,26,25,23,21,20].map(a =>
-        `<option value="${a}" ${(s.assignment?.maxAge||99)===a?'selected':''}>${a===99?'Any age':'Under '+a}</option>`).join('');
+        `<option value="${a}" ${(s.assignment?.maxAge||99)===a?'selected':''}>${a===99?'Any age':'U'+a}</option>`).join('');
       const ovrOptions = [0,60,65,70,75,80,85].map(o =>
         `<option value="${o}" ${(s.assignment?.minOVR||0)===o?'selected':''}>${o===0?'Any OVR':'OVR '+o+'+'}</option>`).join('');
+      const potOptions = [0,65,70,75,80,85,90].map(o =>
+        `<option value="${o}" ${(s.assignment?.minPOT||0)===o?'selected':''}>${o===0?'Any POT':'POT '+o+'+'}</option>`).join('');
 
       const reportRows = hasReport ? s.findings.map(f => {
         const blocked = (gameState.scoutBlocked || {})[f.id];
@@ -1890,6 +3307,7 @@ const APP = (() => {
             </div>
             <span class="scout-rp-conf scout-conf-${(f.confidence||'').toLowerCase()}">${f.confidence || ''}</span>
             <span class="scout-rp-ovr ${ovrClass(f.reportedOVR)}">${f.reportedOVR}${tier.ovrNoise > 3 ? '?' : ''}</span>
+            ${f.reportedPOT > f.reportedOVR ? `<span class="scout-rp-pot">▲${f.reportedPOT}${tier.potNoise > 6 ? '?' : ''}</span>` : ''}
             <span class="scout-rp-val">${money(f.value)}</span>
             ${blocked ? `<span class="scout-rp-blocked">Rejected</span>` : `<button class="btn-primary scout-rp-bid" data-pid="${f.id}" data-cid="${f.clubId}">Bid</button>`}
           </div>`;
@@ -1905,23 +3323,12 @@ const APP = (() => {
           </div>
           ${reportStatus}
           <div class="scout-assignment-section">
-            <div class="scout-assignment-label">Assignment</div>
-            <div class="scout-filter-grid">
-              <div class="scout-filter-col">
-                <label class="scout-filter-lbl">Position</label>
-                <select class="scout-filter-sel" data-sid="${s.id}" data-f="pos">${posOptions}</select>
-              </div>
-              <div class="scout-filter-col">
-                <label class="scout-filter-lbl">Max Age</label>
-                <select class="scout-filter-sel" data-sid="${s.id}" data-f="maxAge">${ageOptions}</select>
-              </div>
-              <div class="scout-filter-col">
-                <label class="scout-filter-lbl">Min OVR</label>
-                <select class="scout-filter-sel" data-sid="${s.id}" data-f="minOVR">${ovrOptions}</select>
-              </div>
-              <div class="scout-filter-col scout-filter-col-btn">
-                <button class="btn-primary scout-assign-btn" data-sid="${s.id}">Assign</button>
-              </div>
+            <div class="scout-filter-form">
+              <select class="scout-filter-sel" data-sid="${s.id}" data-f="pos">${posOptions}</select>
+              <select class="scout-filter-sel" data-sid="${s.id}" data-f="maxAge">${ageOptions}</select>
+              <select class="scout-filter-sel" data-sid="${s.id}" data-f="minOVR">${ovrOptions}</select>
+              <select class="scout-filter-sel" data-sid="${s.id}" data-f="minPOT">${potOptions}</select>
+              <button class="btn-primary scout-assign-btn" data-sid="${s.id}">Scout</button>
             </div>
           </div>
           ${hasReport ? `
@@ -2054,6 +3461,71 @@ const APP = (() => {
     });
   }
 
+  function activatePreContracts() {
+    const contracts = gameState.preContracts || [];
+    if (!contracts.length) return;
+    const activated = [];
+    contracts.forEach(pc => {
+      const seller = pc.sellerClubId ? gameState.clubs[pc.sellerClubId] : null;
+      const balance = gameState.finances?.balance ?? gameState.myClub.budget;
+      if (pc.agreedFee > balance) {
+        notify(`Can't complete pre-contract for ${pc.playerData.name} — insufficient funds.`, 'error');
+        return;
+      }
+      if (seller) seller.players = seller.players.filter(x => x.id !== pc.playerData.id);
+      const p = { ...pc.playerData, wage: pc.agreedWage, contract: pc.agreedYears };
+      gameState.myClub.players.push(p);
+      recalcSqRating(gameState.myClub);
+      if (seller) recalcSqRating(seller);
+      if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance - pc.agreedFee) * 10) / 10;
+      else gameState.myClub.budget = Math.round((gameState.myClub.budget - pc.agreedFee) * 10) / 10;
+      if (pc.agreedFee > 0) recordTransferExpense(pc.agreedFee);
+      gameState.market = (gameState.market || []).filter(x => x.id !== p.id);
+      gameState.transferLog.unshift({ in: true, name: p.name, fee: pc.agreedFee });
+      activated.push(p.name);
+    });
+    gameState.preContracts = [];
+    if (activated.length) notify(`Pre-contract${activated.length > 1 ? 's' : ''} activated: ${activated.join(', ')} joined the club!`, 'success');
+  }
+
+  function checkIncomingOffers() {
+    if (!ENGINE.isTransferWindowOpen(gameState)) return;
+    // Activate any pending pre-contracts when window opens (January or summer)
+    if ((gameState.preContracts || []).length) activatePreContracts();
+    const myId = gameState.myClubId;
+    const listed = gameState.myClub.players.filter(p => p.listingPrice != null);
+    if (!listed.length) return;
+    if (!gameState.pendingOffers) gameState.pendingOffers = [];
+    const aiClubs = Object.values(gameState.clubs).filter(c => c.id !== myId);
+    listed.forEach(p => {
+      if (Math.random() > 0.30) return;
+      // Bid relative to market value (not listing price), 75-100% of market value
+      const frac = 0.75 + Math.random() * 0.25;
+      const fee = Math.max(0.1, Math.round(p.value * frac * 10) / 10);
+      const affordable = aiClubs.filter(c => c.budget >= fee * 0.7);
+      if (!affordable.length) return;
+      const bidder = affordable[Math.floor(Math.random() * affordable.length)];
+      // Club's max they'll pay: market value * 1.1-1.2 (for counter negotiations)
+      const maxWilling = Math.round(p.value * (1.10 + Math.random() * 0.10) * 10) / 10;
+      gameState.pendingOffers.push({
+        id: `${Date.now()}_${Math.random()}`,
+        playerId: p.id,
+        playerName: p.name,
+        playerPos: p.pos,
+        playerOvr: p.ovr,
+        clubId: bidder.id,
+        clubName: bidder.name,
+        clubShort: bidder.name || bidder.name,
+        fee,
+        maxWilling,
+        marketValue: p.value,
+        listingPrice: p.listingPrice,
+        date: fmtDate(gameState.currentDate),
+      });
+      notify(`${bidder.name || bidder.name} have bid ${money(fee)} for ${p.name}!`, 'info');
+    });
+  }
+
   function generateScoutFindings(scout) {
     const tier = SCOUT_TIERS[scout.level - 1];
     const a = scout.assignment || {};
@@ -2066,14 +3538,25 @@ const APP = (() => {
         if (a.pos && a.pos !== 'any' && p.pos !== a.pos) return;
         if (a.maxAge && a.maxAge !== 99 && p.age > a.maxAge) return;
         if (a.minOVR && a.minOVR > 0 && p.ovr < a.minOVR) return;
-        candidates.push({ ...p, clubId: club.id, clubName: club.shortName || club.name });
+        if (a.minPOT && a.minPOT > 0 && (p.pot || p.ovr) < a.minPOT) return;
+        candidates.push({ ...p, clubId: club.id, clubName: club.name || club.name });
       });
     });
-    candidates.sort(() => Math.random() - 0.5);
+    // Weight toward lower-rated players — top stars are never "discovered" by scouts
+    const pool = candidates.map(p => ({ p, w: Math.max(1, 95 - p.ovr) }));
+    const selected = [];
     const count = rand(tier.findMin, tier.findMax);
-    return candidates.slice(0, count).map(p => ({
+    while (selected.length < count && pool.length > 0) {
+      let r = Math.random() * pool.reduce((s, x) => s + x.w, 0);
+      let i = 0;
+      for (; i < pool.length - 1; i++) { r -= pool[i].w; if (r <= 0) break; }
+      selected.push(pool[i].p);
+      pool.splice(i, 1);
+    }
+    return selected.map(p => ({
       ...p,
       reportedOVR: Math.max(40, Math.min(99, p.ovr + rand(-tier.ovrNoise, tier.ovrNoise))),
+      reportedPOT: Math.max(40, Math.min(99, (p.pot || p.ovr) + rand(-tier.potNoise, tier.potNoise))),
       confidence: tier.level === 3 ? 'High' : tier.level === 2 ? 'Medium' : 'Low',
     }));
   }
@@ -2108,9 +3591,13 @@ const APP = (() => {
       homeSlotPositions: myIsHome ? mySlotPos : null,
       awaySlotPositions: myIsHome ? null : mySlotPos,
     });
+    result.commentary = [];
     ui.match = {
       fixture, home, away, myIsHome, result, homeFormation, awayFormation,
-      homeXI, awayXI,
+      homeXI: [...homeXI], awayXI: [...awayXI],
+      currentHomeXI: [...homeXI], currentAwayXI: [...awayXI],
+      currentTactics: { ...gameState.tactics },
+      subsUsed: 0, subsMax: 5,
       sim: { min: 0, idx: 0, hs: 0, as: 0 },
       simTimer: null, speed: 1,
     };
@@ -2140,6 +3627,9 @@ const APP = (() => {
     ['stat-possession','stat-shots','stat-sot'].forEach(id => $(id).style.width = '50%');
     $('match-result-overlay').classList.add('hidden');
     $('btn-halftime').classList.add('hidden');
+    $('btn-subs').classList.add('hidden');
+    $('halftime-panel').classList.add('hidden');
+    $('match-events-inner').classList.remove('hidden');
     $('btn-simulate').classList.remove('hidden');
     running = false;
     showScreen('match');
@@ -2248,11 +3738,13 @@ const APP = (() => {
       p.role = null;
       p.markTarget = null;
     });
+    let rafDomFrame = 0;
     function loop(ts) {
       if (!ui.match) return;
       const dt = Math.min(ts - ui.match.rafTime, 50);
       ui.match.rafTime = ts;
       const f16 = dt / 16.67;
+      const writeDom = (++rafDomFrame & 1) === 0;
 
       ui.match.players.forEach(p => {
         // Smooth target glides toward committed target — smooth arcs at 2x speed
@@ -2263,8 +3755,10 @@ const APP = (() => {
         const s = Math.min(1, p.lerpF * f16);
         p.cx += (p.stx - p.cx) * s;
         p.cy += (p.sty - p.cy) * s;
-        p.el.style.left = p.cx.toFixed(1) + '%';
-        p.el.style.top  = p.cy.toFixed(1) + '%';
+        if (writeDom) {
+          p.el.style.left = p.cx.toFixed(1) + '%';
+          p.el.style.top  = p.cy.toFixed(1) + '%';
+        }
       });
 
       const b = ui.match.ball;
@@ -2936,19 +4430,33 @@ const APP = (() => {
 
   /* ── COMMENTARY ──────────────────────────────────────────── */
   const CMNT_QUIET = [
-    'Play continues in midfield.', 'Possession changes hands.',
-    'Patient build-up from the back.', 'A long ball is headed clear.',
-    'The keeper collects with ease.', 'Midfield battle in the centre.',
-    'Both teams probing for an opening.', 'A foul out near the touchline.',
-    'The crowd urges their team forward.', 'Nothing clear-cut from either side.',
-    'A corner cleared at the near post.', 'The referee waves play on.',
-    'Comfortable passing in midfield.', 'A throw-in in the middle third.',
+    'The ball is recycled patiently through midfield.',
+    'A long diagonal finds the winger — the full-back recovers well.',
+    'Both sides fighting for control in the centre of the park.',
+    'The keeper organises his defence, commanding the area.',
+    'A nervy challenge near the touchline — the referee waves play on.',
+    'Solid defending from the back four; no way through.',
+    'The midfield battle is fierce — neither side giving an inch.',
+    'A cross swings in but is dealt with comfortably.',
+    'Neat one-two in midfield, but the final ball goes astray.',
+    'The goalkeeper spreads himself to narrow the angle.',
+    'A free kick awarded on the edge of the box — wall set.',
+    'Play settles into a tighter midfield pattern.',
+    'The winger tries to drive inside but loses possession.',
+    'Patient pressure building — probing for a gap in the defence.',
+    'A header back to the keeper under real pressure.',
+    'The tempo drops as both teams look to catch their breath.',
+    'Time ticking away — both sides hunting for the decisive moment.',
   ];
   const CMNT_PRESS = [
-    'Great save from the keeper!', 'Off the post! So close!',
-    'A thunderous shot — just over the bar!', 'The striker fires wide!',
-    'Powerful header — straight at the keeper!', 'Chance! Not taken!',
-    'A dangerous cross headed out for a corner!',
+    'CHANCE! The goalkeeper makes himself big and smothers the shot!',
+    'Off the woodwork! The ball ricochets clear!',
+    'A thunderous half-volley — inches over the crossbar!',
+    'The striker cuts inside and fires — straight at the keeper!',
+    'A rasping drive — tipped round the post by the fingertips!',
+    'One-on-one with the keeper — shot blocked on the line!',
+    'Dangerous cross whipped in — just cleared at the near post!',
+    'Great pressing wins it back — the counter breaks but the defence holds!',
   ];
 
   function addCommentary(min, events) {
@@ -2968,6 +4476,10 @@ const APP = (() => {
       } else if (e.type === 'shot_post') {
         const opts = ['Off the post!', 'Strikes the woodwork!', 'Rattles the crossbar — incredible luck!'];
         text = nm + ' — ' + opts[rand(0, opts.length - 1)];
+      } else if (e.type === 'sub') {
+        const onN  = e.playerOn  ? esc(e.playerOn.name)  : '?';
+        const offN = e.playerOff ? esc(e.playerOff.name) : '?';
+        text = `Substitution for ${esc(club.name)}: ${onN} comes on to replace ${offN}.`;
       } else if (e.type === 'yellow') {
         text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.name) + ')' : esc(club.name)} is shown a yellow card.`;
       } else if (e.type === 'red') {
@@ -2992,19 +4504,37 @@ const APP = (() => {
         text = `Corner kick for ${esc(club.name)}.`;
       } else if (e.type === 'var_check') {
         text = `VAR CHECK — Referee reviewing the decision... Goal stands!`;
+      } else if (e.type === 'injury') {
+        const inj = INJURY_TYPES.find(t => t.id === e.injuryType);
+        const pn = e.player ? esc(e.player.name) : 'A player';
+        if (inj?.severity === 'career') {
+          text = `TERRIBLE NEWS — ${pn} is down and cannot continue. It looks like an ACL — that could be a career-threatening blow for ${esc(club.name)}.`;
+        } else if (inj?.severity === 'serious') {
+          text = `${pn} is down holding their ${inj.label.toLowerCase()}. The stretcher is coming on — this looks serious for ${esc(club.name)}.`;
+        } else if (inj?.severity === 'moderate') {
+          text = `${pn} goes off injured — ${inj?.label || 'injury'} suspected. ${esc(club.name)} will need to make a change.`;
+        } else {
+          text = `${pn} picks up a knock and needs to come off. A ${inj?.label || 'minor injury'} for ${esc(club.name)}.`;
+        }
       }
       if (!text) return;
+      if (ui.match.result.commentary) ui.match.result.commentary.push({ min, text, cls: e.type });
       const div = document.createElement('div');
       div.className = 'match-event commentary ' + e.type;
       div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
       $('match-events-list').prepend(div);
     });
-    if (!events.length && min % 3 === 0) {
+    if (!events.length && min % 5 === 0) {
       const pool = Math.random() < 0.22 ? CMNT_PRESS : CMNT_QUIET;
+      let idx; const last = ui.match._lastQuietIdx ?? -1;
+      do { idx = rand(0, pool.length - 1); } while (pool.length > 1 && idx === last);
+      ui.match._lastQuietIdx = idx;
+      const text = pool[idx];
       const div = document.createElement('div');
       div.className = 'match-event commentary';
-      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${pool[rand(0, pool.length - 1)]}</span>`;
+      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
       $('match-events-list').prepend(div);
+      if (ui.match.result.commentary) ui.match.result.commentary.push({ min, text, cls: '' });
     }
   }
 
@@ -3015,6 +4545,7 @@ const APP = (() => {
     $('btn-simulate').classList.add('hidden');
     $('btn-pause').classList.remove('hidden');
     $('btn-speed').classList.remove('hidden');
+    $('btn-subs').classList.remove('hidden');
     $('btn-pause').textContent = '⏸ Pause';
     $('match-status').textContent = 'LIVE';
 
@@ -3024,7 +4555,7 @@ const APP = (() => {
     function scheduleNext() {
       if (!running || !ui.match) return;
       if (sim.min >= 90) { finishMatch(); return; }
-      ui.match.simTimer = setTimeout(tick, ui.match.speed === 2 ? 250 : 500);
+      ui.match.simTimer = setTimeout(tick, ui.match.speed === 2 ? 500 : 1000);
     }
 
     function tick() {
@@ -3035,9 +4566,32 @@ const APP = (() => {
       while (sim.idx < ev.length && ev[sim.idx].min <= sim.min) {
         const e = ev[sim.idx++];
         if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
-        if (['goal', 'yellow', 'red'].includes(e.type)) addMatchEvent(e);
+        if (['goal', 'yellow', 'red', 'sub', 'injury'].includes(e.type)) addMatchEvent(e);
         addPitchDot(e);
         eventsThisMin.push(e);
+        // Injury handling — apply state and auto-pause for user's team
+        if (e.type === 'injury' && e.player && !e.player.injured) {
+          const inj = INJURY_TYPES.find(t => t.id === e.injuryType) || INJURY_TYPES[0];
+          e.player.injured        = true;
+          e.player.injuryType     = e.injuryType;
+          e.player.injuryWeeks    = rand(inj.minWeeks, inj.maxWeeks);
+          e.player.careerInjuries = (e.player.careerInjuries || 0) + 1;
+          e.player.fitness        = Math.max(5, (e.player.fitness ?? 80) - 40);
+          const myTeam = ui.match.myIsHome ? 'home' : 'away';
+          if (e.team === myTeam) {
+            running = false;
+            clearTimeout(ui.match.simTimer);
+            ui.match.simTimer = null;
+            $('btn-pause').textContent = '▶ Resume';
+            $('match-status').textContent = 'INJURY';
+            notify(`${e.player.name} is injured! (${inj.label}, ~${e.player.injuryWeeks} wks)`, 'warning');
+            // Remove from XI and open sub modal with player pre-selected
+            const myXIArr = ui.match.myIsHome ? ui.match.currentHomeXI : ui.match.currentAwayXI;
+            if (myXIArr.includes(e.player.id) && ui.match.subsUsed < ui.match.subsMax) {
+              setTimeout(() => showSubsModal(e.player.id), 150);
+            }
+          }
+        }
       }
 
       $('match-score').textContent = `${sim.hs} – ${sim.as}`;
@@ -3065,16 +4619,49 @@ const APP = (() => {
       $('stat-sot').style.width = (hSoTLive / Math.max(1, hSoTLive + aSoTLive) * 100) + '%';
 
       if (eventsThisMin.some(e => e.type === 'yellow' || e.type === 'red')) showCard(eventsThisMin);
+
+      // AI substitutions at 60', 72', 82'
+      const m2 = ui.match;
+      if ([60, 72, 82].includes(sim.min)) {
+        const aiTeam    = m2.myIsHome ? 'away' : 'home';
+        const aiClub    = m2.myIsHome ? m2.away : m2.home;
+        const aiXIArr   = m2.myIsHome ? m2.currentAwayXI : m2.currentHomeXI;
+        if (aiXIArr && m2.aiSubsUsed === undefined) m2.aiSubsUsed = 0;
+        if (aiXIArr && (m2.aiSubsUsed || 0) < 3) {
+          const xiPlayers  = aiXIArr.map(id => aiClub.players.find(p => p.id === id)).filter(Boolean);
+          const benchPlayers = aiClub.players.filter(p => !aiXIArr.includes(p.id) && !p.injured);
+          // Pick the most fatigued/lowest rated starter to replace
+          const offP = xiPlayers.slice().sort((a, b) => (a.fitness ?? 80) - (b.fitness ?? 80))[0];
+          // Pick the best bench player of a similar position group
+          const onP = benchPlayers
+            .filter(p => ENGINE.posGroup(p.pos) === ENGINE.posGroup(offP?.pos || 'MID'))
+            .sort((a, b) => (b.ovr || 0) - (a.ovr || 0))[0]
+            || benchPlayers.sort((a, b) => (b.ovr || 0) - (a.ovr || 0))[0];
+          if (offP && onP) {
+            const idx = aiXIArr.indexOf(offP.id);
+            if (idx >= 0) {
+              aiXIArr[idx] = onP.id;
+              m2.aiSubsUsed = (m2.aiSubsUsed || 0) + 1;
+              const subEv = { min: sim.min, type: 'sub', team: aiTeam, playerOff: offP, playerOn: onP };
+              addMatchEvent(subEv);
+              eventsThisMin.push(subEv);
+            }
+          }
+        }
+      }
+
       addCommentary(sim.min, eventsThisMin);
 
       if (sim.min === 45) {
-        running = false;
         $('match-status').textContent = 'HALF TIME';
-        $('match-time').textContent = "45'";
+        swapSides();
+        running = false;
+        if (ui.match.simTimer) { clearTimeout(ui.match.simTimer); ui.match.simTimer = null; }
         $('btn-halftime').classList.remove('hidden');
         $('btn-pause').classList.add('hidden');
         $('btn-speed').classList.add('hidden');
-        setTimeout(swapSides, 800);
+        $('btn-subs').classList.add('hidden');
+        showHalftimePanel();
         return;
       }
 
@@ -3096,14 +4683,27 @@ const APP = (() => {
       scheduleNext();
     }
 
-    ui.match.simTimer = setTimeout(tick, ui.match.speed === 2 ? 250 : 500);
+    ui.match.tick = tick;
+    ui.match.simTimer = setTimeout(tick, ui.match.speed === 2 ? 500 : 1000);
   }
 
   function addMatchEvent(e) {
     const club = e.team === 'home' ? ui.match.home : ui.match.away;
-    const icon = e.type === 'goal' ? '●' : e.type === 'yellow' ? '■' : e.type === 'red' ? '■' : '⇄';
-    let desc = e.player ? esc(e.player.name) : '';
-    if (e.type === 'goal' && e.assist) desc += ` <span class="text-muted">(${esc(e.assist.name)})</span>`;
+    let icon, desc;
+    if (e.type === 'sub') {
+      icon = '⇄';
+      const onName  = e.playerOn  ? esc(e.playerOn.name)  : '?';
+      const offName = e.playerOff ? esc(e.playerOff.name) : '?';
+      desc = `<span class="sub-on">${onName} <span class="sub-arrow-up">▲</span></span> <span class="sub-off">${offName} <span class="sub-arrow-down">▼</span></span>`;
+    } else if (e.type === 'injury') {
+      icon = '+';
+      const inj = INJURY_TYPES.find(t => t.id === e.injuryType);
+      desc = (e.player ? esc(e.player.name) : '') + (inj ? ` <span class="text-muted">${inj.label}</span>` : '');
+    } else {
+      icon = e.type === 'goal' ? '●' : e.type === 'yellow' ? '■' : '■';
+      desc = e.player ? esc(e.player.name) : '';
+      if (e.type === 'goal' && e.assist) desc += ` <span class="text-muted">(${esc(e.assist.name)})</span>`;
+    }
     const div = document.createElement('div');
     div.className = 'match-event ' + e.type;
     div.innerHTML = `<span class="event-min">${e.min}'</span><span class="event-icon">${icon}</span><span class="event-desc">${desc}</span><span class="event-team">${esc(club.name)}</span>`;
@@ -3149,6 +4749,7 @@ const APP = (() => {
     stopMatchRaf();
     $('btn-pause').classList.add('hidden');
     $('btn-speed').classList.add('hidden');
+    $('btn-subs').classList.add('hidden');
     const r = ui.match.result;
     const home = ui.match.home, away = ui.match.away;
     $('match-status').textContent = 'FULL TIME';
@@ -3180,6 +4781,361 @@ const APP = (() => {
     }).join('');
 
     $('match-result-overlay').classList.remove('hidden');
+  }
+
+  /* =============================================
+     HALFTIME PANEL
+     ============================================= */
+  function showHalftimePanel() {
+    const m = ui.match;
+    if (!m) return;
+    m.htActiveTab = 'tactics';
+    m.htTactics = { ...m.currentTactics };
+    m.htLineup = [...(m.myIsHome ? m.currentHomeXI : m.currentAwayXI)];
+    m.htPendingSubs = [];
+    m.htSubSelOff = null;
+    $('ht-score').textContent = `${m.sim.hs} – ${m.sim.as}`;
+    $('halftime-panel').classList.remove('hidden');
+    $('match-events-inner').classList.add('hidden');
+    renderHalftimePanel();
+  }
+
+  function renderHalftimePanel() {
+    const m = ui.match;
+    if (!m) return;
+    const tab = m.htActiveTab || 'tactics';
+    document.querySelectorAll('.ht-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.htab === tab);
+    });
+    const total = (m.htPendingSubs || []).length + m.subsUsed;
+    const badge = $('ht-subs-badge');
+    if (badge) badge.textContent = total > 0 ? `(${total}/${m.subsMax})` : '';
+    const body = $('ht-body');
+    if (!body) return;
+    if (tab === 'tactics') renderHalfTimeTactics(body);
+    else renderHalfTimeSubs(body);
+    document.querySelectorAll('.ht-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        m.htActiveTab = btn.dataset.htab;
+        renderHalftimePanel();
+      });
+    });
+  }
+
+  function renderHalfTimeTactics(el) {
+    const m = ui.match;
+    const tac = m.htTactics;
+    const pressLabels = { high: 'High Press', medium: 'Medium Block', low: 'Low Block' };
+    const styleLabels = { direct: 'Direct', balanced: 'Balanced', possession: 'Possession', counter: 'Counter', gegenpressing: 'Gegenpressing', longball: 'Long Ball' };
+    const formBtns = Object.keys(DATA.FORMATIONS).map(f =>
+      `<button class="formation-btn ${f === tac.formation ? 'selected' : ''}" data-f="${f}">${DATA.FORMATIONS[f].name}</button>`
+    ).join('');
+    el.innerHTML = `
+      <div class="ht-tac-section"><h4>Formation</h4><div class="formation-grid">${formBtns}</div></div>
+      <div class="ht-tac-section"><h4>Mentality</h4>
+        <div class="tac-btn-row">${['defensive','balanced','attacking'].map(mt =>
+          `<button class="tac-opt-btn ${mt===tac.mentality?'selected':''}" data-tac="mentality" data-v="${mt}">${cap(mt)}</button>`).join('')}</div>
+      </div>
+      <div class="ht-tac-section"><h4>Pressing</h4>
+        <div class="tac-btn-row">${['high','medium','low'].map(pr =>
+          `<button class="tac-opt-btn ${pr===tac.pressing?'selected':''}" data-tac="pressing" data-v="${pr}">${pressLabels[pr]}</button>`).join('')}</div>
+      </div>
+      <div class="ht-tac-section"><h4>Style</h4>
+        <div class="tac-btn-row">${['direct','balanced','possession','counter','gegenpressing','longball'].map(st =>
+          `<button class="tac-opt-btn ${st===tac.style?'selected':''}" data-tac="style" data-v="${st}">${styleLabels[st]}</button>`).join('')}</div>
+      </div>`;
+    el.querySelectorAll('.formation-btn[data-f]').forEach(b => b.addEventListener('click', () => {
+      tac.formation = b.dataset.f;
+      m.htLineup = autoPickXI(gameState.myClub, b.dataset.f, []);
+      renderHalftimePanel();
+    }));
+    el.querySelectorAll('[data-tac]').forEach(b => b.addEventListener('click', () => {
+      tac[b.dataset.tac] = b.dataset.v;
+      renderHalftimePanel();
+    }));
+  }
+
+  function renderHalfTimeSubs(el) {
+    const m = ui.match;
+    const myClub = gameState.myClub;
+    const totalSubsUsed = m.subsUsed + (m.htPendingSubs || []).length;
+    const canSub = totalSubsUsed < m.subsMax;
+    const pendingOffIds = new Set((m.htPendingSubs || []).map(s => s.offId));
+    const pendingOnIds  = new Set((m.htPendingSubs || []).map(s => s.onId));
+    const xiSet = new Set(m.htLineup);
+    const selOff = m.htSubSelOff || null;
+
+    const pendingHtml = m.htPendingSubs.length > 0 ? `
+      <div class="ht-subs-pending">
+        <h5>Pending Subs</h5>
+        ${m.htPendingSubs.map((s, i) => {
+          const op = myClub.players.find(p => p.id === s.offId);
+          const np = myClub.players.find(p => p.id === s.onId);
+          return `<div class="ht-sub-item">
+            <span class="ht-sub-off">${esc(op?.lastName || '?')} ↓</span>
+            <span style="color:var(--text-muted)">→</span>
+            <span class="ht-sub-on">${esc(np?.lastName || '?')} ↑</span>
+            <button class="ht-sub-cancel" data-idx="${i}">✕</button>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    const xiPlayers = m.htLineup
+      .map(id => myClub.players.find(p => p.id === id))
+      .filter(Boolean)
+      .filter(p => !pendingOffIds.has(p.id));
+
+    const benchPlayers = myClub.players.filter(p => !xiSet.has(p.id) && !pendingOnIds.has(p.id));
+
+    const xiHtml = xiPlayers.map(p => `
+      <div class="ht-player-item ${selOff === p.id ? 'selected' : ''} ${!canSub && selOff !== p.id ? 'disabled' : ''}" data-off="${p.id}">
+        <span class="pos-badge pos-${p.pos}">${p.pos}</span>
+        <span class="ht-player-name">${esc(p.lastName)}</span>
+        <span class="ht-player-ovr">${p.ovr}</span>
+      </div>`).join('');
+
+    const benchHtml = benchPlayers.map(p => `
+      <div class="ht-player-item bench ${!selOff ? 'disabled' : ''}" data-on="${p.id}">
+        <span class="pos-badge pos-${p.pos}">${p.pos}</span>
+        <span class="ht-player-name">${esc(p.lastName)}</span>
+        <span class="ht-player-ovr">${p.ovr}</span>
+      </div>`).join('');
+
+    el.innerHTML = `
+      ${pendingHtml}
+      <div class="ht-subs-info">${totalSubsUsed}/${m.subsMax} substitutions used</div>
+      ${canSub ? '' : '<div class="ht-subs-info" style="color:var(--accent-red)">No substitutions remaining</div>'}
+      <div class="ht-subs-layout">
+        <div>
+          <h5>${selOff ? '✓ Going off:' : 'Select player off'}</h5>
+          <div class="ht-player-list">${xiHtml}</div>
+        </div>
+        <div>
+          <h5>${selOff ? 'Select player on' : '—'}</h5>
+          <div class="ht-player-list">${benchHtml}</div>
+        </div>
+      </div>`;
+
+    el.querySelectorAll('[data-off]').forEach(item => item.addEventListener('click', () => {
+      if (!canSub && m.htSubSelOff !== item.dataset.off) return;
+      m.htSubSelOff = m.htSubSelOff === item.dataset.off ? null : item.dataset.off;
+      renderHalftimePanel();
+    }));
+    el.querySelectorAll('[data-on]').forEach(item => item.addEventListener('click', () => {
+      if (!m.htSubSelOff || !canSub) return;
+      const offId = m.htSubSelOff, onId = item.dataset.on;
+      const idx = m.htLineup.indexOf(offId);
+      if (idx >= 0) m.htLineup[idx] = onId;
+      m.htPendingSubs.push({ offId, onId });
+      m.htSubSelOff = null;
+      renderHalftimePanel();
+    }));
+    el.querySelectorAll('.ht-sub-cancel').forEach(btn => btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.idx);
+      const sub = m.htPendingSubs[i];
+      const idx = m.htLineup.indexOf(sub.onId);
+      if (idx >= 0) m.htLineup[idx] = sub.offId;
+      m.htPendingSubs.splice(i, 1);
+      renderHalftimePanel();
+    }));
+  }
+
+  function applyHalftimeChanges() {
+    const m = ui.match;
+    if (!m) return;
+    const myClub = gameState.myClub;
+
+    const origTacStr = JSON.stringify(m.currentTactics);
+    const origXI = m.myIsHome ? m.currentHomeXI.join(',') : m.currentAwayXI.join(',');
+
+    // Apply substitutions into result events at min 46
+    if (m.htPendingSubs && m.htPendingSubs.length > 0) {
+      m.htPendingSubs.forEach(sub => {
+        const offP = myClub.players.find(p => p.id === sub.offId);
+        const onP  = myClub.players.find(p => p.id === sub.onId);
+        m.result.events.push({ min: 46, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP });
+        m.subsUsed++;
+      });
+      m.result.events.sort((a, b) => a.min - b.min);
+    }
+
+    // Commit lineup changes
+    if (m.htLineup) {
+      if (m.myIsHome) m.currentHomeXI = [...m.htLineup];
+      else            m.currentAwayXI = [...m.htLineup];
+    }
+    // Commit tactics changes
+    if (m.htTactics) {
+      m.currentTactics = { ...m.htTactics };
+    }
+
+    // Re-simulate second half if tactics or lineup changed
+    const tacChanged    = JSON.stringify(m.currentTactics) !== origTacStr;
+    const lineupChanged = (m.myIsHome ? m.currentHomeXI : m.currentAwayXI).join(',') !== origXI;
+    if (tacChanged || lineupChanged) reSimSecondHalf();
+
+    // Update global tactics so they persist
+    if (tacChanged || lineupChanged) {
+      Object.assign(gameState.tactics, m.currentTactics);
+      gameState.tactics.lineup = [...(m.myIsHome ? m.currentHomeXI : m.currentAwayXI)];
+    }
+
+    // Update player dots for any subs made
+    if (m.htPendingSubs && m.htPendingSubs.length > 0) updatePitchDotsAfterSubs();
+
+    // Clear halftime state
+    m.htPendingSubs = [];
+    m.htTactics = null;
+    m.htLineup = null;
+    m.htSubSelOff = null;
+    m.htActiveTab = null;
+  }
+
+  function reSimSecondHalf() {
+    const m = ui.match;
+    const home = m.home, away = m.away;
+    const myFormKey = m.currentTactics.formation;
+    const myFormObj = myFormKey === 'custom' && m.currentTactics.customFormation
+      ? m.currentTactics.customFormation
+      : (DATA.FORMATIONS[myFormKey] || DATA.FORMATIONS['4-3-3']);
+    const mySlotPos = myFormObj.positions.map(p => p.pos);
+    const newResult = ENGINE.simulateMatch(home, away, {
+      homeXI: m.currentHomeXI,
+      awayXI: m.currentAwayXI,
+      homeTactics: m.myIsHome ? { ...m.currentTactics } : ENGINE.deriveAITactics(away),
+      awayTactics: m.myIsHome ? ENGINE.deriveAITactics(away) : { ...m.currentTactics },
+      homeSlotPositions: m.myIsHome ? mySlotPos : null,
+      awaySlotPositions: m.myIsHome ? null : mySlotPos,
+    });
+    // Use the new sim's first-45-min events as the second half (shift min by +45)
+    const newSecondHalf = newResult.events
+      .filter(e => e.min <= 45)
+      .map(e => ({ ...e, min: e.min + 45 }));
+    // Keep first-half events + any halftime sub events (min <= 46) from original result
+    const firstHalf = m.result.events.filter(e => e.min <= 46);
+    m.result.events = [...firstHalf, ...newSecondHalf].sort((a, b) => a.min - b.min);
+    // Recalculate final score
+    const hs2 = newSecondHalf.filter(e => e.type === 'goal' && e.team === 'home').length;
+    const as2 = newSecondHalf.filter(e => e.type === 'goal' && e.team === 'away').length;
+    m.result.homeScore = m.sim.hs + hs2;
+    m.result.awayScore = m.sim.as + as2;
+    // Reset the event pointer to just after min 46
+    m.sim.idx = m.result.events.findIndex(e => e.min > 46);
+    if (m.sim.idx < 0) m.sim.idx = m.result.events.length;
+    notify('2nd half tactics applied', 'info');
+  }
+
+  function updatePitchDotsAfterSubs() {
+    const m = ui.match;
+    if (!m?.players?.length) return;
+    const myClub = gameState.myClub;
+    const myXI   = m.myIsHome ? m.currentHomeXI : m.currentAwayXI;
+    m.players.forEach(p => {
+      if (p.isHome !== m.myIsHome) return;
+      const newPlayerId = myXI[p.slotIdx];
+      if (!newPlayerId || p.player?.id === newPlayerId) return;
+      const newPlayer = myClub.players.find(pl => pl.id === newPlayerId);
+      if (!newPlayer) return;
+      p.player = newPlayer;
+      const nameEl = p.el?.querySelector('.dot-name');
+      if (nameEl) nameEl.textContent = shortName(newPlayer.name);
+    });
+  }
+
+  /* =============================================
+     IN-MATCH SUBSTITUTION MODAL
+     ============================================= */
+  function showSubsModal(preSelectOff = null) {
+    const m = ui.match;
+    if (!m) return;
+    const myClub = gameState.myClub;
+    const myXI   = m.myIsHome ? m.currentHomeXI : m.currentAwayXI;
+    const xiSet  = new Set(myXI);
+    const subsRemaining = m.subsMax - m.subsUsed;
+    if (subsRemaining <= 0) { notify('No substitutions remaining (5/5 used)', 'warning'); return; }
+    const activeForm = activeTacticForm();
+    let selOff = preSelectOff || null;
+
+    const fitBar = p => {
+      if (p.injured) { const inj = INJURY_TYPES.find(t => t.id === p.injuryType); return `<span class="inj-badge inj-${inj?.severity||'minor'}" style="font-size:10px;padding:1px 4px">${inj?.label||'Inj'}</span>`; }
+      const f = p.fitness ?? 80;
+      const fc = f >= 80 ? 'fit-high' : f >= 55 ? 'fit-mid' : f >= 30 ? 'fit-low' : 'fit-critical';
+      return `<div class="fit-bar-wrap" style="width:36px;display:inline-block"><div class="fit-bar ${fc}" style="width:${f}%"></div></div><span style="font-size:9px;color:#aaa;margin-left:2px">${f}%</span>`;
+    };
+
+    const render = () => {
+      // Build pitch — map XI slots to live players
+      const pitchPlayers = activeForm.positions.map((slot, i) => {
+        const p = myClub.players.find(x => x.id === myXI[i]);
+        if (!p) return `<div class="pitch-player pitch-empty" style="left:${slot.x}%;top:${slot.y}%"><div class="pitch-player-circle empty-slot">${slot.pos}</div></div>`;
+        const isSel = selOff === p.id;
+        const selCls = isSel ? ' swap-sel' : (selOff ? ' swap-dim' : '');
+        const f = p.fitness ?? 80;
+        const fc = f >= 80 ? '' : f >= 55 ? ' fit-mid-dot' : ' fit-low-dot';
+        return `<div class="pitch-player${selCls}" data-suboff="${p.id}" style="left:${slot.x}%;top:${slot.y}%;cursor:pointer">
+          <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}${isSel ? ' sub-sel-circle' : ''}" title="${esc(p.name)} · ${f}% fit">${p.ovr}</div>
+          <div class="pitch-player-name">${esc(p.lastName)}</div>
+        </div>`;
+      }).join('');
+
+      // Bench chips
+      const benchPlayers = myClub.players.filter(p => !xiSet.has(p.id));
+      const benchChips = benchPlayers.map(p => {
+        const dim = !selOff ? ' bench-chip-dim' : '';
+        return `<div class="bench-chip${dim}" data-subon="${p.id}" style="cursor:pointer">
+          <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
+          <span class="bench-chip-name">${esc(p.lastName)}</span>
+          <span class="bench-chip-ovr">${p.ovr}</span>
+          ${fitBar(p)}
+        </div>`;
+      }).join('');
+
+      const hint = selOff
+        ? `<div class="subs-hint active">Pick bench player to come on</div>`
+        : `<div class="subs-hint">Click a player on the pitch to take off</div>`;
+
+      showModal(`
+        <div class="subs-modal">
+          <div class="subs-modal-header">
+            Substitutions
+            <span class="subs-used-badge">${m.subsUsed}/${m.subsMax} used</span>
+          </div>
+          ${hint}
+          <div class="subs-pitch-wrap">
+            <div class="tactics-pitch" style="height:300px">
+              <div class="tactics-pitch-lines">
+                <div class="tp-center-line"></div><div class="tp-center-circle"></div>
+                <div class="tp-penalty-top"></div><div class="tp-penalty-bottom"></div>
+              </div>
+              ${pitchPlayers}
+            </div>
+          </div>
+          <div class="subs-bench-label">Bench</div>
+          <div class="bench-chips">${benchChips}</div>
+        </div>`);
+
+      document.querySelectorAll('[data-suboff]').forEach(el => el.addEventListener('click', () => {
+        const pid = el.dataset.suboff;
+        selOff = selOff === pid ? null : pid;
+        render();
+      }));
+
+      document.querySelectorAll('[data-subon]').forEach(el => el.addEventListener('click', () => {
+        if (!selOff) return;
+        const offId = selOff, onId = el.dataset.subon;
+        const offP = myClub.players.find(p => p.id === offId);
+        const onP  = myClub.players.find(p => p.id === onId);
+        const myXIArr = m.myIsHome ? m.currentHomeXI : m.currentAwayXI;
+        const idx = myXIArr.indexOf(offId);
+        if (idx >= 0) { myXIArr[idx] = onId; xiSet.delete(offId); xiSet.add(onId); }
+        m.subsUsed++;
+        addMatchEvent({ min: m.sim.min, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP });
+        updatePitchDotsAfterSubs();
+        closeModal();
+        notify(`${onP?.lastName || '?'} on for ${offP?.lastName || '?'}`, 'info');
+      }));
+    };
+    render();
   }
 
   function exitMatch() {
@@ -3215,6 +5171,54 @@ const APP = (() => {
     renderView(ui.view);
   }
 
+  /* -- Fitness / injury helpers -- */
+  function applyMatchFitness(club, playedIds, subbedOnIds) {
+    const playedSet   = new Set(playedIds);
+    const subbedOnSet = new Set(subbedOnIds || []);
+    club.players.forEach(p => {
+      if (playedSet.has(p.id)) {
+        const drain = subbedOnSet.has(p.id) ? FITNESS_DRAIN_SUB : FITNESS_DRAIN_STARTER;
+        p.fitness = Math.max(20, (p.fitness ?? 80) - drain);
+      } else if (!p.injured) {
+        p.fitness = Math.min(100, (p.fitness ?? 80) + FITNESS_RECOVER_REST);
+      }
+    });
+  }
+
+  function tickInjuries() {
+    const myId = gameState.myClubId;
+    gameState.myClub.players.forEach(p => {
+      if (!p.injured) {
+        p.fitness = Math.min(100, (p.fitness ?? 80) + FITNESS_RECOVER_WEEK);
+      } else {
+        p.injuryWeeks = Math.max(0, (p.injuryWeeks || 0) - 1);
+        if (p.injuryWeeks <= 0) {
+          const inj = INJURY_TYPES.find(t => t.id === p.injuryType);
+          if (inj?.potDrop > 0) {
+            p.pot = Math.max(p.ovr, p.pot - inj.potDrop);
+            notify(`${p.name} has recovered but their potential has dropped after their ${inj.label}.`, 'warning');
+          }
+          p.injured    = false;
+          p.injuryType = null;
+          p.fitness    = 65; // return at 65% — not full fitness
+        }
+      }
+    });
+  }
+
+  function applyMatchInjuries(events) {
+    (events || []).forEach(ev => {
+      if (ev.type === 'injury' && ev.player && !ev.player.injured) {
+        const inj = INJURY_TYPES.find(t => t.id === ev.injuryType) || INJURY_TYPES[0];
+        ev.player.injured       = true;
+        ev.player.injuryType    = ev.injuryType;
+        ev.player.injuryWeeks   = rand(inj.minWeeks, inj.maxWeeks);
+        ev.player.careerInjuries = (ev.player.careerInjuries || 0) + 1;
+        ev.player.fitness        = Math.max(5, (ev.player.fitness ?? 80) - 40);
+      }
+    });
+  }
+
   function advanceAfterMatch() {
     const { fixture, result } = ui.match;
     fixture.played = true;
@@ -3222,6 +5226,50 @@ const APP = (() => {
     fixture.awayScore = result.awayScore;
     fixture.events = result.events;
     ENGINE.recordResult(gameState, fixture, result.homeScore, result.awayScore);
+
+    // Drain fitness for players who started; recover bench
+    const myXI      = ui.match.myIsHome ? ui.match.currentHomeXI : ui.match.currentAwayXI;
+    const subbedOn  = (result.events || []).filter(e => e.type === 'sub' && e.team === (ui.match.myIsHome ? 'home' : 'away')).map(e => e.playerOn?.id).filter(Boolean);
+    applyMatchFitness(gameState.myClub, myXI || [], subbedOn);
+
+    // Apply injuries that occurred during the match for AI clubs & confirm user club injuries
+    applyMatchInjuries(result.events);
+
+    // Tick injury recovery once per match cycle
+    tickInjuries();
+
+    // Remove injured players from the lineup
+    const tac = gameState.tactics;
+    if (tac?.lineup) {
+      const injured = new Set(gameState.myClub.players.filter(p => p.injured).map(p => p.id));
+      tac.lineup = tac.lineup.filter(id => !injured.has(id));
+      if (tac.lineup.length < 11) tac.lineup = autoPickXI(gameState.myClub, activeTacticForm());
+    }
+
+    // Finance tick: ~1 week between matches, plus matchday income for home games
+    tickFinances(1);
+    if (fixture.type !== 'european' && fixture.type !== 'cup') awardMatchdayIncome(ui.match.myIsHome);
+    checkWageBudget();
+
+    // Board confidence: per-match bump/dip weighted by opponent strength
+    {
+      const myScore  = ui.match.myIsHome ? result.homeScore : result.awayScore;
+      const oppScore = ui.match.myIsHome ? result.awayScore : result.homeScore;
+      const oppId    = ui.match.myIsHome ? fixture.away : fixture.home;
+      const oppRat   = (gameState.clubs[oppId]?.sqRating || 70);
+      const myRat    = gameState.myClub.sqRating || 70;
+      // diff > 0 means opponent is stronger than us
+      const diff     = Math.round((oppRat - myRat) / 3);  // -3 to +3 range typical
+      const fin      = gameState.finances;
+      let delta = 0;
+      if (myScore > oppScore && fixture.type !== 'european' && fixture.type !== 'cup') paySponsorClause('win');
+      if (myScore > oppScore)      delta =  Math.max(1, Math.min(4, 2 + diff));  // upset win gives +4, easy win +1
+      else if (myScore < oppScore) delta = -Math.max(1, Math.min(4, 2 - diff));  // upset loss -1, expected loss is also small
+      // draw: 0
+      fin.boardConfidence = Math.min(100, Math.max(0, fin.boardConfidence + delta));
+      fin.boardConfidence = Math.round(fin.boardConfidence);
+    }
+
     ENGINE.simulateSameDay(gameState, fixture);
     ENGINE.continueToNextFixture(gameState);
     simulateCompetitionsUpTo(gameState.currentDate);
@@ -3230,6 +5278,9 @@ const APP = (() => {
     delete gameState.matchSave;
     $('btn-simulate').textContent = '▶ Start Match';
     advanceScouts();
+    checkIncomingOffers();
+    if (Math.random() < 0.30) generatePlayerEvents();
+    if (Math.random() < 0.25) generateClubNews();
     if (!ENGINE.getNextFixture(gameState)) { endSeason(); return; }
 
     showScreen('game');
@@ -3272,7 +5323,7 @@ const APP = (() => {
       const opp = f.home === gameState.myClubId ? a : h;
       const my = f.home === gameState.myClubId ? r.homeScore : r.awayScore;
       const og = f.home === gameState.myClubId ? r.awayScore : r.homeScore;
-      notify(`${comp.short}: ${gameState.myClub.shortName} ${my}–${og} ${opp.shortName}`, my > og ? 'success' : my === og ? 'info' : 'warning');
+      notify(`${comp.short}: ${gameState.myClub.name} ${my}–${og} ${opp.name}`, my > og ? 'success' : my === og ? 'info' : 'warning');
     }
   }
 
@@ -3364,15 +5415,28 @@ const APP = (() => {
     let teams = cup.remaining.slice().filter(id => gameState.clubs[id]);
     const myId = gameState.myClubId;
     const myIn = teams.includes(myId);
+    let myRoundsWon = 0;
     while (teams.length > 1) {
+      const wasIn = teams.includes(myId);
       const next = [];
       for (let i = 0; i + 1 < teams.length; i += 2) next.push(simKO(teams[i], teams[i + 1]).winner);
       if (teams.length % 2 === 1) next.push(teams[teams.length - 1]);
+      if (wasIn && next.includes(myId)) myRoundsWon++;
       teams = next;
     }
     cup.winner = teams[0];
     cup.fixtures.forEach(f => f.played = true);
     if (myIn) {
+      // Cup prize money: paid per round won, plus a winner's bonus
+      const fin = gameState.finances;
+      if (fin) {
+        const cupPrize = Math.round((myRoundsWon * 0.4 + (cup.winner === myId ? 2 : 0)) * 10) / 10;
+        if (cupPrize > 0) {
+          fin.balance = Math.round((fin.balance + cupPrize) * 100) / 100;
+          fin.seasonIncome.prizes = Math.round((fin.seasonIncome.prizes + cupPrize) * 100) / 100;
+          notify(`${cup.name} prize money: ${money(cupPrize)} (${myRoundsWon} round${myRoundsWon !== 1 ? 's' : ''} won).`, 'success');
+        }
+      }
       if (cup.winner === myId) {
         gameState.myClub.rep = Math.min(5, Math.round(((gameState.myClub.rep || 1) + 0.3) * 10) / 10);
         notify(`You won the ${cup.name}! Club prestige has grown.`, 'success');
@@ -3402,19 +5466,20 @@ const APP = (() => {
     const conf = league.conferenceLeague || 0;
     const ap = league.autoPromotion || 0;
     const ps = league.playoffSpots || 0;
+    const midpoint = Math.floor(n / 2);
     let type, label, targetPosMax;
     if (ap > 0) {
-      if (targetPos <= ap)              { type = 'promotion'; label = 'Win automatic promotion';        targetPosMax = ap; }
-      else if (ps > 0 && targetPos <= ap + ps) { type = 'playoffs'; label = 'Reach the promotion playoffs'; targetPosMax = ap + ps; }
-      else if (targetPos > n - rel)    { type = 'survive';   label = 'Avoid relegation';               targetPosMax = n - rel; }
-      else                              { type = 'midtable';  label = 'Finish in the top half';         targetPosMax = Math.floor(n / 2); }
+      if (targetPos <= ap)                                  { type = 'promotion'; label = 'Win automatic promotion';        targetPosMax = ap; }
+      else if (ps > 0 && targetPos <= ap + ps)              { type = 'playoffs';  label = 'Reach the promotion playoffs';   targetPosMax = ap + ps; }
+      else if (targetPos > n - rel || targetPos > midpoint) { type = 'survive';   label = 'Avoid relegation';              targetPosMax = n - rel; }
+      else                                                  { type = 'midtable';  label = 'Finish in the top half';        targetPosMax = midpoint; }
     } else {
-      if (targetPos === 1)              { type = 'title';     label = 'Win the league title';           targetPosMax = 1; }
-      else if (cl > 0 && targetPos <= cl) { type = 'cl';     label = `Champions League qualification (top ${cl})`; targetPosMax = cl; }
-      else if (targetPos <= cl + el)   { type = 'euro';      label = 'Europa League qualification';    targetPosMax = cl + el; }
-      else if (conf > 0 && targetPos <= cl + el + conf) { type = 'conf'; label = 'European football';  targetPosMax = cl + el + conf; }
-      else if (targetPos > n - rel)    { type = 'survive';   label = 'Avoid relegation';               targetPosMax = n - rel; }
-      else                              { type = 'midtable';  label = 'Top-half finish';                targetPosMax = Math.floor(n / 2); }
+      if (targetPos === 1)                                  { type = 'title';   label = 'Win the league title';                       targetPosMax = 1; }
+      else if (cl > 0 && targetPos <= cl)                   { type = 'cl';     label = `Champions League qualification (top ${cl})`; targetPosMax = cl; }
+      else if (targetPos <= cl + el)                        { type = 'euro';   label = 'Europa League qualification';                 targetPosMax = cl + el; }
+      else if (conf > 0 && targetPos <= cl + el + conf)     { type = 'conf';   label = 'European football';                          targetPosMax = cl + el + conf; }
+      else if (targetPos > n - rel || targetPos > midpoint) { type = 'survive'; label = 'Avoid relegation';                          targetPosMax = n - rel; }
+      else                                                  { type = 'midtable'; label = 'Top-half finish';                          targetPosMax = midpoint; }
     }
     gameState.boardObjective = { type, label, targetPosMax, n };
   }
@@ -3422,24 +5487,46 @@ const APP = (() => {
   function evalBoardObjective(pos, myTransfer, league) {
     const obj = gameState.boardObjective;
     if (!obj) return { verdict: 'success', msg: '' };
+    const fin  = gameState.finances;
+    const conf = fin ? fin.boardConfidence : 50;
+    const badConf = conf < 30;
+
     const relegated = !!(myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level > league.level);
     const promoted  = !!(myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level < league.level);
+
+    // Helper: missed-objective outcome driven by board confidence
+    function missedVerdict(closeMsg, farMsg) {
+      if (badConf) return { verdict: 'sacked', msg: farMsg + ` Board confidence (${conf}/100) was too low to survive.` };
+      return { verdict: 'budget_cut', msg: closeMsg };
+    }
+
     if (obj.type === 'survive') {
-      return relegated
-        ? { verdict: 'sacked',     msg: 'The board cannot accept relegation. You have been dismissed.' }
-        : { verdict: 'success',    msg: 'Objective met — survival secured.' };
+      if (!relegated) return { verdict: 'success', msg: 'Objective met — survival secured.' };
+      return missedVerdict(
+        'Relegated, but the board retain some faith. Budget cut next season.',
+        'Relegated and the board have run out of patience. You have been dismissed.'
+      );
     }
     if (obj.type === 'promotion' || obj.type === 'playoffs') {
       if (promoted || pos <= obj.targetPosMax) return { verdict: 'success', msg: 'Promotion objective achieved!' };
       const gap = pos - obj.targetPosMax;
-      if (gap <= 3) return { verdict: 'budget_cut', msg: 'Just short of the promotion target. The board are disappointed — transfer budget cut by 30%.' };
-      return { verdict: 'sacked', msg: 'Falling well short of promotion targets. You have been dismissed.' };
+      return missedVerdict(
+        `Just ${gap} place${gap===1?'':'s'} short of the promotion target. The board are disappointed — transfer budget cut by 30%.`,
+        `Fell well short of promotion targets. You have been dismissed.`
+      );
     }
-    if (relegated) return { verdict: 'sacked', msg: 'Relegation is unacceptable for a club of this stature. You have been sacked.' };
+    if (relegated) {
+      return missedVerdict(
+        'Relegated, but the board retain some faith. Budget cut next season.',
+        'Relegated and the board have completely lost confidence. You have been dismissed.'
+      );
+    }
     if (pos <= obj.targetPosMax) return { verdict: 'success', msg: `Objective met — finished ${ordinal(pos)}.` };
     const gap = pos - obj.targetPosMax;
-    if (gap <= 4) return { verdict: 'budget_cut', msg: `Missed the board's target by ${gap} places. Transfer budget cut by 25% for next season.` };
-    return { verdict: 'sacked', msg: 'A season to forget. The board have lost confidence and dismissed you.' };
+    return missedVerdict(
+      `Missed the board's target by ${gap} place${gap===1?'':'s'}. Transfer budget cut by 25% for next season.`,
+      `A season to forget. The board have lost all confidence (${conf}/100) and dismissed you.`
+    );
   }
 
   /* =============================================
@@ -3577,70 +5664,225 @@ const APP = (() => {
     const boardObj = gameState.boardObjective;
     const boardObjLabel = boardObj ? boardObj.label : '';
 
-    if (boardResult.verdict === 'sacked') {
-      showModal(`
-        <div style="text-align:center">
-          <h2 style="font-size:22px;margin-bottom:4px;color:var(--accent-red)">You've Been Sacked</h2>
-          <p class="text-muted" style="margin-bottom:18px">${esc(gameState.myClub.name)} · Season ${gameState.season}</p>
-          <div class="stat-big" style="font-size:40px;margin-bottom:6px">${ordinal(pos)}</div>
-          <p style="margin-bottom:8px;font-weight:600">${outcome}</p>
-          <div class="board-verdict-box sacked" style="margin-bottom:20px">
-            <div class="bv-label">Board Objective</div>
-            <div class="bv-target">${esc(boardObjLabel)}</div>
-            <div class="bv-msg">${boardResult.msg}</div>
-          </div>
-          <button class="btn-secondary btn-lg" id="next-season-btn">Return to Main Menu</button>
-        </div>`);
-      $('next-season-btn').addEventListener('click', () => {
-        closeModal();
-        setAutoSaveRunning(false);
-        gameState = null;
-        showScreen('start');
-      });
-      return;
-    }
-
-    // Apply budget cut before continuing
+    // Apply budget cut before continuing (but not if sacked)
     if (boardResult.verdict === 'budget_cut') {
       const cut = boardObj?.type === 'promotion' || boardObj?.type === 'playoffs' ? 0.30 : 0.25;
-      myClub.budget = Math.round(myClub.budget * (1 - cut) * 10) / 10;
+      if (gameState.finances) gameState.finances.balance = Math.round(gameState.finances.balance * (1 - cut) * 10) / 10;
+      else myClub.budget = Math.round(myClub.budget * (1 - cut) * 10) / 10;
     }
 
-    const boardHtml = boardObj ? `
-      <div class="board-verdict-box ${boardResult.verdict}" style="margin-bottom:18px">
-        <div class="bv-label">Board Objective</div>
-        <div class="bv-target">${esc(boardObjLabel)}</div>
-        ${boardResult.msg ? `<div class="bv-msg">${boardResult.msg}</div>` : ''}
+    const sacked = boardResult.verdict === 'sacked';
+
+    // Financial year-end: prize money, FFP, board confidence, next grant
+    const euroComp   = gameState.myEuropeanComp;
+    const { prize: finPrize, euroPrize } = finaliseSeasonFinances(pos, league, euroComp);
+    const leagueSize = table.length || 20;
+    updateBoardConfidence(boardResult.verdict, pos, leagueSize);
+    const goodSeason = pos <= Math.ceil(leagueSize / 3);
+    const fin = gameState.finances;
+    const nextGrant   = (!sacked && fin) ? calcBoardGrant(myClub, fin, pos, leagueSize) : 0;
+    if (fin) {
+      fin.pendingGrant   = nextGrant;
+      fin.lastSeasonGood = goodSeason;
+      // Sponsor promotion clause
+      if (myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level < league.level) {
+        paySponsorClause('promotion', 'for winning promotion');
+      }
+      // Parachute payments: only if relegated from Premier League
+      if (myOldLeague === 'premier_league' && myTransfer?.to === 'championship') {
+        fin.parachuteYears = 2;
+      }
+      // Stop parachute if promoted back or left Championship
+      if ((fin.parachuteYears || 0) > 0 && myOldLeague !== 'championship') {
+        fin.parachuteYears = 0;
+      }
+    }
+    recordFinancialHistory(gameState.season, pos, nextGrant);
+
+    ui.seasonReview = {
+      pos, outcome, topScorer, league, champ, poLines,
+      boardResult, boardObj, boardObjLabel,
+      ts: { ...gameState.myClub.tableStats },
+      sacked,
+      finSummary: fin ? {
+        prize: finPrize, euroPrize,
+        balance:        fin.balance,
+        totalIncome:    totalSeasonIncome(fin),
+        totalExpenses:  totalSeasonExpenses(fin),
+        boardConfidence:fin.boardConfidence,
+        nextGrant, nextSponsor,
+        ffp: ffpStatus(fin),
+      } : null,
+    };
+
+    showScreen('game');
+    updateSidebar();
+    renderView('season_review');
+  }
+
+  function renderSeasonReview(m) {
+    const review = ui.seasonReview;
+    if (!review) { renderDashboard(m); return; }
+    const { pos, outcome, topScorer, league, champ, poLines, boardResult, boardObj, boardObjLabel, ts, sacked } = review;
+    const club = gameState.myClub;
+
+    const topAssist = [...club.players].sort((a, b) => b.assists - a.assists)[0];
+    const mostApps  = [...club.players].sort((a, b) => b.appearances - a.appearances)[0];
+    const bestRated = [...club.players]
+      .filter(p => (p.ratingCount || 0) >= 3)
+      .sort((a, b) => (b.seasonRating / b.ratingCount) - (a.seasonRating / a.ratingCount))[0];
+    const spentIn   = gameState.transferLog.filter(t => t.in  && !t._old).reduce((s, t) => s + (t.fee || 0), 0);
+    const earnedOut = gameState.transferLog.filter(t => !t.in && !t._old).reduce((s, t) => s + (t.fee || 0), 0);
+
+    const sackedBanner = sacked ? `
+      <div class="sacked-banner">
+        <span class="sacked-banner-icon">✗</span>
+        <div><div class="sacked-banner-title">Sacked</div><div class="sacked-banner-msg">${esc(boardResult.msg)}</div></div>
       </div>` : '';
 
-    showModal(`
-      <div style="text-align:center">
-        <h2 style="font-size:22px;margin-bottom:4px">Season ${gameState.season} Complete</h2>
-        <p class="text-muted" style="margin-bottom:18px">${esc(gameState.myClub.name)}</p>
-        <div class="stat-big" style="font-size:40px;margin-bottom:6px">${ordinal(pos)}</div>
-        <p class="text-accent fw-700" style="margin-bottom:16px">${outcome}</p>
-        ${boardHtml}
-        <div class="pm-stats-grid" style="text-align:left;margin-bottom:18px">
-          <div class="pm-stat"><span class="pm-stat-name">Champions</span><span class="pm-stat-val">${esc(champ.shortName)}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Points</span><span class="pm-stat-val">${gameState.myClub.tableStats.points}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Top Scorer</span><span class="pm-stat-val">${topScorer ? esc(topScorer.lastName) : '—'}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Goals</span><span class="pm-stat-val">${topScorer ? topScorer.goals : 0}</span></div>
+    const boardHtml = boardObj ? `
+      <div class="board-verdict-box ${boardResult.verdict}" style="margin-bottom:0">
+        <div class="bv-label">Board Objective</div>
+        <div class="bv-target">${esc(boardObjLabel)}</div>
+        ${boardResult.msg && !sacked ? `<div class="bv-msg">${boardResult.msg}</div>` : ''}
+      </div>` : '';
+
+    const outcomeColor = sacked ? 'var(--accent-red)' : outcome.includes('Champion') || outcome.includes('Promot') ? 'var(--accent)' : outcome.includes('Relegate') ? 'var(--accent-red)' : 'var(--accent-gold)';
+
+    m.innerHTML = `
+      <div class="view-header">
+        <div>
+          <div class="view-title">Season ${gameState.season} Review</div>
+          <div class="view-subtitle">${esc(club.name)} · ${league.name}</div>
         </div>
-        ${poLines ? `<div style="margin-bottom:16px;font-size:13px;color:#86efac;line-height:1.8">${poLines}</div>` : ''}
-        <button class="btn-primary btn-lg" id="next-season-btn">Start Season ${gameState.season + 1} ➔</button>
-      </div>`);
-    $('next-season-btn').addEventListener('click', () => { closeModal(); startNextSeason(); });
+      </div>
+      ${sackedBanner}
+      <div class="season-review-hero">
+        <div class="srh-pos">${ordinal(pos)}</div>
+        <div class="srh-outcome" style="color:${outcomeColor}">${outcome}</div>
+        <div class="srh-record">${ts.played} played · ${ts.won}W ${ts.drawn}D ${ts.lost}L · ${ts.gf} scored · ${ts.ga} conceded</div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="card"><div class="card-title">Points</div><div class="stat-big">${ts.points}</div><div class="stat-label">Goal diff: ${ts.gf - ts.ga >= 0 ? '+' : ''}${ts.gf - ts.ga}</div></div>
+        <div class="card"><div class="card-title">League Champions</div><div class="stat-big" style="font-size:22px">${esc(champ.name)}</div><div class="stat-label">${league.name}</div></div>
+        <div class="card"><div class="card-title">Top Scorer</div>
+          <div class="stat-big" style="font-size:22px">${topScorer && topScorer.goals > 0 ? esc(topScorer.lastName) : '—'}</div>
+          <div class="stat-label">${topScorer && topScorer.goals > 0 ? topScorer.goals + ' goals · ' + topScorer.assists + ' assists' : 'No goals scored'}</div>
+        </div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="card"><div class="card-title">Most Appearances</div>
+          <div class="stat-big" style="font-size:22px">${mostApps ? esc(mostApps.lastName) : '—'}</div>
+          <div class="stat-label">${mostApps ? mostApps.appearances + ' apps' : ''}</div>
+        </div>
+        <div class="card"><div class="card-title">Top Assists</div>
+          <div class="stat-big" style="font-size:22px">${topAssist && topAssist.assists > 0 ? esc(topAssist.lastName) : '—'}</div>
+          <div class="stat-label">${topAssist && topAssist.assists > 0 ? topAssist.assists + ' assists' : 'No assists'}</div>
+        </div>
+        <div class="card"><div class="card-title">Best Rated</div>
+          <div class="stat-big" style="font-size:22px">${bestRated ? esc(bestRated.lastName) : '—'}</div>
+          <div class="stat-label">${bestRated ? (bestRated.seasonRating / bestRated.ratingCount).toFixed(1) + ' avg rating' : 'Not enough data'}</div>
+        </div>
+      </div>
+      <div class="dashboard-grid-2">
+        <div class="card">
+          <div class="card-title">Transfer Activity</div>
+          <div class="pm-stats-grid">
+            <div class="pm-stat"><span class="pm-stat-name">Spent</span><span class="pm-stat-val red">${money(spentIn)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Earned</span><span class="pm-stat-val text-accent">${money(earnedOut)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Net</span><span class="pm-stat-val" style="color:${earnedOut - spentIn >= 0 ? 'var(--accent)' : 'var(--accent-red)'}">${money(earnedOut - spentIn)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Club Balance</span><span class="pm-stat-val text-gold">${money(gameState.finances?.balance ?? club.budget)}</span></div>
+          </div>
+        </div>
+        <div class="card">
+          ${boardHtml || `<div class="card-title">Season Complete</div><div class="stat-label" style="margin-top:8px">No board objective set.</div>`}
+          ${poLines ? `<div style="margin-top:12px;font-size:12px;color:#86efac;line-height:1.9">${poLines}</div>` : ''}
+        </div>
+      </div>
+      ${review.finSummary ? (() => {
+        const fs = review.finSummary;
+        const netProfit = fs.totalIncome - fs.totalExpenses;
+        const balColor  = fs.balance >= 0 ? 'var(--accent)' : 'var(--accent-red)';
+        const netColor  = netProfit >= 0  ? 'var(--accent)' : 'var(--accent-red)';
+        const hap = fs.boardConfidence;
+        const hapColor = hap >= 70 ? 'var(--accent)' : hap >= 40 ? 'var(--accent-gold)' : 'var(--accent-red)';
+        const tierLabels = ['','Regional','National','Global'];
+        return `
+        <div class="card">
+          <div class="card-title">Financial Report</div>
+          <div class="pm-stats-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="pm-stat"><span class="pm-stat-name">Season Income</span><span class="pm-stat-val text-accent">${money(fs.totalIncome)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Season Costs</span><span class="pm-stat-val red">${money(fs.totalExpenses)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Season Net</span><span class="pm-stat-val" style="color:${netColor}">${netProfit>=0?'+':''}${money(netProfit)}</span></div>
+            <div class="pm-stat"><span class="pm-stat-name">Prize Money</span><span class="pm-stat-val text-gold">${money(fs.prize)}</span></div>
+            ${fs.euroPrize > 0 ? `<div class="pm-stat"><span class="pm-stat-name">European Prize</span><span class="pm-stat-val text-gold">${money(fs.euroPrize)}</span></div>` : ''}
+            <div class="pm-stat"><span class="pm-stat-name">Club Balance</span><span class="pm-stat-val" style="color:${balColor}">${money(fs.balance)}</span></div>
+          </div>
+          ${!sacked ? `
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Next Season Allocation</div>
+            <div class="pm-stats-grid" style="grid-template-columns:repeat(2,1fr)">
+              <div class="pm-stat">
+                <span class="pm-stat-name">Board Grant</span>
+                <span class="pm-stat-val" style="color:${fs.nextGrant >= 20 ? 'var(--accent)' : fs.nextGrant >= 8 ? 'var(--accent-gold)' : 'var(--accent-red)'}">${money(fs.nextGrant)}</span>
+              </div>
+              <div class="pm-stat">
+                <span class="pm-stat-name">Board Confidence</span>
+                <span class="pm-stat-val" style="color:${hapColor}">${hap}/100</span>
+              </div>
+              ${fs.nextSponsor ? `<div class="pm-stat" style="grid-column:span 2">
+                <span class="pm-stat-name">New Sponsor Offer</span>
+                <span class="pm-stat-val">${esc(fs.nextSponsor.name)} · ${tierLabels[fs.nextSponsor.tier]} · ${money(fs.nextSponsor.weeklyValue)}/wk</span>
+              </div>` : ''}
+            </div>
+          </div>` : ''}
+        </div>`;
+      })() : ''}
+      <div class="review-actions">
+        ${sacked
+          ? `<button class="btn-secondary btn-lg" id="sr-browse">Browse Club ›</button>
+             <button class="btn-gold btn-lg" id="sr-menu">Return to Menu</button>`
+          : `<button class="btn-primary btn-lg" id="sr-next">Start Season ${gameState.season + 1} →</button>`
+        }
+      </div>`;
+
+    if (sacked) {
+      m.querySelector('#sr-browse').addEventListener('click', () => {
+        gameState.sacked = true;
+        ui.seasonReview = null;
+        renderView('dashboard');
+      });
+      m.querySelector('#sr-menu').addEventListener('click', () => {
+        setAutoSaveRunning(false);
+        gameState = null;
+        ui.seasonReview = null;
+        showScreen('start');
+      });
+    } else {
+      m.querySelector('#sr-next').addEventListener('click', () => {
+        ui.seasonReview = null;
+        startNextSeason();
+      });
+    }
   }
 
   function startNextSeason() {
     gameState.season++;
+    gameState.wageViolations = 0;  // reset each season
+    gameState.transferBans = {};   // reset rejected players each season
     Object.values(gameState.clubs).forEach(club => {
       let totalOvr = 0;
       club.players.forEach(p => {
         p.age++;
         if (p.ovr < p.pot) {
-          const grow = p.age <= 19 ? rand(2, 5) : p.age <= 22 ? rand(1, 4) : p.age <= 25 ? rand(0, 3) : p.age <= 27 ? rand(0, 1) : 0;
-          if (grow > 0) p.ovr = Math.min(p.pot, p.ovr + grow);
+          // Steady growth — most seasons a player improves, but in small steps
+          // Not guaranteed: ~15% chance of a stalled season at any age
+          const growChance = p.age <= 29 ? 0.85 : 0.30;
+          if (Math.random() < growChance) {
+            const maxGrow = p.age <= 21 ? 3 : p.age <= 25 ? 2 : 1;
+            const grow = rand(1, Math.min(maxGrow, p.pot - p.ovr));
+            p.ovr = Math.min(p.pot, p.ovr + grow);
+          }
         }
         if (p.age >= 33) p.ovr = Math.max(45, p.ovr - rand(1, 3));
         else if (p.age >= 31) p.ovr = Math.max(45, p.ovr - rand(0, 2));
@@ -3648,6 +5890,11 @@ const APP = (() => {
         p.contract = Math.max(1, p.contract - 1);
         p.goals = p.assists = p.appearances = p.yellowCards = p.redCards = 0;
         p.seasonRating = 0; p.ratingCount = 0;
+        p.listingPrice = null;
+        p.inboxedThisSeason = false;
+        // Full pre-season recovery — injuries clear, fitness restored
+        if (!p.injured) p.fitness = 100;
+        else if ((p.injuryWeeks || 0) <= 0) { p.injured = false; p.injuryType = null; p.fitness = 80; }
         totalOvr += p.ovr;
       });
       club.sqRating = Math.round(totalOvr / club.players.length);
@@ -3656,18 +5903,83 @@ const APP = (() => {
       club.form = []; club.results = [];
     });
 
-    gameState.currentDate = new Date(2025, 7, 9);
+    // Enter pre-season: start in July for the summer transfer window
+    const seasonYear = 2025 + gameState.season - 1;
+    gameState.currentDate = new Date(seasonYear, 6, 1); // July 1
+    gameState.preseason = true;
+    gameState.pendingOffers = [];
+    gameState.fixtures = [];
+    gameState.market = ENGINE.getTransferMarket(gameState);
+    gameState.freeAgents = DATA.generateFreeAgents(14);
+    activatePreContracts();
+    ui.tableLeague = gameState.myClub.league;
+
+    // Apply financial new-season reset
+    const fin = gameState.finances;
+    if (fin) {
+      // Apply board grant as next season's transfer budget
+      if (fin.pendingGrant !== undefined && fin.pendingGrant !== null) {
+        fin.balance = Math.round((fin.balance + fin.pendingGrant) * 100) / 100;
+        notify(`Board grant for Season ${gameState.season}: ${money(fin.pendingGrant)} added to club balance.`, 'success');
+        delete fin.pendingGrant;
+      }
+      // Legacy saves: clear any auto-pending sponsor; renewals are now negotiated by the manager
+      delete fin.pendingSponsor;
+      // Offer renewal negotiations for any deals that expired during the previous season
+      if (fin.sponsorNeedsRenewal) {
+        setTimeout(() => showSponsorRenewalModal(), 400);
+      }
+      if (fin.kitNeedsRenewal) {
+        setTimeout(() => showKitRenewalModal(), fin.sponsorNeedsRenewal ? 900 : 400);
+      }
+      // Reset season income/expense counters
+      fin.seasonIncome   = { tv:0, matchday:0, sponsorship:0, prizes:0, sales:0 };
+      fin.seasonExpenses = { wages:0, transfers:0, agentFees:0, staff:0 };
+      fin.weeksElapsed   = 0;
+      fin.overWageCapWeeks = 0;
+      fin.boardFundsRequested = false;
+      fin.boardConfVoted = false;
+      // Parachute payment (Premier League relegated clubs in Championship only)
+      if ((fin.parachuteYears || 0) > 0 && gameState.myClub.league === 'championship') {
+        const parachute = fin.parachuteYears >= 2 ? 45 : 27;
+        fin.balance = Math.round((fin.balance + parachute) * 10) / 10;
+        fin.parachuteYears--;
+        notify(`Parachute payment: ${money(parachute)} received (${fin.parachuteYears} season${fin.parachuteYears !== 1 ? 's' : ''} remaining).`, 'success');
+      }
+    }
+
+    generatePlayerEvents();
+    notify(`Pre-season begins — Season ${gameState.season} transfer window is open!`, 'success');
+    updateSidebar();
+    renderView('dashboard');
+    autoSave();
+  }
+
+  function advancePreseasonWeek() {
+    gameState.currentDate = new Date(gameState.currentDate.getTime() + 7 * 86400000);
+    tickFinances(1);
+    tickInjuries();
+    checkIncomingOffers();
+    checkWageBudget();
+    // Prompt sponsor renewal if needed during preseason
+    if (gameState.finances?.sponsorNeedsRenewal) showSponsorRenewalModal();
+    updateSidebar();
+    renderView('dashboard');
+    autoSave();
+  }
+
+  function beginSeasonFromPreseason() {
+    gameState.preseason = false;
+    const seasonYear = 2025 + gameState.season - 1;
+    gameState.currentDate = new Date(seasonYear, 7, 9);
     ENGINE.setupEuropean(gameState);
     ENGINE.setupCups(gameState);
     Object.values(gameState.european).forEach(comp => comp.koDate = KO_DATE);
     gameState.fixtures = ENGINE.generateSchedule(gameState);
-    gameState.market = ENGINE.getTransferMarket(gameState);
     setBoardObjective(gameState);
     gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());
     ui.euroTab = gameState.myEuropeanComp || 'champions_league';
-
-    ui.tableLeague = gameState.myClub.league;
-    notify(`Welcome to Season ${gameState.season}!`, 'success');
+    notify(`Season ${gameState.season} has begun!`, 'success');
     updateSidebar();
     renderView('dashboard');
     autoSave();
@@ -3691,13 +6003,17 @@ const APP = (() => {
     if (!ms) return false;
     const home = gameState.clubs[ms.homeId], away = gameState.clubs[ms.awayId];
     if (!home || !away) { delete gameState.matchSave; return false; }
-    const result = { homeScore: ms.result.homeScore, awayScore: ms.result.awayScore, events: ms.result.matchEvents || [], stats: ms.result.stats || { possession:[50,50], shots:[0,0], shotsOnTarget:[0,0] }, homeRatings: ms.result.homeRatings || [], awayRatings: ms.result.awayRatings || [] };
+    const result = { homeScore: ms.result.homeScore, awayScore: ms.result.awayScore, events: ms.result.matchEvents || [], stats: ms.result.stats || { possession:[50,50], shots:[0,0], shotsOnTarget:[0,0] }, homeRatings: ms.result.homeRatings || [], awayRatings: ms.result.awayRatings || [], commentary: ms.result.commentary || [] };
     const fixture = gameState.fixtures.find(f => !f.played && f.home === ms.homeId && f.away === ms.awayId)
       || { home: ms.homeId, away: ms.awayId, played: false };
     ui.match = {
       fixture, home, away, myIsHome: ms.myIsHome, result,
       homeFormation: ms.homeFormation, awayFormation: ms.awayFormation,
       homeXI: ms.homeXI, awayXI: ms.awayXI,
+      currentHomeXI: ms.currentHomeXI || ms.homeXI,
+      currentAwayXI: ms.currentAwayXI || ms.awayXI,
+      currentTactics: ms.currentTactics || { ...gameState.tactics },
+      subsUsed: ms.subsUsed || 0, subsMax: ms.subsMax || 5,
       sim: { ...ms.sim }, simTimer: null, speed: 1, gamePhase: ms.gamePhase || 1,
     };
     showScreen('match');
@@ -3711,13 +6027,25 @@ const APP = (() => {
     $('match-events-list').innerHTML = '';
     $('pitch-events').innerHTML = '';
     const ev = result.events;
-    for (let i = 0; i < ms.sim.idx && i < ev.length; i++) addMatchEvent(ev[i]);
+    for (let i = 0; i < ms.sim.idx && i < ev.length; i++) { if (['goal','yellow','red','sub'].includes(ev[i].type)) addMatchEvent(ev[i]); addPitchDot(ev[i]); }
+    result.commentary.forEach(c => {
+      const d = document.createElement('div');
+      d.className = 'match-event commentary' + (c.cls ? ' ' + c.cls : '');
+      d.innerHTML = `<span class="event-min">${c.min}'</span><span class="event-desc">${c.text}</span>`;
+      $('match-events-list').appendChild(d);
+    });
     $('btn-simulate').classList.add('hidden');
     $('btn-pause').classList.add('hidden');
     $('btn-speed').classList.add('hidden');
+    $('btn-subs').classList.add('hidden');
     $('match-result-overlay').classList.add('hidden');
-    if (ms.atHalfTime) {
+    $('halftime-panel').classList.add('hidden');
+    $('match-events-inner').classList.remove('hidden');
+    if (ms.sim.min >= 90) {
+      finishMatch();
+    } else if (ms.atHalfTime) {
       $('btn-halftime').classList.remove('hidden');
+      showHalftimePanel();
     } else {
       $('btn-halftime').classList.add('hidden');
       $('btn-simulate').textContent = '▶ Resume';
@@ -3728,37 +6056,66 @@ const APP = (() => {
   }
 
   function showSlotPicker() {
-    const saves = listSaves().filter(s => s.id.startsWith('career_'));
-    if (saves.length >= 5) {
-      showModal(`<div class="player-modal" style="text-align:center">
+    const idx = readIndex();
+    const slots = [1,2,3,4,5];
+    const allFull = slots.every(n => !!idx[`career_${n}`]);
+
+    if (allFull) {
+      showModal(`<div class="sv-modal" style="text-align:center">
         <h2 style="margin-bottom:10px">All Save Slots Full</h2>
-        <p class="text-muted" style="margin-bottom:18px">Delete a save from <strong>Load Save</strong> to start a new career.</p>
+        <p class="text-muted" style="font-size:13px;margin-bottom:18px">Delete a save from <strong>Load Save</strong> to free up a slot.</p>
         <button class="btn-secondary" id="ssp-close">OK</button>
       </div>`);
       $('ssp-close').addEventListener('click', closeModal);
       return;
     }
-    const slots = [1,2,3,4,5];
-    let html = '<div class="player-modal"><h2 style="margin-bottom:14px">Choose a Save Slot</h2>';
-    slots.forEach(n => {
-      const id = 'career_' + n;
-      const s = saves.find(x => x.id === id);
-      html += `<div class="save-slot-pick ${s ? 'occ' : 'empty'}" data-slot="${id}">
-        <span class="ssp-num">${n}</span>
-        <div class="ssp-info">
-          ${s ? `<div class="ssp-name">${esc(s.clubName)}</div><div class="ssp-meta">Season ${s.season} · ${fmtSavedAt(s.savedAt)}</div>`
-              : `<div class="ssp-name">Empty slot</div>`}
-        </div>
-        ${s ? '<span class="ssp-warn">Overwrite</span>' : ''}
+
+    let html = `<div class="sv-modal">
+      <div class="sv-modal-hdr">
+        <h2>Choose a Save Slot</h2>
+        <span class="sv-used-count">${slots.filter(n => !!idx[`career_${n}`]).length} / 5 slots used</span>
       </div>`;
+
+    slots.forEach(n => {
+      const id = `career_${n}`;
+      const s = idx[id];
+      if (s) {
+        const col    = s.clubColor ? hex(s.clubColor) : '#1a2035';
+        const txt    = s.clubColor ? textOn(s.clubColor) : '#8090a8';
+        const initials = (s.clubShort || s.clubName || '?').slice(0, 2).toUpperCase();
+        const posStr   = s.pos ? ordinal(s.pos) + ' · ' : '';
+        html += `<div class="sv-card sv-occ sv-pick-card" data-slot="${id}">
+          <div class="sv-slot-num">${n}</div>
+          <div class="sv-badge" style="background:${col};color:${txt}">${esc(initials)}</div>
+          <div class="sv-info">
+            <div class="sv-club-name">${esc(s.clubName)}</div>
+            <div class="sv-meta">${esc(s.leagueName || '')} · Season ${s.season}</div>
+            <div class="sv-meta">${posStr}${esc(s.gameDate || '')}</div>
+            <div class="sv-saved-at">Saved ${fmtSavedAt(s.savedAt)}</div>
+          </div>
+          <div class="sv-actions">
+            <span class="sv-overwrite-tag">Overwrite</span>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="sv-card sv-empty sv-pick-card sv-save-here" data-slot="${id}">
+          <div class="sv-slot-num">${n}</div>
+          <div class="sv-info">
+            <span class="sv-club-name sv-empty-label">Empty Slot</span>
+            <span class="sv-meta">Start a new career here</span>
+          </div>
+        </div>`;
+      }
     });
-    html += '</div>';
+
+    html += `</div>`;
     showModal(html);
-    document.querySelectorAll('.save-slot-pick').forEach(el => {
-      el.addEventListener('click', () => {
-        const slotId = el.dataset.slot;
-        const s = saves.find(x => x.id === slotId);
-        if (s && !confirm('Overwrite ' + s.clubName + ' (Season ' + s.season + ')?')) return;
+
+    document.querySelectorAll('.sv-pick-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const slotId = card.dataset.slot;
+        const s = idx[slotId];
+        if (s && !confirm(`Overwrite ${s.clubName} (Season ${s.season})?`)) return;
         if (s) deleteSave(slotId);
         ui.pendingSlotId = slotId;
         closeModal();
@@ -3890,10 +6247,13 @@ const APP = (() => {
   }
 
   function saveMeta(label) {
+    const c = gameState.myClub;
     return {
       label,
-      clubName: gameState.myClub.name,
-      leagueName: DATA.LEAGUES[gameState.myClub.league].name,
+      clubName: c.name,
+      clubShort: c.name,
+      clubColor: c.color,
+      leagueName: DATA.LEAGUES[c.league].name,
       season: gameState.season,
       gameDate: MONTHS_SHORT[gameState.currentDate.getMonth()] + ' ' + gameState.currentDate.getFullYear(),
       pos: ENGINE.getMyPosition(gameState),
@@ -3901,15 +6261,18 @@ const APP = (() => {
     };
   }
   function writeSave(slotId, label) {
-    try {
-      const payload = LZString.compressToUTF16(JSON.stringify(gameState, saveReplacer));
-      localStorage.setItem(SLOT_PREFIX + slotId, payload);
-      const idx = readIndex(); idx[slotId] = saveMeta(label); writeIndex(idx);
-      return true;
-    } catch (e) {
-      notify('Save failed — storage is full. Delete an old save and retry.', 'error');
-      return false;
-    }
+    const doWrite = () => {
+      try {
+        const json = JSON.stringify(gameState, saveReplacer);
+        const payload = LZString.compressToUTF16(json);
+        localStorage.setItem(SLOT_PREFIX + slotId, payload);
+        const idx = readIndex(); idx[slotId] = saveMeta(label); writeIndex(idx);
+      } catch (e) {
+        notify('Save failed — storage is full. Delete an old save and retry.', 'error');
+      }
+    };
+    (window.requestIdleCallback || (f => setTimeout(f, 0)))(doWrite, { timeout: 3000 });
+    return true;
   }
   function autoSave() {
     if (!gameState) return;
@@ -3920,11 +6283,15 @@ const APP = (() => {
         myIsHome: ui.match.myIsHome,
         homeFormation: ui.match.homeFormation, awayFormation: ui.match.awayFormation,
         homeXI: ui.match.homeXI, awayXI: ui.match.awayXI,
+        currentHomeXI: ui.match.currentHomeXI, currentAwayXI: ui.match.currentAwayXI,
+        currentTactics: ui.match.currentTactics,
+        subsUsed: ui.match.subsUsed, subsMax: ui.match.subsMax,
         result: {
           homeScore: mr.homeScore, awayScore: mr.awayScore,
           matchEvents: mr.events,
           stats: mr.stats,
           homeRatings: mr.homeRatings, awayRatings: mr.awayRatings,
+          commentary: mr.commentary,
         },
         sim: { ...ui.match.sim },
         gamePhase: ui.match.gamePhase || 1,
@@ -3978,46 +6345,90 @@ const APP = (() => {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
            d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
-  function defaultLabel() { return gameState.myClub.shortName + ' · S' + gameState.season; }
+  function defaultLabel() { return gameState.myClub.name + ' · S' + gameState.season; }
 
   const MAX_SLOTS = 5;   // manual save slots (the 'auto' slot is separate)
 
   function openSaves(mode) {
-    const slots = listSaves();
-    const manualCount = slots.filter(s => s.id !== 'auto').length;
-    let html = `<div class="player-modal"><h2 style="margin-bottom:6px">${mode === 'save' ? 'Save Game' : 'Load Game'}</h2>`;
-    html += `<p class="text-muted" style="font-size:11px;margin-bottom:12px">${manualCount}/${MAX_SLOTS} save slots used</p>`;
-    if (mode === 'save') {
-      html += manualCount < MAX_SLOTS
-        ? `<button class="btn-primary" id="save-new" style="width:100%;margin-bottom:12px">＋ New Save Slot</button>`
-        : `<p class="text-gold" style="font-size:11px;margin-bottom:12px">All ${MAX_SLOTS} slots full — overwrite or delete one below.</p>`;
+    const idx = readIndex();
+
+    function slotBadgeHtml(s) {
+      const col = s.clubColor ? hex(s.clubColor) : '#1a2035';
+      const txt = s.clubColor ? textOn(s.clubColor) : '#8090a8';
+      const initials = (s.clubShort || s.clubName || '?').slice(0, 2).toUpperCase();
+      return `<div class="sv-badge" style="background:${col};color:${txt}">${esc(initials)}</div>`;
     }
-    if (!slots.length) {
-      html += `<div class="empty-state"><div class="empty-state-text">No saved games yet.</div></div>`;
-    } else {
-      html += slots.map(s => `
-        <div class="inbox-item">
-          <div class="inbox-icon" style="font-size:14px;color:var(--text-muted)">${s.id === 'auto' ? '↻' : '▸'}</div>
-          <div class="inbox-content">
-            <div class="inbox-subject">${esc(s.label || s.clubName)}</div>
-            <div class="inbox-preview">${esc(s.clubName)} · ${esc(s.leagueName)} · Season ${s.season} · ${esc(s.gameDate)}${s.pos ? ' · ' + ordinal(s.pos) : ''}<br>Saved ${fmtSavedAt(s.savedAt)}</div>
+
+    function cardHtml(slotNum, s) {
+      const id = `career_${slotNum}`;
+      if (!s) {
+        // empty slot
+        if (mode === 'load') {
+          return `<div class="sv-card sv-empty">
+            <div class="sv-slot-num">${slotNum}</div>
+            <div class="sv-info"><span class="sv-club-name sv-empty-label">Empty Slot</span></div>
+          </div>`;
+        }
+        return `<div class="sv-card sv-empty sv-save-here" data-slot="${id}">
+          <div class="sv-slot-num">${slotNum}</div>
+          <div class="sv-info">
+            <span class="sv-club-name sv-empty-label">Empty Slot</span>
+            <span class="sv-meta">Click to save here</span>
           </div>
-          <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-            <button class="${mode === 'save' ? 'btn-gold' : 'btn-primary'}" data-act="${mode}" data-slot="${s.id}" style="padding:5px 10px;font-size:11px">${mode === 'save' ? 'Overwrite' : 'Load'}</button>
-            <button class="btn-danger" data-act="delete" data-slot="${s.id}" style="padding:5px 10px;font-size:11px">Delete</button>
-          </div>
-        </div>`).join('');
+          <div class="sv-actions"><button class="btn-secondary sv-btn" tabindex="-1">Save Here</button></div>
+        </div>`;
+      }
+      const posStr = s.pos ? ordinal(s.pos) + ' · ' : '';
+      const isAutoLabel = s.label === 'Autosave';
+      return `<div class="sv-card sv-occ">
+        <div class="sv-slot-num">${slotNum}</div>
+        ${slotBadgeHtml(s)}
+        <div class="sv-info">
+          <div class="sv-club-name">${esc(s.clubName)}${isAutoLabel ? '<span class="sv-autosave-tag">AUTOSAVE</span>' : ''}</div>
+          <div class="sv-meta">${esc(s.leagueName)} · Season ${s.season}</div>
+          <div class="sv-meta">${posStr}${esc(s.gameDate)}</div>
+          <div class="sv-saved-at">Saved ${fmtSavedAt(s.savedAt)}</div>
+        </div>
+        <div class="sv-actions">
+          ${mode === 'save'
+            ? `<button class="btn-gold sv-btn" data-act="save" data-slot="${id}">Overwrite</button>`
+            : `<button class="btn-primary sv-btn" data-act="load" data-slot="${id}">Load</button>`}
+          <button class="btn-danger sv-btn" data-act="delete" data-slot="${id}">Delete</button>
+        </div>
+      </div>`;
+    }
+
+    const usedCount = Object.keys(idx).filter(k => k.startsWith('career_')).length;
+    let html = `<div class="sv-modal">
+      <div class="sv-modal-hdr">
+        <h2>${mode === 'save' ? 'Save Game' : 'Load Game'}</h2>
+        <span class="sv-used-count">${usedCount} / ${MAX_SLOTS} slots used</span>
+      </div>`;
+    for (let n = 1; n <= MAX_SLOTS; n++) {
+      const s = idx[`career_${n}`] ? { id: `career_${n}`, ...idx[`career_${n}`] } : null;
+      html += cardHtml(n, s);
     }
     html += `</div>`;
     showModal(html);
 
-    const nb = $('save-new');
-    if (nb) nb.addEventListener('click', () => { if (writeSave('s' + Date.now(), defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); } });
-    document.querySelectorAll('#modal-content [data-act]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#modal-content .sv-save-here').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.slot;
+        if (writeSave(id, defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); }
+      });
+    });
+    document.querySelectorAll('#modal-content [data-act]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
       const id = b.dataset.slot, act = b.dataset.act;
-      if (act === 'delete') { deleteSave(id); openSaves(mode); }
-      else if (act === 'save') { const idx = readIndex(); if (writeSave(id, (idx[id] && idx[id].label) || defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); } }
-      else if (act === 'load') { loadSave(id); }
+      if (act === 'delete') {
+        if (!confirm('Delete this save?')) return;
+        deleteSave(id); openSaves(mode);
+      } else if (act === 'save') {
+        if (!confirm('Overwrite this save?')) return;
+        if (writeSave(id, defaultLabel())) { notify('Game saved.', 'success'); openSaves('save'); }
+      } else if (act === 'load') {
+        loadSave(id); closeModal();
+      }
     }));
   }
 

@@ -16,26 +16,26 @@ const LEAGUES = {
 
 const CLUBS_DATA = [
   // Premier League (2025/26)
-  { id:'man_city',    name:'Manchester City',   league:'premier_league', rep:5, color:'#6CABDD', budget:150, wage:5.2, sqRating:88 },
-  { id:'arsenal',     name:'Arsenal',            league:'premier_league', rep:5, color:'#EF0107', budget:120, wage:4.8, sqRating:86 },
-  { id:'liverpool',   name:'Liverpool',          league:'premier_league', rep:5, color:'#C8102E', budget:130, wage:5.0, sqRating:87 },
-  { id:'chelsea',     name:'Chelsea',            league:'premier_league', rep:5, color:'#034694', budget:140, wage:5.1, sqRating:85 },
-  { id:'man_utd',     name:'Manchester United',  league:'premier_league', rep:5, color:'#DA291C', budget:110, wage:4.6, sqRating:83 },
-  { id:'tottenham',   name:'Tottenham Hotspur',  league:'premier_league', rep:4, color:'#132257', budget:90,  wage:3.8, sqRating:82 },
-  { id:'newcastle',   name:'Newcastle United',   league:'premier_league', rep:4, color:'#241F20', budget:100, wage:3.9, sqRating:81 },
-  { id:'aston_villa', name:'Aston Villa',        league:'premier_league', rep:4, color:'#95BFE5', budget:80,  wage:3.2, sqRating:80 },
-  { id:'west_ham',    name:'West Ham United',    league:'premier_league', rep:3, color:'#7A263A', budget:55,  wage:2.5, sqRating:77 },
-  { id:'brighton',    name:'Brighton & Hove',    league:'premier_league', rep:3, color:'#0057B8', budget:50,  wage:2.2, sqRating:76 },
-  { id:'brentford',   name:'Brentford',          league:'premier_league', rep:3, color:'#D20000', budget:40,  wage:1.8, sqRating:75 },
-  { id:'wolves',      name:'Wolverhampton',      league:'premier_league', rep:3, color:'#FDB913', budget:45,  wage:2.0, sqRating:74 },
-  { id:'crystal',     name:'Crystal Palace',     league:'premier_league', rep:3, color:'#1B458F', budget:35,  wage:1.7, sqRating:74 },
-  { id:'fulham',      name:'Fulham',             league:'premier_league', rep:3, color:'#CC0000', budget:40,  wage:1.8, sqRating:74 },
-  { id:'everton',     name:'Everton',            league:'premier_league', rep:3, color:'#003399', budget:30,  wage:1.5, sqRating:72 },
-  { id:'nottm_forest',name:'Nottingham Forest',  league:'premier_league', rep:3, color:'#DD0000', budget:40,  wage:1.7, sqRating:75 },
-  { id:'bournemouth', name:'Bournemouth',        league:'premier_league', rep:3, color:'#DA291C', budget:30,  wage:1.4, sqRating:73 },
-  { id:'leeds',       name:'Leeds United',       league:'premier_league', rep:3, color:'#1D428A', budget:35,  wage:1.6, sqRating:73 },
-  { id:'burnley',     name:'Burnley',            league:'premier_league', rep:3, color:'#6C1D45', budget:30,  wage:1.4, sqRating:72 },
-  { id:'sunderland',  name:'Sunderland',         league:'premier_league', rep:3, color:'#EB172B', budget:35,  wage:1.6, sqRating:73 },
+  { id:'man_city',    name:'Manchester City',   league:'premier_league', rep:5, color:'#6CABDD', budget:250, wage:5.2, sqRating:88 },
+  { id:'arsenal',     name:'Arsenal',            league:'premier_league', rep:5, color:'#EF0107', budget:200, wage:4.8, sqRating:86 },
+  { id:'liverpool',   name:'Liverpool',          league:'premier_league', rep:5, color:'#C8102E', budget:220, wage:5.0, sqRating:87 },
+  { id:'chelsea',     name:'Chelsea',            league:'premier_league', rep:5, color:'#034694', budget:240, wage:5.1, sqRating:85 },
+  { id:'man_utd',     name:'Manchester United',  league:'premier_league', rep:5, color:'#DA291C', budget:190, wage:4.6, sqRating:83 },
+  { id:'tottenham',   name:'Tottenham Hotspur',  league:'premier_league', rep:4, color:'#132257', budget:150, wage:3.8, sqRating:82 },
+  { id:'newcastle',   name:'Newcastle United',   league:'premier_league', rep:4, color:'#241F20', budget:160, wage:3.9, sqRating:81 },
+  { id:'aston_villa', name:'Aston Villa',        league:'premier_league', rep:4, color:'#95BFE5', budget:120, wage:3.2, sqRating:80 },
+  { id:'west_ham',    name:'West Ham United',    league:'premier_league', rep:3, color:'#7A263A', budget:80,  wage:2.5, sqRating:77 },
+  { id:'brighton',    name:'Brighton & Hove',    league:'premier_league', rep:3, color:'#0057B8', budget:70,  wage:2.2, sqRating:76 },
+  { id:'brentford',   name:'Brentford',          league:'premier_league', rep:3, color:'#D20000', budget:55,  wage:1.8, sqRating:75 },
+  { id:'wolves',      name:'Wolverhampton',      league:'premier_league', rep:3, color:'#FDB913', budget:60,  wage:2.0, sqRating:74 },
+  { id:'crystal',     name:'Crystal Palace',     league:'premier_league', rep:3, color:'#1B458F', budget:45,  wage:1.7, sqRating:74 },
+  { id:'fulham',      name:'Fulham',             league:'premier_league', rep:3, color:'#CC0000', budget:55,  wage:1.8, sqRating:74 },
+  { id:'everton',     name:'Everton',            league:'premier_league', rep:3, color:'#003399', budget:40,  wage:1.5, sqRating:72 },
+  { id:'nottm_forest',name:'Nottingham Forest',  league:'premier_league', rep:3, color:'#DD0000', budget:55,  wage:1.7, sqRating:75 },
+  { id:'bournemouth', name:'Bournemouth',        league:'premier_league', rep:3, color:'#DA291C', budget:40,  wage:1.4, sqRating:73 },
+  { id:'leeds',       name:'Leeds United',       league:'premier_league', rep:3, color:'#1D428A', budget:45,  wage:1.6, sqRating:73 },
+  { id:'burnley',     name:'Burnley',            league:'premier_league', rep:3, color:'#6C1D45', budget:35,  wage:1.4, sqRating:72 },
+  { id:'sunderland',  name:'Sunderland',         league:'premier_league', rep:3, color:'#EB172B', budget:40,  wage:1.6, sqRating:73 },
   // Championship (2025/26)
   { id:'leicester',   name:'Leicester City',     league:'championship',   rep:3, color:'#003090', budget:25,  wage:1.2, sqRating:72 },
   { id:'ipswich',     name:'Ipswich Town',       league:'championship',   rep:2, color:'#3A64A3', budget:16,  wage:0.9, sqRating:70 },
@@ -111,111 +111,111 @@ const CLUBS_DATA = [
   { id:'crewe',       name:'Crewe Alexandra',    league:'league_two',     rep:1, color:'#D6001C', budget:1,   wage:0.08,sqRating:52 },
   { id:'bromley',     name:'Bromley',            league:'league_two',     rep:1, color:'#FFFFFF', budget:1,   wage:0.08,sqRating:52 },
   { id:'barrow',      name:'Barrow',             league:'league_two',     rep:1, color:'#003DA5', budget:1,   wage:0.08,sqRating:51 },
-  // National League (2025/26)
-  { id:'carlisle',    name:'Carlisle United',    league:'national_league', rep:1, color:'#003DA5', budget:0.6, wage:0.05,sqRating:50 },
-  { id:'morecambe',   name:'Morecambe',          league:'national_league', rep:1, color:'#D6001C', budget:0.5, wage:0.05,sqRating:49 },
-  { id:'york',        name:'York City',          league:'national_league', rep:1, color:'#D00027', budget:0.5, wage:0.05,sqRating:50 },
-  { id:'forest_green',name:'Forest Green Rovers',league:'national_league', rep:1, color:'#0B6E4F', budget:0.5, wage:0.05,sqRating:49 },
-  { id:'southend',    name:'Southend United',    league:'national_league', rep:1, color:'#003DA5', budget:0.5, wage:0.05,sqRating:49 },
-  { id:'scunthorpe',  name:'Scunthorpe United',  league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'halifax',     name:'FC Halifax Town',    league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'altrincham',  name:'Altrincham',         league:'national_league', rep:1, color:'#FF0000', budget:0.3, wage:0.04,sqRating:48 },
-  { id:'gateshead',   name:'Gateshead',          league:'national_league', rep:1, color:'#000000', budget:0.3, wage:0.04,sqRating:47 },
-  { id:'hartlepool',  name:'Hartlepool United',  league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'rochdale',    name:'Rochdale',           league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'solihull',    name:'Solihull Moors',     league:'national_league', rep:1, color:'#F58220', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'yeovil',      name:'Yeovil Town',        league:'national_league', rep:1, color:'#0B6E4F', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'aldershot',   name:'Aldershot Town',     league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:48 },
-  { id:'eastleigh',   name:'Eastleigh',          league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:47 },
-  { id:'sutton',      name:'Sutton United',      league:'national_league', rep:1, color:'#FFB300', budget:0.3, wage:0.04,sqRating:47 },
-  { id:'woking',      name:'Woking',             league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:47 },
-  { id:'boston_utd',  name:'Boston United',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:47 },
-  { id:'braintree',   name:'Braintree Town',     league:'national_league', rep:1, color:'#F58220', budget:0.3, wage:0.04,sqRating:46 },
-  { id:'wealdstone',  name:'Wealdstone',         league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:46 },
-  { id:'tamworth',    name:'Tamworth',           league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:46 },
-  { id:'truro',       name:'Truro City',         league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:46 },
-  { id:'brackley',    name:'Brackley Town',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:45 },
-  { id:'boreham_wood',name:'Boreham Wood',       league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:46 },
+  // National League (2025/26) — level 5, avg sqRating ~44
+  { id:'carlisle',    name:'Carlisle United',    league:'national_league', rep:1, color:'#003DA5', budget:0.6, wage:0.05,sqRating:46 },
+  { id:'morecambe',   name:'Morecambe',          league:'national_league', rep:1, color:'#D6001C', budget:0.5, wage:0.05,sqRating:45 },
+  { id:'york',        name:'York City',          league:'national_league', rep:1, color:'#D00027', budget:0.5, wage:0.05,sqRating:46 },
+  { id:'forest_green',name:'Forest Green Rovers',league:'national_league', rep:1, color:'#0B6E4F', budget:0.5, wage:0.05,sqRating:45 },
+  { id:'southend',    name:'Southend United',    league:'national_league', rep:1, color:'#003DA5', budget:0.5, wage:0.05,sqRating:45 },
+  { id:'scunthorpe',  name:'Scunthorpe United',  league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'halifax',     name:'FC Halifax Town',    league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'altrincham',  name:'Altrincham',         league:'national_league', rep:1, color:'#FF0000', budget:0.3, wage:0.04,sqRating:44 },
+  { id:'gateshead',   name:'Gateshead',          league:'national_league', rep:1, color:'#000000', budget:0.3, wage:0.04,sqRating:43 },
+  { id:'hartlepool',  name:'Hartlepool United',  league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'rochdale',    name:'Rochdale',           league:'national_league', rep:1, color:'#003DA5', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'solihull',    name:'Solihull Moors',     league:'national_league', rep:1, color:'#F58220', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'yeovil',      name:'Yeovil Town',        league:'national_league', rep:1, color:'#0B6E4F', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'aldershot',   name:'Aldershot Town',     league:'national_league', rep:1, color:'#D6001C', budget:0.4, wage:0.04,sqRating:44 },
+  { id:'eastleigh',   name:'Eastleigh',          league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:43 },
+  { id:'sutton',      name:'Sutton United',      league:'national_league', rep:1, color:'#FFB300', budget:0.3, wage:0.04,sqRating:43 },
+  { id:'woking',      name:'Woking',             league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:43 },
+  { id:'boston_utd',  name:'Boston United',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:43 },
+  { id:'braintree',   name:'Braintree Town',     league:'national_league', rep:1, color:'#F58220', budget:0.3, wage:0.04,sqRating:42 },
+  { id:'wealdstone',  name:'Wealdstone',         league:'national_league', rep:1, color:'#003DA5', budget:0.3, wage:0.04,sqRating:42 },
+  { id:'tamworth',    name:'Tamworth',           league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:42 },
+  { id:'truro',       name:'Truro City',         league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:42 },
+  { id:'brackley',    name:'Brackley Town',      league:'national_league', rep:1, color:'#D6001C', budget:0.3, wage:0.04,sqRating:41 },
+  { id:'boreham_wood',name:'Boreham Wood',       league:'national_league', rep:1, color:'#FFFFFF', budget:0.3, wage:0.04,sqRating:42 },
   // La Liga
-  { id:'real_madrid', name:'Real Madrid',        league:'la_liga',        rep:5, color:'#FEBE10', budget:200, wage:6.5, sqRating:91 },
-  { id:'barcelona',   name:'Barcelona',          league:'la_liga',        rep:5, color:'#A50044', budget:180, wage:6.0, sqRating:89 },
-  { id:'atletico',    name:'Atletico Madrid',    league:'la_liga',        rep:5, color:'#CB3524', budget:120, wage:4.5, sqRating:86 },
-  { id:'sevilla',     name:'Sevilla',            league:'la_liga',        rep:4, color:'#D4021D', budget:60,  wage:2.5, sqRating:80 },
-  { id:'villarreal',  name:'Villarreal',         league:'la_liga',        rep:4, color:'#FFE135', budget:55,  wage:2.3, sqRating:79 },
-  { id:'real_sociedad',name:'Real Sociedad',     league:'la_liga',        rep:3, color:'#0067B1', budget:40,  wage:1.8, sqRating:77 },
-  { id:'betis',       name:'Real Betis',         league:'la_liga',        rep:3, color:'#00954C', budget:40,  wage:1.7, sqRating:76 },
-  { id:'valencia',    name:'Valencia',           league:'la_liga',        rep:4, color:'#F1B80E', budget:35,  wage:1.5, sqRating:74 },
-  { id:'athletic',    name:'Athletic Club',      league:'la_liga',        rep:3, color:'#EE2523', budget:35,  wage:1.5, sqRating:75 },
-  { id:'getafe',      name:'Getafe',             league:'la_liga',        rep:2, color:'#005A9C', budget:20,  wage:0.9, sqRating:70 },
-  { id:'osasuna',     name:'Osasuna',            league:'la_liga',        rep:2, color:'#D0021B', budget:15,  wage:0.7, sqRating:68 },
-  { id:'girona',      name:'Girona',             league:'la_liga',        rep:2, color:'#CC0000', budget:20,  wage:0.9, sqRating:71 },
-  { id:'alaves',      name:'Deportivo Alavés',   league:'la_liga',        rep:2, color:'#1D59A6', budget:12,  wage:0.6, sqRating:67 },
-  { id:'celta',       name:'Celta Vigo',         league:'la_liga',        rep:2, color:'#8CBFD4', budget:18,  wage:0.8, sqRating:69 },
-  { id:'mallorca',    name:'RCD Mallorca',       league:'la_liga',        rep:2, color:'#D40000', budget:12,  wage:0.6, sqRating:66 },
-  { id:'espanyol',    name:'Espanyol',           league:'la_liga',        rep:2, color:'#0070B8', budget:15,  wage:0.7, sqRating:68 },
-  { id:'rayo',        name:'Rayo Vallecano',     league:'la_liga',        rep:2, color:'#DA291C', budget:10,  wage:0.5, sqRating:66 },
-  { id:'levante',     name:'Levante',            league:'la_liga',        rep:2, color:'#9E1B32', budget:10,  wage:0.5, sqRating:65 },
-  { id:'elche',       name:'Elche',              league:'la_liga',        rep:2, color:'#00913F', budget:10,  wage:0.5, sqRating:65 },
-  { id:'oviedo',      name:'Real Oviedo',        league:'la_liga',        rep:2, color:'#0033A0', budget:9,   wage:0.45,sqRating:64 },
+  { id:'real_madrid', name:'Real Madrid',        league:'la_liga',        rep:5, color:'#FEBE10', budget:180, wage:4.2, sqRating:89 },
+  { id:'barcelona',   name:'Barcelona',          league:'la_liga',        rep:5, color:'#A50044', budget:160, wage:3.8, sqRating:87 },
+  { id:'atletico',    name:'Atletico Madrid',    league:'la_liga',        rep:5, color:'#CB3524', budget:90,  wage:2.4, sqRating:84 },
+  { id:'sevilla',     name:'Sevilla',            league:'la_liga',        rep:4, color:'#D4021D', budget:44,  wage:1.4, sqRating:79 },
+  { id:'villarreal',  name:'Villarreal',         league:'la_liga',        rep:4, color:'#FFE135', budget:40,  wage:1.3, sqRating:78 },
+  { id:'real_sociedad',name:'Real Sociedad',     league:'la_liga',        rep:3, color:'#0067B1', budget:29,  wage:0.95,sqRating:76 },
+  { id:'betis',       name:'Real Betis',         league:'la_liga',        rep:3, color:'#00954C', budget:27,  wage:0.9, sqRating:75 },
+  { id:'valencia',    name:'Valencia',           league:'la_liga',        rep:4, color:'#F1B80E', budget:23,  wage:0.8, sqRating:73 },
+  { id:'athletic',    name:'Athletic Club',      league:'la_liga',        rep:3, color:'#EE2523', budget:23,  wage:0.8, sqRating:74 },
+  { id:'getafe',      name:'Getafe',             league:'la_liga',        rep:2, color:'#005A9C', budget:12,  wage:0.5, sqRating:69 },
+  { id:'osasuna',     name:'Osasuna',            league:'la_liga',        rep:2, color:'#D0021B', budget:9,   wage:0.38,sqRating:67 },
+  { id:'girona',      name:'Girona',             league:'la_liga',        rep:2, color:'#CC0000', budget:13,  wage:0.52,sqRating:70 },
+  { id:'alaves',      name:'Deportivo Alavés',   league:'la_liga',        rep:2, color:'#1D59A6', budget:7,   wage:0.32,sqRating:66 },
+  { id:'celta',       name:'Celta Vigo',         league:'la_liga',        rep:2, color:'#8CBFD4', budget:11,  wage:0.44,sqRating:68 },
+  { id:'mallorca',    name:'RCD Mallorca',       league:'la_liga',        rep:2, color:'#D40000', budget:7,   wage:0.32,sqRating:65 },
+  { id:'espanyol',    name:'Espanyol',           league:'la_liga',        rep:2, color:'#0070B8', budget:9,   wage:0.38,sqRating:67 },
+  { id:'rayo',        name:'Rayo Vallecano',     league:'la_liga',        rep:2, color:'#DA291C', budget:6,   wage:0.28,sqRating:65 },
+  { id:'levante',     name:'Levante',            league:'la_liga',        rep:2, color:'#9E1B32', budget:6,   wage:0.28,sqRating:64 },
+  { id:'elche',       name:'Elche',              league:'la_liga',        rep:2, color:'#00913F', budget:6,   wage:0.28,sqRating:64 },
+  { id:'oviedo',      name:'Real Oviedo',        league:'la_liga',        rep:2, color:'#0033A0', budget:5,   wage:0.24,sqRating:63 },
   // Bundesliga
-  { id:'bayern',      name:'Bayern Munich',      league:'bundesliga',     rep:5, color:'#DC052D', budget:180, wage:6.2, sqRating:90 },
-  { id:'dortmund',    name:'Borussia Dortmund',  league:'bundesliga',     rep:5, color:'#FDE100', budget:120, wage:4.8, sqRating:86 },
-  { id:'leverkusen',  name:'Bayer Leverkusen',   league:'bundesliga',     rep:4, color:'#E32221', budget:90,  wage:3.8, sqRating:85 },
-  { id:'rb_leipzig',  name:'RB Leipzig',         league:'bundesliga',     rep:4, color:'#DD0741', budget:80,  wage:3.5, sqRating:84 },
-  { id:'frankfurt',   name:'Eintracht Frankfurt',league:'bundesliga',     rep:4, color:'#E2001A', budget:60,  wage:2.8, sqRating:80 },
-  { id:'wolfsburg',   name:'VfL Wolfsburg',      league:'bundesliga',     rep:3, color:'#65B32E', budget:50,  wage:2.2, sqRating:77 },
-  { id:'gladbach',    name:"Borussia M'gladbach", league:'bundesliga',    rep:3, color:'#000000', budget:45,  wage:2.0, sqRating:76 },
-  { id:'stuttgart',   name:'VfB Stuttgart',      league:'bundesliga',     rep:3, color:'#E32221', budget:45,  wage:2.0, sqRating:78 },
-  { id:'hoffenheim',  name:'Hoffenheim',         league:'bundesliga',     rep:3, color:'#1869AE', budget:35,  wage:1.6, sqRating:74 },
-  { id:'werder',      name:'Werder Bremen',      league:'bundesliga',     rep:3, color:'#1D9053', budget:30,  wage:1.4, sqRating:73 },
-  { id:'freiburg',    name:'SC Freiburg',        league:'bundesliga',     rep:3, color:'#D40000', budget:30,  wage:1.3, sqRating:73 },
-  { id:'augsburg',    name:'FC Augsburg',        league:'bundesliga',     rep:2, color:'#005A9C', budget:20,  wage:0.9, sqRating:69 },
-  { id:'heidenheim',  name:'FC Heidenheim',      league:'bundesliga',     rep:2, color:'#D40000', budget:12,  wage:0.6, sqRating:66 },
-  { id:'mainz',       name:'FSV Mainz 05',       league:'bundesliga',     rep:3, color:'#CC0000', budget:25,  wage:1.1, sqRating:72 },
-  { id:'union_berlin',name:'Union Berlin',       league:'bundesliga',     rep:3, color:'#EB1923', budget:25,  wage:1.1, sqRating:72 },
-  { id:'st_pauli',    name:'FC St. Pauli',       league:'bundesliga',     rep:2, color:'#6B0E1E', budget:10,  wage:0.5, sqRating:65 },
-  { id:'hamburg',     name:'Hamburger SV',       league:'bundesliga',     rep:3, color:'#0A3A6B', budget:25,  wage:1.1, sqRating:71 },
-  { id:'koln',        name:'1. FC Köln',         league:'bundesliga',     rep:3, color:'#D6001C', budget:22,  wage:1.0, sqRating:70 },
+  { id:'bayern',      name:'Bayern Munich',      league:'bundesliga',     rep:5, color:'#DC052D', budget:150, wage:3.8, sqRating:88 },
+  { id:'dortmund',    name:'Borussia Dortmund',  league:'bundesliga',     rep:5, color:'#FDE100', budget:100, wage:2.9, sqRating:84 },
+  { id:'leverkusen',  name:'Bayer Leverkusen',   league:'bundesliga',     rep:4, color:'#E32221', budget:70,  wage:2.3, sqRating:83 },
+  { id:'rb_leipzig',  name:'RB Leipzig',         league:'bundesliga',     rep:4, color:'#DD0741', budget:65,  wage:2.1, sqRating:82 },
+  { id:'frankfurt',   name:'Eintracht Frankfurt',league:'bundesliga',     rep:4, color:'#E2001A', budget:46,  wage:1.6, sqRating:79 },
+  { id:'wolfsburg',   name:'VfL Wolfsburg',      league:'bundesliga',     rep:3, color:'#65B32E', budget:36,  wage:1.2, sqRating:76 },
+  { id:'gladbach',    name:"Borussia M'gladbach", league:'bundesliga',    rep:3, color:'#000000', budget:31,  wage:1.05,sqRating:75 },
+  { id:'stuttgart',   name:'VfB Stuttgart',      league:'bundesliga',     rep:3, color:'#E32221', budget:34,  wage:1.1, sqRating:77 },
+  { id:'hoffenheim',  name:'Hoffenheim',         league:'bundesliga',     rep:3, color:'#1869AE', budget:22,  wage:0.85,sqRating:73 },
+  { id:'werder',      name:'Werder Bremen',      league:'bundesliga',     rep:3, color:'#1D9053', budget:18,  wage:0.75,sqRating:72 },
+  { id:'freiburg',    name:'SC Freiburg',        league:'bundesliga',     rep:3, color:'#D40000', budget:18,  wage:0.7, sqRating:72 },
+  { id:'augsburg',    name:'FC Augsburg',        league:'bundesliga',     rep:2, color:'#005A9C', budget:12,  wage:0.5, sqRating:68 },
+  { id:'heidenheim',  name:'FC Heidenheim',      league:'bundesliga',     rep:2, color:'#D40000', budget:7,   wage:0.32,sqRating:65 },
+  { id:'mainz',       name:'FSV Mainz 05',       league:'bundesliga',     rep:3, color:'#CC0000', budget:15,  wage:0.6, sqRating:71 },
+  { id:'union_berlin',name:'Union Berlin',       league:'bundesliga',     rep:3, color:'#EB1923', budget:15,  wage:0.6, sqRating:71 },
+  { id:'st_pauli',    name:'FC St. Pauli',       league:'bundesliga',     rep:2, color:'#6B0E1E', budget:6,   wage:0.28,sqRating:64 },
+  { id:'hamburg',     name:'Hamburger SV',       league:'bundesliga',     rep:3, color:'#0A3A6B', budget:15,  wage:0.6, sqRating:70 },
+  { id:'koln',        name:'1. FC Köln',         league:'bundesliga',     rep:3, color:'#D6001C', budget:13,  wage:0.55,sqRating:69 },
   // Serie A
-  { id:'inter',       name:'Inter Milan',        league:'serie_a',        rep:5, color:'#010E80', budget:150, wage:5.5, sqRating:88 },
-  { id:'juventus',    name:'Juventus',           league:'serie_a',        rep:5, color:'#000000', budget:130, wage:5.2, sqRating:86 },
-  { id:'ac_milan',    name:'AC Milan',           league:'serie_a',        rep:5, color:'#FB090B', budget:120, wage:4.8, sqRating:85 },
-  { id:'napoli',      name:'Napoli',             league:'serie_a',        rep:5, color:'#087AC2', budget:110, wage:4.5, sqRating:85 },
-  { id:'roma',        name:'AS Roma',            league:'serie_a',        rep:4, color:'#8E1F2F', budget:80,  wage:3.5, sqRating:82 },
-  { id:'lazio',       name:'Lazio',              league:'serie_a',        rep:4, color:'#87D8F7', budget:70,  wage:3.0, sqRating:80 },
-  { id:'atalanta',    name:'Atalanta',           league:'serie_a',        rep:4, color:'#1E71B8', budget:75,  wage:3.2, sqRating:82 },
-  { id:'fiorentina',  name:'Fiorentina',         league:'serie_a',        rep:3, color:'#6A0DAD', budget:50,  wage:2.2, sqRating:77 },
-  { id:'bologna',     name:'Bologna',            league:'serie_a',        rep:3, color:'#00447C', budget:40,  wage:1.8, sqRating:76 },
-  { id:'torino',      name:'Torino',             league:'serie_a',        rep:3, color:'#8B0000', budget:30,  wage:1.4, sqRating:73 },
-  { id:'udinese',     name:'Udinese',            league:'serie_a',        rep:2, color:'#000000', budget:20,  wage:0.9, sqRating:70 },
-  { id:'genoa',       name:'Genoa',              league:'serie_a',        rep:2, color:'#CC0000', budget:20,  wage:0.9, sqRating:69 },
-  { id:'como',        name:'Como',               league:'serie_a',        rep:2, color:'#1B458F', budget:25,  wage:1.0, sqRating:70 },
-  { id:'parma',       name:'Parma',              league:'serie_a',        rep:2, color:'#FFCC00', budget:18,  wage:0.8, sqRating:68 },
-  { id:'cagliari',    name:'Cagliari',           league:'serie_a',        rep:2, color:'#CC0000', budget:15,  wage:0.7, sqRating:67 },
-  { id:'lecce',       name:'Lecce',              league:'serie_a',        rep:2, color:'#F5A623', budget:12,  wage:0.6, sqRating:65 },
-  { id:'verona',      name:'Hellas Verona',      league:'serie_a',        rep:2, color:'#1B458F', budget:15,  wage:0.7, sqRating:66 },
-  { id:'sassuolo',    name:'Sassuolo',           league:'serie_a',        rep:2, color:'#00A752', budget:18,  wage:0.8, sqRating:68 },
-  { id:'pisa',        name:'Pisa',               league:'serie_a',        rep:2, color:'#0A3A6B', budget:12,  wage:0.6, sqRating:65 },
-  { id:'cremonese',   name:'Cremonese',          league:'serie_a',        rep:2, color:'#D6001C', budget:12,  wage:0.6, sqRating:65 },
+  { id:'inter',       name:'Inter Milan',        league:'serie_a',        rep:5, color:'#010E80', budget:120, wage:3.5, sqRating:86 },
+  { id:'juventus',    name:'Juventus',           league:'serie_a',        rep:5, color:'#000000', budget:110, wage:3.2, sqRating:84 },
+  { id:'ac_milan',    name:'AC Milan',           league:'serie_a',        rep:5, color:'#FB090B', budget:100, wage:3.0, sqRating:83 },
+  { id:'napoli',      name:'Napoli',             league:'serie_a',        rep:5, color:'#087AC2', budget:90,  wage:2.8, sqRating:83 },
+  { id:'roma',        name:'AS Roma',            league:'serie_a',        rep:4, color:'#8E1F2F', budget:65,  wage:2.1, sqRating:80 },
+  { id:'lazio',       name:'Lazio',              league:'serie_a',        rep:4, color:'#87D8F7', budget:55,  wage:1.8, sqRating:78 },
+  { id:'atalanta',    name:'Atalanta',           league:'serie_a',        rep:4, color:'#1E71B8', budget:60,  wage:2.0, sqRating:80 },
+  { id:'fiorentina',  name:'Fiorentina',         league:'serie_a',        rep:3, color:'#6A0DAD', budget:38,  wage:1.4, sqRating:76 },
+  { id:'bologna',     name:'Bologna',            league:'serie_a',        rep:3, color:'#00447C', budget:28,  wage:1.05,sqRating:75 },
+  { id:'torino',      name:'Torino',             league:'serie_a',        rep:3, color:'#8B0000', budget:18,  wage:0.75,sqRating:72 },
+  { id:'udinese',     name:'Udinese',            league:'serie_a',        rep:2, color:'#000000', budget:12,  wage:0.5, sqRating:69 },
+  { id:'genoa',       name:'Genoa',              league:'serie_a',        rep:2, color:'#CC0000', budget:12,  wage:0.5, sqRating:68 },
+  { id:'como',        name:'Como',               league:'serie_a',        rep:2, color:'#1B458F', budget:15,  wage:0.6, sqRating:69 },
+  { id:'parma',       name:'Parma',              league:'serie_a',        rep:2, color:'#FFCC00', budget:10,  wage:0.44,sqRating:67 },
+  { id:'cagliari',    name:'Cagliari',           league:'serie_a',        rep:2, color:'#CC0000', budget:9,   wage:0.38,sqRating:66 },
+  { id:'lecce',       name:'Lecce',              league:'serie_a',        rep:2, color:'#F5A623', budget:7,   wage:0.32,sqRating:64 },
+  { id:'verona',      name:'Hellas Verona',      league:'serie_a',        rep:2, color:'#1B458F', budget:9,   wage:0.38,sqRating:65 },
+  { id:'sassuolo',    name:'Sassuolo',           league:'serie_a',        rep:2, color:'#00A752', budget:10,  wage:0.44,sqRating:67 },
+  { id:'pisa',        name:'Pisa',               league:'serie_a',        rep:2, color:'#0A3A6B', budget:7,   wage:0.32,sqRating:64 },
+  { id:'cremonese',   name:'Cremonese',          league:'serie_a',        rep:2, color:'#D6001C', budget:7,   wage:0.32,sqRating:64 },
   // Ligue 1
-  { id:'psg',         name:'Paris Saint-Germain',league:'ligue_1',        rep:5, color:'#004170', budget:200, wage:7.0, sqRating:90 },
-  { id:'marseille',   name:'Olympique Marseille',league:'ligue_1',        rep:4, color:'#009AC7', budget:70,  wage:3.0, sqRating:80 },
-  { id:'lyon',        name:'Olympique Lyonnais', league:'ligue_1',        rep:4, color:'#CC0000', budget:60,  wage:2.8, sqRating:79 },
-  { id:'monaco',      name:'AS Monaco',          league:'ligue_1',        rep:4, color:'#E4002B', budget:80,  wage:3.2, sqRating:81 },
-  { id:'lille',       name:'LOSC Lille',         league:'ligue_1',        rep:4, color:'#E01E13', budget:45,  wage:2.0, sqRating:78 },
-  { id:'nice',        name:'OGC Nice',           league:'ligue_1',        rep:3, color:'#CC0000', budget:40,  wage:1.8, sqRating:76 },
-  { id:'lens',        name:'RC Lens',            league:'ligue_1',        rep:3, color:'#E4002B', budget:35,  wage:1.5, sqRating:75 },
-  { id:'rennes',      name:'Stade Rennais',      league:'ligue_1',        rep:3, color:'#000000', budget:35,  wage:1.5, sqRating:75 },
-  { id:'strasbourg',  name:'Strasbourg',         league:'ligue_1',        rep:2, color:'#003FA5', budget:20,  wage:0.9, sqRating:70 },
-  { id:'nantes',      name:'FC Nantes',          league:'ligue_1',        rep:3, color:'#F5A623', budget:25,  wage:1.1, sqRating:72 },
-  { id:'toulouse',    name:'Toulouse FC',        league:'ligue_1',        rep:2, color:'#6A0DAD', budget:18,  wage:0.8, sqRating:69 },
-  { id:'brest',       name:'Stade Brestois',     league:'ligue_1',        rep:2, color:'#CC0000', budget:15,  wage:0.7, sqRating:68 },
-  { id:'auxerre',     name:'AJ Auxerre',         league:'ligue_1',        rep:2, color:'#003DA5', budget:12,  wage:0.6, sqRating:66 },
-  { id:'angers',      name:'Angers SCO',         league:'ligue_1',        rep:2, color:'#000000', budget:12,  wage:0.6, sqRating:65 },
-  { id:'havre',       name:'Le Havre',           league:'ligue_1',        rep:2, color:'#003DA5', budget:10,  wage:0.5, sqRating:64 },
-  { id:'lorient',     name:'FC Lorient',         league:'ligue_1',        rep:2, color:'#F58220', budget:14,  wage:0.7, sqRating:67 },
-  { id:'paris_fc',    name:'Paris FC',           league:'ligue_1',        rep:2, color:'#0033A0', budget:18,  wage:0.8, sqRating:68 },
-  { id:'metz',        name:'FC Metz',            league:'ligue_1',        rep:2, color:'#6B0E1E', budget:10,  wage:0.5, sqRating:64 },
+  { id:'psg',         name:'Paris Saint-Germain',league:'ligue_1',        rep:5, color:'#004170', budget:175, wage:4.5, sqRating:88 },
+  { id:'marseille',   name:'Olympique Marseille',league:'ligue_1',        rep:4, color:'#009AC7', budget:54,  wage:1.8, sqRating:78 },
+  { id:'lyon',        name:'Olympique Lyonnais', league:'ligue_1',        rep:4, color:'#CC0000', budget:47,  wage:1.6, sqRating:77 },
+  { id:'monaco',      name:'AS Monaco',          league:'ligue_1',        rep:4, color:'#E4002B', budget:65,  wage:2.0, sqRating:79 },
+  { id:'lille',       name:'LOSC Lille',         league:'ligue_1',        rep:4, color:'#E01E13', budget:33,  wage:1.1, sqRating:76 },
+  { id:'nice',        name:'OGC Nice',           league:'ligue_1',        rep:3, color:'#CC0000', budget:29,  wage:1.0, sqRating:74 },
+  { id:'lens',        name:'RC Lens',            league:'ligue_1',        rep:3, color:'#E4002B', budget:24,  wage:0.82,sqRating:73 },
+  { id:'rennes',      name:'Stade Rennais',      league:'ligue_1',        rep:3, color:'#000000', budget:24,  wage:0.82,sqRating:73 },
+  { id:'strasbourg',  name:'Strasbourg',         league:'ligue_1',        rep:2, color:'#003FA5', budget:13,  wage:0.55,sqRating:69 },
+  { id:'nantes',      name:'FC Nantes',          league:'ligue_1',        rep:3, color:'#F5A623', budget:16,  wage:0.65,sqRating:71 },
+  { id:'toulouse',    name:'Toulouse FC',        league:'ligue_1',        rep:2, color:'#6A0DAD', budget:11,  wage:0.46,sqRating:68 },
+  { id:'brest',       name:'Stade Brestois',     league:'ligue_1',        rep:2, color:'#CC0000', budget:9,   wage:0.38,sqRating:67 },
+  { id:'auxerre',     name:'AJ Auxerre',         league:'ligue_1',        rep:2, color:'#003DA5', budget:7,   wage:0.32,sqRating:65 },
+  { id:'angers',      name:'Angers SCO',         league:'ligue_1',        rep:2, color:'#000000', budget:7,   wage:0.32,sqRating:64 },
+  { id:'havre',       name:'Le Havre',           league:'ligue_1',        rep:2, color:'#003DA5', budget:6,   wage:0.28,sqRating:63 },
+  { id:'lorient',     name:'FC Lorient',         league:'ligue_1',        rep:2, color:'#F58220', budget:8,   wage:0.38,sqRating:66 },
+  { id:'paris_fc',    name:'Paris FC',           league:'ligue_1',        rep:2, color:'#0033A0', budget:11,  wage:0.46,sqRating:67 },
+  { id:'metz',        name:'FC Metz',            league:'ligue_1',        rep:2, color:'#6B0E1E', budget:6,   wage:0.28,sqRating:63 },
   // European clubs (outside the big 5) — Champions League only, not playable
   { id:'benfica',     name:'Benfica',            league:'european', country:'Portugal',    european:true, rep:4, color:'#E20E0E', budget:45, wage:1.8, sqRating:81 },
   { id:'sporting_cp', name:'Sporting CP',        league:'european', country:'Portugal',    european:true, rep:4, color:'#008057', budget:40, wage:1.6, sqRating:80 },
@@ -312,7 +312,7 @@ function generatePlayer(id, pos, clubRating, age) {
   const firstName = pick(FIRST_NAMES);
   const lastName  = pick(LAST_NAMES);
   const ageAdj = age < 18 ? (age - 18) * 4 : 0; // under-18s are rawer: -4 per year below 18
-  const base = clubRating + rand(-8, 8) + ageAdj;
+  const base = clubRating + rand(-5, 5) + ageAdj;
 
   const isGK = pos === 'GK';
   const isDef = ['CB','LB','RB','LWB','RWB'].includes(pos);
@@ -322,7 +322,7 @@ function generatePlayer(id, pos, clubRating, age) {
   // Scale each stat range around clubRating so better clubs get better players
   const sc = (lo, hi) => {
     const mid = (lo + hi) / 2, half = (hi - lo) / 2;
-    const shifted = mid + (base - 70) * 0.55;
+    const shifted = mid + (base - 70) * 0.72;
     return Math.max(10, Math.min(99, rand(Math.round(shifted - half), Math.round(shifted + half))));
   };
 
@@ -339,14 +339,25 @@ function generatePlayer(id, pos, clubRating, age) {
 
   // OVR = mean of top 4 stats across all attrs
   const top4 = Object.values(attrs).sort((a, b) => b - a).slice(0, 4);
-  const ovr  = Math.max(45, Math.min(99, Math.round(top4.reduce((s, v) => s + v, 0) / 4)));
+  const rawOvr = Math.round(top4.reduce((s, v) => s + v, 0) / 4);
+  // Soft cap: compress above 87 — 90-rated players should be very rare world-class
+  const cappedOvr = rawOvr <= 87 ? rawOvr : 87 + Math.round((rawOvr - 87) * 0.22);
+  const ovr = Math.max(38, Math.min(91, cappedOvr));
+  // potGap scales with club quality: lower-league players have lower ceilings
   const potGap = age < 18
-    ? rand(15, Math.min(40, Math.round((40 - age) * 2)))
-    : rand(0, Math.max(0, Math.round((32 - age) * 1.8)));
-  const pot  = Math.min(99, ovr + potGap);
+    ? rand(0, Math.round((42 - age) * 1.1))
+    : rand(0, Math.max(0, Math.round((32 - age) * 0.65)));
+  const pot  = Math.min(93, ovr + potGap);
 
   const value = calcValue(ovr, age);
-  const wage  = Math.round(value / 150) * 5 + rand(-5,15);
+  // Wage in game units (p.wage / 1000 = £m/wk for display)
+  // OVR 55 L2 = £1-2k | OVR 60 L1 = £2-3k | OVR 65 Champ = £4-7k
+  // OVR 70 = £8-14k | OVR 75 PL = £18-30k | OVR 80 PL star = £33-56k
+  // OVR 85 elite = £63-105k | OVR 88 = £88-147k | OVR 90 = £111-186k (some above 200k) | max = £220k
+  const wageBase = ovr >= 60
+    ? Math.pow(1.13, ovr - 60) * 4.5
+    : Math.pow(0.72, 60 - ovr) * 4.5;
+  const wage = Math.min(220, Math.max(0.3, Math.round(wageBase * (0.75 + rand(0, 50) / 100) * 10) / 10));
 
   return {
     id, firstName, lastName,
@@ -358,12 +369,16 @@ function generatePlayer(id, pos, clubRating, age) {
     pot,
     attrs,
     value,
-    wage: Math.max(5, wage),
+    wage: Math.max(0.5, wage),
     contract: rand(1, 5),
-    transferListed: rand(0, 99) < 6,
+    transferListed: rand(0, 99) < 3,
     loyal: rand(0, 99) < 60,
     morale: rand(65, 95),
     fitness: rand(75, 100),
+    injured: false,
+    injuryType: null,
+    injuryWeeks: 0,
+    careerInjuries: 0,
     goals: 0,
     assists: 0,
     appearances: 0,
@@ -375,9 +390,12 @@ function generatePlayer(id, pos, clubRating, age) {
 }
 
 function calcValue(ovr, age) {
-  const base = Math.pow(1.12, ovr - 60) * 2;
-  const ageMult = age < 23 ? 1.4 : age < 27 ? 1.2 : age < 31 ? 1.0 : age < 33 ? 0.7 : 0.4;
-  return Math.round(base * ageMult * 10) / 10;
+  // Steep curve: OVR 60 = ~£800k, OVR 50 = ~£55k, OVR 45 = ~£18k, OVR 70 = £4.3m, OVR 80 = £23m
+  const base = ovr >= 60
+    ? Math.pow(1.20, ovr - 60) * 0.8
+    : 0.8 * Math.pow(0.76, 60 - ovr);
+  const ageMult = age < 20 ? 1.5 : age < 23 ? 1.3 : age < 27 ? 1.1 : age < 30 ? 1.0 : age < 32 ? 0.55 : age < 34 ? 0.3 : 0.12;
+  return Math.max(0.003, Math.round(base * ageMult * 100) / 100);
 }
 
 const POSITION_SETS = {
@@ -417,7 +435,7 @@ function generateSquad(club) {
 function buildClub(data) {
   return {
     ...data,
-    shortName: data.name.split(' ').slice(-1)[0],
+    shortName: data.name,
     budget: data.budget,
     wageBudget: data.wage,
     players: generateSquad(data),
@@ -430,6 +448,37 @@ function buildClub(data) {
 
 function getInitials(name) {
   return name.split(' ').map(w => w[0]).join('').slice(0,3).toUpperCase();
+}
+
+function generateFreeAgents(count) {
+  const positions = ['GK','CB','CB','LB','RB','CDM','CM','CM','CAM','LW','RW','ST','ST','CB','CM','ST','LB','RB','GK','LW','RW','CDM','CAM'];
+  // Tiers: national league → prem fringe, with more lower-league players
+  const tiers = [
+    { minOvr:42, maxOvr:50, minAge:22, maxAge:38, count:14 }, // National League level
+    { minOvr:50, maxOvr:58, minAge:22, maxAge:36, count:14 }, // League Two / One level
+    { minOvr:58, maxOvr:66, minAge:24, maxAge:35, count:10 }, // Championship level
+    { minOvr:66, maxOvr:73, minAge:25, maxAge:34, count:7 },  // PL fringe / Champ top
+    { minOvr:73, maxOvr:79, minAge:27, maxAge:35, count:5 },  // PL squad / released stars
+  ];
+  const agents = [];
+  let pid = 0;
+  tiers.forEach(tier => {
+    for (let i = 0; i < tier.count; i++) {
+      const pos = positions[pid % positions.length];
+      const ovr = rand(tier.minOvr, tier.maxOvr);
+      const age = rand(tier.minAge, tier.maxAge);
+      const id = `free_${pid}_${Date.now()}`;
+      const p = generatePlayer(id, pos, ovr, age);
+      p.clubId = null;
+      p.clubName = 'Free Agent';
+      p.contract = 0;
+      p.expiring = false;
+      p.wantsMove = true;
+      agents.push(p);
+      pid++;
+    }
+  });
+  return agents;
 }
 
 const CLUB_BADGES = {
@@ -704,4 +753,4 @@ const CLUB_BADGE_FILTER = {
   "swansea": "brightness(0) invert(1)"
 };
 
-window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE, CLUB_BADGE_FILTER };
+window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, generateFreeAgents, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE, CLUB_BADGE_FILTER };
