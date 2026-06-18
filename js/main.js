@@ -1286,11 +1286,25 @@ const APP = (() => {
   /* ---------------------------------------------
      LEAGUE TABLE
      --------------------------------------------- */
+  function getLastSeasonTable(lid) {
+    return Object.values(gameState.clubs)
+      .filter(c => (c.lastSeasonLeague || c.league) === lid)
+      .sort((a, b) => {
+        const sa = a.lastSeasonStats || a.tableStats, sb = b.lastSeasonStats || b.tableStats;
+        const dPts = sb.points - sa.points;
+        if (dPts) return dPts;
+        const dGD = (sb.gf - sb.ga) - (sa.gf - sa.ga);
+        if (dGD) return dGD;
+        return sb.gf - sa.gf;
+      });
+  }
+
   function renderTable(m) {
     const _st = m.scrollTop;
-    const lid = ui.tableLeague || gameState.myClub.league;
+    const showLastSeason = !!gameState.preseason;
+    const lid = ui.tableLeague || (showLastSeason ? (gameState.myClub.lastSeasonLeague || gameState.myClub.league) : gameState.myClub.league);
     const league = DATA.LEAGUES[lid];
-    const table = ENGINE.getLeagueTable(gameState, lid);
+    const table = showLastSeason ? getLastSeasonTable(lid) : ENGINE.getLeagueTable(gameState, lid);
     const myLeagues = [...new Set([gameState.myClub.league, ...Object.keys(DATA.LEAGUES)])];
 
     const zone = (i) => {
@@ -1306,13 +1320,13 @@ const APP = (() => {
     };
 
     m.innerHTML = `
-      <div class="view-header"><div><div class="view-title">League Table</div><div class="view-subtitle">${league.name}</div></div></div>
+      <div class="view-header"><div><div class="view-title">League Table</div><div class="view-subtitle">${league.name}${showLastSeason && gameState.lastCompletedSeason ? ` · Final standings, Season ${gameState.lastCompletedSeason}` : ''}</div></div></div>
       <div class="table-tabs">${myLeagues.map(l =>
         `<button class="transfer-tab ${l===lid?'active':''}" data-l="${l}">${DATA.LEAGUES[l].name}</button>`).join('')}</div>
       <table class="league-table">
         <thead><tr><th>#</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead>
         <tbody>${table.map((c, i) => {
-          const t = c.tableStats;
+          const t = showLastSeason ? (c.lastSeasonStats || c.tableStats) : c.tableStats;
           return `<tr class="${c.id===gameState.myClubId?'my-club':''}" data-club="${c.id}">
             <td class="table-pos-cell ${zone(i)}"><span class="table-pos">${i + 1}</span></td>
             <td><div class="table-club">${badge(c,'table-badge')}<span class="table-club-name">${esc(c.name)}</span></div></td>
@@ -5808,6 +5822,14 @@ const APP = (() => {
     const pos = table.findIndex(c => c.id === gameState.myClubId) + 1;
     const champ = table[0];
 
+    // Snapshot final standings for the preseason "last season" table view, before
+    // tableStats reset (startNextSeason) and league reassignment (just below) land.
+    Object.values(gameState.clubs).forEach(c => {
+      c.lastSeasonStats  = { ...c.tableStats };
+      c.lastSeasonLeague = c.league;
+    });
+    gameState.lastCompletedSeason = gameState.season;
+
     // Apply: change club.league
     transfers.forEach(({ clubId, to }) => {
       const c = gameState.clubs[clubId];
@@ -5885,6 +5907,7 @@ const APP = (() => {
     const goodSeason = pos <= Math.ceil(leagueSize / 3);
     const fin = gameState.finances;
     const nextGrant   = (!sacked && fin) ? calcBoardGrant(myClub, fin, pos, leagueSize) : 0;
+    const nextSponsor = (!sacked && fin && fin.sponsorNeedsRenewal) ? genSponsorOffers(myClub, fin.boardConfidence, goodSeason)[1] : null;
     if (fin) {
       fin.pendingGrant   = nextGrant;
       fin.lastSeasonGood = goodSeason;
