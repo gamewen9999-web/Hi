@@ -628,7 +628,16 @@ const APP = (() => {
           }</div>
         </div>`;
     } else {
-      nextHtml = `<div class="next-match-card"><div class="empty-state"><div class="empty-state-text">Season complete — no fixtures remaining.</div></div></div>`;
+      // Reaching here with no pending review means the in-memory review was lost (e.g. an old
+      // save written while stranded on the pre-fix season-review screen) — offer a direct way
+      // to advance so the save isn't permanently stuck.
+      nextHtml = `
+        <div class="next-match-card" style="text-align:center">
+          <div class="empty-state"><div class="empty-state-text">Season complete — no fixtures remaining.</div></div>
+          <div class="nm-actions" style="margin-top:14px">
+            <button class="btn-primary btn-lg" id="dash-continue-season" style="flex:1">Continue to Season ${gameState.season + 1} →</button>
+          </div>
+        </div>`;
     }
 
     const topScorer = [...club.players].sort((a, b) => b.goals - a.goals)[0];
@@ -699,6 +708,7 @@ const APP = (() => {
 
     if (next && !gameState.sacked) $('dash-play')?.addEventListener('click', playNextMatch);
     if (gameState.sacked) $('dash-return-menu')?.addEventListener('click', () => { setAutoSaveRunning(false); gameState = null; showScreen('start'); });
+    $('dash-continue-season')?.addEventListener('click', startNextSeason);
 
     // Inbox interactions
     m.querySelectorAll('.inbox-msg').forEach(el => {
