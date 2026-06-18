@@ -29,6 +29,7 @@ const APP = (() => {
     scoutTab: 'opponent',
     scoutHireLevel: null,
     scoutActiveId: null,
+    seasonReviewTab: null,
     tacticsTab: 'tactics',
     tacSquadFilter: 'all',
     tacSquadSort: 'ovr',
@@ -552,6 +553,7 @@ const APP = (() => {
      DASHBOARD
      --------------------------------------------- */
   function renderDashboard(m) {
+    if (ui.seasonReview) { renderSeasonReview(m); return; }
     const club = gameState.myClub;
     const ts = club.tableStats;
     const pos = ENGINE.getMyPosition(gameState);
@@ -5929,11 +5931,20 @@ const APP = (() => {
     }
     recordFinancialHistory(gameState.season, pos, nextGrant);
 
+    const leagueTransfers = transfers.map(t => {
+      const fromLg = DATA.LEAGUES[t.from], toLg = DATA.LEAGUES[t.to];
+      return {
+        name: gameState.clubs[t.clubId]?.name || '?',
+        to: t.to, fromName: fromLg?.name, toName: toLg?.name,
+        promoted: toLg.level < fromLg.level,
+      };
+    });
+
     ui.seasonReview = {
       pos, outcome, topScorer, league, champ, poLines,
       boardResult, boardObj, boardObjLabel,
       ts: { ...gameState.myClub.tableStats },
-      sacked,
+      sacked, leagueTransfers,
       finSummary: fin ? {
         prize: finPrize, euroPrize,
         balance:        fin.balance,
@@ -5947,7 +5958,7 @@ const APP = (() => {
 
     showScreen('game');
     updateSidebar();
-    renderView('season_review');
+    renderView('dashboard');
   }
 
   function renderSeasonReview(m) {
@@ -5979,14 +5990,9 @@ const APP = (() => {
 
     const outcomeColor = sacked ? 'var(--accent-red)' : outcome.includes('Champion') || outcome.includes('Promot') ? 'var(--accent)' : outcome.includes('Relegate') ? 'var(--accent-red)' : 'var(--accent-gold)';
 
-    m.innerHTML = `
-      <div class="view-header">
-        <div>
-          <div class="view-title">Season ${gameState.season} Review</div>
-          <div class="view-subtitle">${esc(club.name)} · ${league.name}</div>
-        </div>
-      </div>
-      ${sackedBanner}
+    const tab = ui.seasonReviewTab || 'overview';
+
+    const overviewBody = `
       <div class="season-review-hero">
         <div class="srh-pos">${ordinal(pos)}</div>
         <div class="srh-outcome" style="color:${outcomeColor}">${outcome}</div>
@@ -6067,7 +6073,42 @@ const APP = (() => {
             </div>
           </div>` : ''}
         </div>`;
-      })() : ''}
+      })() : ''}`;
+
+    const transfersBody = (() => {
+      const groups = {};
+      (review.leagueTransfers || []).forEach(t => {
+        if (!groups[t.to]) groups[t.to] = { promoted: [], relegated: [] };
+        groups[t.to][t.promoted ? 'promoted' : 'relegated'].push(t);
+      });
+      const order = ['premier_league', 'championship', 'league_one', 'league_two', 'national_league'];
+      const rows = arr => arr.map(t => `
+        <div class="pr-team-row"><span>${esc(t.name)}</span><span class="text-muted" style="font-size:11px">from ${esc(t.fromName)}</span></div>`).join('');
+      const sections = order.filter(lid => groups[lid]).map(lid => {
+        const g = groups[lid];
+        return `
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">${esc(DATA.LEAGUES[lid].name)}</div>
+          ${g.promoted.length ? `<div style="margin-top:8px"><div class="stat-label" style="color:var(--accent);margin-bottom:4px">↑ Promoted (${g.promoted.length})</div>${rows(g.promoted)}</div>` : ''}
+          ${g.relegated.length ? `<div style="margin-top:8px"><div class="stat-label" style="color:var(--accent-red);margin-bottom:4px">↓ Relegated (${g.relegated.length})</div>${rows(g.relegated)}</div>` : ''}
+        </div>`;
+      });
+      return sections.join('') || `<div class="empty-state"><div class="empty-state-text">No promotion or relegation data available.</div></div>`;
+    })();
+
+    m.innerHTML = `
+      <div class="view-header">
+        <div>
+          <div class="view-title">Season ${gameState.season} Review</div>
+          <div class="view-subtitle">${esc(club.name)} · ${league.name}</div>
+        </div>
+      </div>
+      ${sackedBanner}
+      <div class="scout-tab-row">
+        <button class="scout-tab-btn ${tab === 'overview' ? 'active' : ''}" data-rt="overview">Season Overview</button>
+        <button class="scout-tab-btn ${tab === 'transfers' ? 'active' : ''}" data-rt="transfers">Promoted &amp; Relegated</button>
+      </div>
+      ${tab === 'overview' ? overviewBody : transfersBody}
       <div class="review-actions">
         ${sacked
           ? `<button class="btn-secondary btn-lg" id="sr-browse">Browse Club ›</button>
@@ -6076,21 +6117,29 @@ const APP = (() => {
         }
       </div>`;
 
+    m.querySelectorAll('.scout-tab-btn[data-rt]').forEach(b => b.addEventListener('click', () => {
+      ui.seasonReviewTab = b.dataset.rt;
+      renderSeasonReview(m);
+    }));
+
     if (sacked) {
       m.querySelector('#sr-browse').addEventListener('click', () => {
         gameState.sacked = true;
         ui.seasonReview = null;
+        ui.seasonReviewTab = null;
         renderView('dashboard');
       });
       m.querySelector('#sr-menu').addEventListener('click', () => {
         setAutoSaveRunning(false);
         gameState = null;
         ui.seasonReview = null;
+        ui.seasonReviewTab = null;
         showScreen('start');
       });
     } else {
       m.querySelector('#sr-next').addEventListener('click', () => {
         ui.seasonReview = null;
+        ui.seasonReviewTab = null;
         startNextSeason();
       });
     }

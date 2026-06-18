@@ -2610,6 +2610,8 @@ select, input, button, textarea { font-family: inherit; }
 .srh-outcome { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
 .srh-record { font-size: 12px; color: var(--text-muted); }
 .review-actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; padding-bottom: 16px; }
+.pr-team-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.pr-team-row:last-child { border-bottom: none; }
 
 /* Sacked banner */
 .sacked-banner { display: flex; align-items: center; gap: 14px; background: rgba(255,77,77,0.10); border: 1px solid rgba(255,77,77,0.30); border-radius: var(--r); padding: 14px 18px; margin-bottom: 14px; }
