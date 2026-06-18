@@ -38,6 +38,9 @@ const APP = (() => {
     { level: 1, label: 'Basic',    hireCost: 0.2, weeklyWage:  5, reportEvery: 6, findMin: 1, findMax: 1, ovrNoise: 10, potNoise: 15, desc: 'Limited range, rough assessments' },
     { level: 2, label: 'Standard', hireCost: 0.5, weeklyWage: 12, reportEvery: 5, findMin: 1, findMax: 2, ovrNoise:  4, potNoise:  6, desc: 'Good coverage, reliable reports' },
     { level: 3, label: 'Elite',    hireCost: 1.2, weeklyWage: 25, reportEvery: 4, findMin: 2, findMax: 3, ovrNoise:  1, potNoise:  2, desc: 'Global reach, precise assessments' },
+    // Appended (not inserted before Basic) so existing saves' level 1-3 scouts keep their tier; hire UI sorts by cost.
+    { level: 4, label: 'Trainee',   hireCost: 0.05, weeklyWage: 2, reportEvery: 9, findMin: 0, findMax: 1, ovrNoise: 18, potNoise: 25, desc: 'Inexperienced, local contacts only — sometimes finds nothing' },
+    { level: 5, label: 'Part-Time', hireCost: 0.1,  weeklyWage: 3, reportEvery: 7, findMin: 1, findMax: 1, ovrNoise: 13, potNoise: 19, desc: 'Works limited hours, occasional rough leads' },
   ];
 
   const COUNTRY_LEAGUES = [
@@ -3539,7 +3542,7 @@ const APP = (() => {
       <div class="card scout-hire-card">
         <div class="card-title">Hire a Scout (${scouts.length}/5 slots used)</div>
         <div class="scout-hire-tiers">
-          ${SCOUT_TIERS.map(t => `
+          ${[...SCOUT_TIERS].sort((a, b) => a.hireCost - b.hireCost).map(t => `
             <div class="scout-tier-card ${ui.scoutHireLevel === t.level ? 'selected' : ''}" data-level="${t.level}">
               <div class="scout-tier-name">${t.label}</div>
               <div class="scout-tier-cost">${money(t.hireCost)} hire</div>

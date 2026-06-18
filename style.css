@@ -2462,7 +2462,7 @@ select, input, button, textarea { font-family: inherit; }
 .scout-fire-btn:hover { color: var(--accent-red); background: rgba(231,76,60,0.1); }
 
 .scout-level-badge { display: inline-block; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
-.scout-level-badge.lv1 { background: rgba(100,116,139,0.3); color: #94a3b8; }
+.scout-level-badge.lv1, .scout-level-badge.lv4, .scout-level-badge.lv5 { background: rgba(100,116,139,0.3); color: #94a3b8; }
 .scout-level-badge.lv2 { background: rgba(0,208,132,0.2); color: var(--accent); }
 .scout-level-badge.lv3 { background: rgba(245,158,11,0.25); color: #f59e0b; }
 
