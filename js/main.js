@@ -62,8 +62,13 @@ const APP = (() => {
   const FIN_TV_LEAGUE    = [0, 110, 9.5, 1.9, 1.3, 0.5];  // £m/season equal share (PL incl. facility fees ≈ £110m floor)
   const FIN_MATCHDAY_LEAGUE = [0, 32, 9, 2.8, 1.1, 0.35]; // £m/season gate income at standard prices, by league level
   const FIN_STADIUM_MULT = [0, 0.55, 0.75, 1.0, 1.35, 1.8]; // fanbase/stadium size multiplier by club rep
-  const FIN_INIT_BAL    = [0,  1.5,  4,  12,   40, 100];  // starting bank balance £m
+  const FIN_INIT_BAL    = [0,  0.8,  4,  12,   40, 100];  // starting bank balance £m (NL reduced to £800k — more realistic)
   const FIN_BASE_GRANT  = [0,  0.3,  2,   8,   30,  80];  // base board transfer grant £m
+  // Merchandise/club shop income: replica kits, scarves, badges etc. — roughly 20% of matchday base, weekly
+  // Real: NL ~£50-150k/yr, L2 ~£100-300k/yr, L1 ~£200-600k/yr, Champ ~£0.5-3m/yr, PL ~£5-100m/yr
+  function weeklyMerchandise(club) {
+    return matchdayBase(club) * 0.20 / 52;
+  }
   // Merit payments: end-of-season TV merit money by final league position (level 1 values, scaled down per level)
   // PL winner ~£176m total TV (110 equal + 66 merit), bottom ~£115m — matches real distributions
   const PRIZE_BY_POS    = [66,62,58,54,50,47,44,41,38,35,32,29,26,23,20,17,14,11,8,5];
@@ -610,6 +615,7 @@ const APP = (() => {
             <div class="nm-team">${badge(away,'nm-badge')}<span class="nm-name">${esc(away.name)}</span><span class="nm-rating">OVR ${away.sqRating}</span></div>
           </div>
           <div class="nm-venue">${myIsHome ? 'Home fixture' : 'Away fixture'}</div>
+          <div class="nm-finance">${previewMatchIncome(next)}</div>
           <div class="nm-actions">${gameState.sacked
             ? `<button class="btn-secondary btn-lg" style="flex:1;opacity:0.5;cursor:not-allowed" disabled>▶ Play Match</button>
                <button class="btn-gold btn-lg" id="dash-return-menu">Return to Menu</button>`
@@ -1672,7 +1678,7 @@ const APP = (() => {
         <div class="neg-row"><span>Club asking price</span><span class="fw-700">${money(neg.asking)}</span></div>
         <div class="neg-row"><span>Club balance</span><span class="${budget >= neg.minFee ? '' : 'red'}">${money(budget)}</span></div>
         <div class="neg-field"><label>Your bid (£m)</label>
-          <input id="neg-input" type="number" step="0.5" min="0" value="${N.lastFee != null ? N.lastFee : Math.min(budget, Math.round(p.value * 0.85 * 10) / 10)}"></div>
+          <input id="neg-input" type="number" step="${p.value < 0.5 ? '0.01' : p.value < 2 ? '0.05' : '0.1'}" min="0" value="${N.lastFee != null ? N.lastFee : Math.min(budget, Math.round(p.value * 0.85 * 100) / 100)}"></div>
         <div class="neg-actions">
           <button class="btn-secondary" id="neg-walk">Walk Away</button>
           <button class="btn-primary" id="neg-submit">Submit Bid</button>
@@ -1836,9 +1842,8 @@ const APP = (() => {
     const p = gameState.myClub.players[idx];
     gameState.myClub.players.splice(idx, 1);
     recalcSqRating(gameState.myClub);
-    if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance + o.fee) * 10) / 10;
-    else gameState.myClub.budget = Math.round((gameState.myClub.budget + o.fee) * 10) / 10;
-    recordTransferIncome(o.fee);
+    if (!gameState.finances) gameState.myClub.budget = Math.round((gameState.myClub.budget + o.fee) * 10) / 10;
+    recordTransferIncome(o.fee); // handles balance + seasonIncome.sales for the finances path
     gameState.tactics.lineup = gameState.tactics.lineup.filter(id => id !== o.playerId);
     if (gameState.tactics.lineup.length < 11) gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());
     gameState.transferLog.unshift({ in: false, name: o.playerName, fee: o.fee });
@@ -1979,7 +1984,7 @@ const APP = (() => {
       sleeve:         null,   // sleeve sponsor slot — sold by the manager
       stadium:        null,   // stadium naming rights slot — sold by the manager
       kitDeal:        _genKitDeal(club),
-      seasonIncome:   { tv:0, matchday:0, sponsorship:0, prizes:0, sales:0 },
+      seasonIncome:   { tv:0, matchday:0, sponsorship:0, merchandise:0, prizes:0, sales:0 },
       seasonExpenses: { wages:0, transfers:0, agentFees:0, staff:0 },
       weeksElapsed:   0,
       ffpRolling:     [],
@@ -2124,13 +2129,15 @@ const APP = (() => {
     const weeklyTV      = FIN_TV_LEAGUE[leagueLevel(club)] / 52;
     const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
     const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + (fin.sleeve?.weeklyValue || 0) + (fin.stadium?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklyMerch   = weeklyMerchandise(club);
     const weeklyWages   = club.players.reduce((s, p) => s + p.wage, 0) / 1000;
     const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep] + (gameState.scouts || []).reduce((s, sc) => s + (sc.weeklyWage || 0) / 1000, 0);
-    const income   = (weeklyTV + weeklySponsor) * weeks;
+    const income   = (weeklyTV + weeklySponsor + weeklyMerch) * weeks;
     const expenses = (weeklyWages + weeklyStaff) * weeks;
     fin.balance            = Math.round((fin.balance + income - expenses) * 100) / 100;
     fin.seasonIncome.tv          += Math.round(weeklyTV * weeks * 100) / 100;
     fin.seasonIncome.sponsorship += Math.round(weeklySponsor * weeks * 100) / 100;
+    fin.seasonIncome.merchandise = Math.round(((fin.seasonIncome.merchandise || 0) + weeklyMerch * weeks) * 100) / 100;
     fin.seasonExpenses.wages     += Math.round(weeklyWages * weeks * 100) / 100;
     fin.seasonExpenses.staff     += Math.round(weeklyStaff * weeks * 100) / 100;
     fin.weeksElapsed += weeks;
@@ -2175,6 +2182,27 @@ const APP = (() => {
     const income = Math.round(base * (1 + formBonus) * priceMult * 100) / 100;
     fin.balance += income;
     fin.seasonIncome.matchday += income;
+  }
+
+  // What this fixture is worth: TV share always lands this week regardless of
+  // the game, plus matchday gate on home league fixtures or a UEFA per-win
+  // bonus on European league-phase nights (cup fixtures carry no gate model).
+  function previewMatchIncome(next) {
+    const fin = gameState.finances;
+    if (!fin || !next) return '';
+    const club = gameState.myClub;
+    const myIsHome = next.home === gameState.myClubId;
+    const weeklyTV = FIN_TV_LEAGUE[leagueLevel(club)] / 52;
+    const parts = [`TV <b>+${money(weeklyTV)}</b>`];
+    if (next.type === 'european' && next.comp) {
+      const scale = { champions_league: 1, europa_league: 0.38, conference_league: 0.16 }[next.comp] || 0;
+      parts.push(`Win bonus <b>+${money(Math.round(1.8 * scale * 10) / 10)}</b>`);
+    } else if (next.type !== 'cup' && myIsHome) {
+      const base = matchdayBase(club) / 19;
+      const priceMult = ticketRevenueMult(ticketTier(fin).key, leagueLevel(club));
+      parts.push(`Matchday <b>+${money(Math.round(base * priceMult * 100) / 100)}</b>`);
+    }
+    return parts.join(' &middot; ');
   }
 
   function recordTransferExpense(fee) {
@@ -2491,18 +2519,21 @@ const APP = (() => {
     const weeklyTV      = FIN_TV_LEAGUE[level] / 52;
     const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
     const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + (fin.sleeve?.weeklyValue || 0) + (fin.stadium?.weeklyValue || 0) + weeklyKitDeal;
+    const weeklyMerch   = weeklyMerchandise(club);
     const weeklyStaff   = [0, 0.002, 0.006, 0.02, 0.055, 0.12][rep];
-    const weeklyIncome  = weeklyTV + weeklySponsor;
+    const weeklyMatchdayAvg = matchdayBase(club) * ticketRevenueMult(ticketTier(fin).key, level) / 38; // avg over 38 gameweeks
+    const weeklyIncome  = weeklyTV + weeklySponsor + weeklyMerch + weeklyMatchdayAvg;
     const weeklyExpense = weeklyWages + weeklyStaff;
     const weeklyNet     = weeklyIncome - weeklyExpense;
 
     const projTV       = FIN_TV_LEAGUE[level];
     const projSponsor  = weeklySponsor * 52;
     const projMatchday = matchdayBase(club) * ticketRevenueMult(ticketTier(fin).key, level);
+    const projMerch    = weeklyMerch * 52;
     const projWages    = weeklyWages * 52;
     const projStaff    = weeklyStaff * 52;
     const projPrize    = PRIZE_BY_POS[9] * PRIZE_LEVEL_MULT[Math.min((DATA.LEAGUES[club.league]?.level||1)-1,4)];
-    const projIncome   = projTV + projSponsor + projMatchday + projPrize;
+    const projIncome   = projTV + projSponsor + projMatchday + projMerch + projPrize;
     const projExpenses = projWages + projStaff;
     const projProfit   = projIncome - projExpenses;
 
@@ -2603,12 +2634,14 @@ const APP = (() => {
             <div class="fin-cf-row"><span class="fin-cf-label">Shirt Sponsor</span><span class="fin-cf-pos">+${money(fin.sponsor?.weeklyValue||0)}/wk</span></div>
             ${fin.sleeve ? `<div class="fin-cf-row"><span class="fin-cf-label">Sleeve Sponsor</span><span class="fin-cf-pos">+${money(fin.sleeve.weeklyValue)}/wk</span></div>` : ''}
             ${fin.stadium ? `<div class="fin-cf-row"><span class="fin-cf-label">Stadium Naming</span><span class="fin-cf-pos">+${money(fin.stadium.weeklyValue)}/wk</span></div>` : ''}
-            <div class="fin-cf-row"><span class="fin-cf-label">Kit Deal</span><span class="fin-cf-pos">+${money(weeklyKitDeal)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Kit Manufacturer <span style="font-size:10px;color:var(--text-muted)">(they pay you to wear their brand)</span></span><span class="fin-cf-pos">+${money(weeklyKitDeal)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Merchandise <span style="font-size:10px;color:var(--text-muted)">(club shop, replica kits)</span></span><span class="fin-cf-pos">+${money(weeklyMerch)}/wk</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Matchday <span style="font-size:10px;color:var(--text-muted)">(avg per gameweek, paid on home games)</span></span><span class="fin-cf-pos">+${money(weeklyMatchdayAvg)}/wk</span></div>
             <div class="fin-cf-divider"></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Player Wages</span><span class="fin-cf-neg">−${money(weeklyWages)}/wk</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Staff &amp; Ops</span><span class="fin-cf-neg">−${money(weeklyStaff)}/wk</span></div>
             <div class="fin-cf-divider"></div>
-            <div class="fin-cf-row fin-cf-total"><span>Weekly Net</span><span style="color:${weeklyNet>=0?'var(--accent)':'var(--accent-red)'};font-weight:700">${weeklyNet>=0?'+':''}${money(weeklyNet)}/wk</span></div>
+            <div class="fin-cf-row fin-cf-total"><span>Weekly Net (avg)</span><span style="color:${weeklyNet>=0?'var(--accent)':'var(--accent-red)'};font-weight:700">${weeklyNet>=0?'+':''}${money(weeklyNet)}/wk</span></div>
           </div>
         </div>
         <div class="card">
@@ -2617,6 +2650,7 @@ const APP = (() => {
             <div class="fin-cf-row"><span class="fin-cf-label">TV</span><span class="fin-cf-pos">+${money(fin.seasonIncome.tv)}</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Sponsorship</span><span class="fin-cf-pos">+${money(fin.seasonIncome.sponsorship)}</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Matchday</span><span class="fin-cf-pos">+${money(fin.seasonIncome.matchday)}</span></div>
+            <div class="fin-cf-row"><span class="fin-cf-label">Merchandise</span><span class="fin-cf-pos">+${money(fin.seasonIncome.merchandise || 0)}</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Prizes</span><span class="fin-cf-pos">+${money(fin.seasonIncome.prizes)}</span></div>
             <div class="fin-cf-row"><span class="fin-cf-label">Player Sales</span><span class="fin-cf-pos">+${money(fin.seasonIncome.sales)}</span></div>
             <div class="fin-cf-divider"></div>
@@ -2677,7 +2711,7 @@ const APP = (() => {
           <div style="padding:10px 0">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
               <div>
-                <div class="stat-label" style="color:var(--text-muted)">Kit Manufacturer ${fin.kitNeedsRenewal ? '<span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
+                <div class="stat-label" style="color:var(--text-muted)">Kit Manufacturer <span style="font-size:10px">(pays you to wear their brand)</span>${fin.kitNeedsRenewal ? ' <span style="color:var(--accent-red);font-size:11px">EXPIRED</span>' : ''}</div>
                 ${fin.kitDeal && !fin.kitNeedsRenewal
                   ? `<div style="font-weight:600">${esc(fin.kitDeal.name)}</div>
                      <div class="stat-label">${money(fin.kitDeal.annualValue)}/season · ${fin.kitDeal.seasonsLeft} season${fin.kitDeal.seasonsLeft!==1?'s':''} left</div>`
@@ -2716,8 +2750,9 @@ const APP = (() => {
       <div class="finances-grid">
         <div class="card"><div class="card-title">Projected Annual Income</div><div class="finances-chart-bar">
           ${bar('TV Equal Share', projTV, 'income')}
-          ${bar('Sponsorship', projSponsor, 'income')}
+          ${bar('Sponsorship & Kit', projSponsor, 'income')}
           ${bar('Matchday', projMatchday, 'income')}
+          ${bar('Merchandise (club shop)', projMerch, 'income')}
           ${bar('TV Merit (est.)', projPrize, 'income')}
         </div></div>
         <div class="card"><div class="card-title">Projected Annual Costs</div><div class="finances-chart-bar">
@@ -5350,6 +5385,30 @@ const APP = (() => {
     });
   }
 
+  // Weekly potential-driven growth: a player with room left in their potential
+  // (pot > ovr) has a small per-week chance to gain +1 OVR, weighted younger.
+  // Runs for every club (so the league stays balanced over multiple seasons),
+  // but only the user's club gets a toast — nobody needs an AI youth update.
+  function tickPlayerDevelopment(weeks) {
+    const myClub = gameState.myClub;
+    Object.values(gameState.clubs).forEach(club => {
+      let grew = false;
+      club.players.forEach(p => {
+        if (p.ovr >= p.pot) return;
+        const growChance = p.age <= 21 ? 0.06 : p.age <= 25 ? 0.045 : p.age <= 29 ? 0.02 : 0.0075;
+        for (let i = 0; i < weeks && p.ovr < p.pot; i++) {
+          if (Math.random() < growChance) {
+            p.ovr++;
+            p.value = DATA.calcValue(p.ovr, p.age);
+            grew = true;
+            if (club === myClub) notify(`${p.name} has improved to ${p.ovr} OVR!`, 'success');
+          }
+        }
+      });
+      if (grew) club.sqRating = Math.round(club.players.reduce((s, x) => s + x.ovr, 0) / club.players.length);
+    });
+  }
+
   function applyMatchInjuries(events) {
     (events || []).forEach(ev => {
       if (ev.type === 'injury' && ev.player && !ev.player.injured) {
@@ -5381,6 +5440,7 @@ const APP = (() => {
 
     // Tick injury recovery once per match cycle
     tickInjuries();
+    tickPlayerDevelopment(1);
 
     // Remove injured players from the lineup
     const tac = gameState.tactics;
@@ -6018,16 +6078,8 @@ const APP = (() => {
       let totalOvr = 0;
       club.players.forEach(p => {
         p.age++;
-        if (p.ovr < p.pot) {
-          // Steady growth — most seasons a player improves, but in small steps
-          // Not guaranteed: ~15% chance of a stalled season at any age
-          const growChance = p.age <= 29 ? 0.85 : 0.30;
-          if (Math.random() < growChance) {
-            const maxGrow = p.age <= 21 ? 3 : p.age <= 25 ? 2 : 1;
-            const grow = rand(1, Math.min(maxGrow, p.pot - p.ovr));
-            p.ovr = Math.min(p.pot, p.ovr + grow);
-          }
-        }
+        // Growth toward potential now happens week-to-week during the season
+        // (tickPlayerDevelopment) — season-end only ages players down.
         if (p.age >= 33) p.ovr = Math.max(45, p.ovr - rand(1, 3));
         else if (p.age >= 31) p.ovr = Math.max(45, p.ovr - rand(0, 2));
         p.value = DATA.calcValue(p.ovr, p.age);
@@ -6077,7 +6129,7 @@ const APP = (() => {
         setTimeout(() => showKitRenewalModal(), fin.sponsorNeedsRenewal ? 900 : 400);
       }
       // Reset season income/expense counters
-      fin.seasonIncome   = { tv:0, matchday:0, sponsorship:0, prizes:0, sales:0 };
+      fin.seasonIncome   = { tv:0, matchday:0, sponsorship:0, merchandise:0, prizes:0, sales:0 };
       fin.seasonExpenses = { wages:0, transfers:0, agentFees:0, staff:0 };
       fin.weeksElapsed   = 0;
       fin.overWageCapWeeks = 0;
@@ -6103,6 +6155,7 @@ const APP = (() => {
     gameState.currentDate = new Date(gameState.currentDate.getTime() + 7 * 86400000);
     tickFinances(1);
     tickInjuries();
+    tickPlayerDevelopment(1);
     checkIncomingOffers();
     checkWageBudget();
     // Prompt sponsor renewal if needed during preseason

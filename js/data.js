@@ -308,7 +308,18 @@ const NATIONALITIES = ['English','Spanish','German','French','Italian','Brazilia
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function generatePlayer(id, pos, clubRating, age) {
+// Market wages scale sharply with division: a 63-rated player earns ~£5.8k in PL context
+// but only ~£2-3k in League One and £0.9k in League Two. Same ability, different market.
+const LEAGUE_WAGE_MULTS = {
+  premier_league:  1.00,
+  championship:    1.00,  // currently well-calibrated
+  league_one:      0.55,  // main fix: L1 wages were ~£6m/yr vs ~£5m income
+  league_two:      0.45,
+  national_league: 0.40,
+  european:        1.00,
+};
+
+function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league') {
   const firstName = pick(FIRST_NAMES);
   const lastName  = pick(LAST_NAMES);
   const ageAdj = age < 18 ? (age - 18) * 4 : 0; // under-18s are rawer: -4 per year below 18
@@ -357,13 +368,16 @@ function generatePlayer(id, pos, clubRating, age) {
 
   const value = calcValue(ovr, age);
   // Wage in game units (p.wage / 1000 = £m/wk for display)
-  // Calibrated vs real wage bills: NL £0.8-3m/yr, L2 £1.5-4m/yr, L1 £3-12m/yr, Champ £10-60m, PL £60-350m.
-  // OVR 50 NL = ~£410/wk | OVR 55 L2 = ~£1.2k | OVR 60 L1 = ~£3.8k | OVR 65 Champ = ~£7.8k
-  // OVR 70 = ~£16k | OVR 75 PL = ~£33k | OVR 80 = ~£69k | OVR 85 star = ~£140k | OVR 90 = ~£290k | max £350k
+  // Base formula calibrated for PL/Champ: OVR 60=£3.8k, OVR 70=£16k, OVR 75=£33k, OVR 80=£69k, OVR 85=£140k
+  // League mult scales down wages for lower divisions to match real market rates:
+  //   L1 avg player (OVR 62, mult 0.55) = ~£2.8k/wk → squad wage bill ~£3.5m/yr (real L1: £3-12m) ✓
+  //   L2 avg player (OVR 57, mult 0.45) = ~£0.9k/wk → squad wage bill ~£1m/yr (real L2: £1.5-4m) ✓
+  //   NL avg player (OVR 50, mult 0.40) = ~£300/wk (floor) → squad bill ~£0.35m/yr (real NL: £0.3-2m) ✓
   const wageBase = ovr >= 60
     ? Math.pow(1.155, ovr - 60) * 3.8
     : Math.pow(0.80, 60 - ovr) * 3.8;
-  const wage = Math.min(350, Math.max(0.3, Math.round(wageBase * (0.75 + rand(0, 50) / 100) * 10) / 10));
+  const leagueMult = LEAGUE_WAGE_MULTS[leagueKey] ?? 1.0;
+  const wage = Math.min(350, Math.max(0.3, Math.round(wageBase * leagueMult * (0.75 + rand(0, 50) / 100) * 10) / 10));
 
   return {
     id, firstName, lastName,
@@ -442,7 +456,7 @@ function generateSquad(club) {
     if (lean && trimmable.has(pos)) count = Math.max(1, count - 1);
     for (let i = 0; i < count; i++) {
       const age = pos === 'GK' ? rand(22, 36) : rand(17, 33);
-      players.push(generatePlayer(`${club.id}_p${pid++}`, pos, club.sqRating, age));
+      players.push(generatePlayer(`${club.id}_p${pid++}`, pos, club.sqRating, age, club.league));
     }
   });
   return players;
