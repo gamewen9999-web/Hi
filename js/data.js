@@ -2148,6 +2148,16 @@ const REAL_PLAYERS = {
   brondby: [
     ["Mathias","Hebo Rasmussen","LB",29,"Danish",69,69],
   ],
+  luton: [
+    ["Carlton","Morris","ST",29,"English",68,68],
+    ["Elijah","Adebayo","ST",27,"English",68,68],
+  ],
+  bolton: [
+    ["Dion","Charles","ST",27,"Northern Irish",65,65],
+  ],
+  peterborough: [
+    ["Kwame","Poku","RW",23,"English",65,69],
+  ],
 };
 
 // Builds one authored real player: reuses generatePlayer purely as the attrs engine
