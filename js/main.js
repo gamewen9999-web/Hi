@@ -363,10 +363,15 @@ const APP = (() => {
       finances: null,
       freeAgents: [],
       preContracts: [],
+      transferNews: [],
     };
     gameState.finances = initFinances(clubs[clubId]);
 
     gameState.tactics.lineup = autoPickXI(gameState.myClub, gameState.tactics.formation);
+    Object.values(gameState.clubs).forEach(c => {
+      if (c.id !== clubId) c.lineup = autoPickXI(c, c.tactics.formation);
+      recalcSqRating(c);
+    });
     gameState.market = ENGINE.getTransferMarket(gameState);
     gameState.freeAgents = DATA.generateFreeAgents(14);
     ui.tableLeague = gameState.myClub.league;
@@ -461,9 +466,16 @@ const APP = (() => {
     $('sb-badge').style.boxShadow = `0 4px 16px ${col}40`;
   }
 
+  // Team OVR is the starting XI's average, not the whole squad — bench depth shouldn't
+  // inflate or dilute it. Uses the manager's actual lineup for the user's club, and the
+  // best XI for the club's default formation for everyone else.
   function recalcSqRating(club) {
     if (!club || !club.players || !club.players.length) return;
-    club.sqRating = Math.round(club.players.reduce((s, p) => s + (p.ovr || 60), 0) / club.players.length);
+    let xi = (club.id === gameState.myClubId) ? gameState.tactics?.lineup : club.lineup;
+    if (!xi || xi.length < 11) xi = autoPickXI(club, club.tactics?.formation || '4-3-3');
+    const xiPlayers = xi.map(id => club.players.find(p => p.id === id)).filter(Boolean);
+    const pool = xiPlayers.length === 11 ? xiPlayers : club.players;
+    club.sqRating = Math.round(pool.reduce((s, p) => s + (p.ovr || 60), 0) / pool.length);
   }
 
   function updateSidebar() {
@@ -995,8 +1007,14 @@ const APP = (() => {
       const opp = gameState.clubs[myIsHome ? next.away : next.home];
       if (opp) {
         const myTac = { ...tac, customFormation: tac.formation === 'custom' ? tac.customFormation : null };
-        const oppTac = ENGINE.deriveAITactics(opp);
-        const xg = myIsHome ? ENGINE.calcMatchXG(club, opp, myTac, oppTac) : ENGINE.calcMatchXG(opp, club, oppTac, myTac);
+        const oppTac = opp.tactics || ENGINE.deriveAITactics(opp);
+        const oppForm = DATA.FORMATIONS[oppTac.formation] || DATA.FORMATIONS['4-3-3'];
+        const oppXI   = opp.lineup && opp.lineup.length === 11 ? opp.lineup : autoPickXI(opp, oppTac.formation);
+        const oppSlot = oppForm.positions.map(p => p.pos);
+        const mySlot  = activeForm.positions.map(p => p.pos);
+        const xg = myIsHome
+          ? ENGINE.calcMatchXG(club, opp, myTac, oppTac, lineup, oppXI, mySlot, oppSlot)
+          : ENGINE.calcMatchXG(opp, club, oppTac, myTac, oppXI, lineup, oppSlot, mySlot);
         const myXG  = myIsHome ? xg.homeXG : xg.awayXG;
         const oppXG = myIsHome ? xg.awayXG : xg.homeXG;
         const myPct = Math.round(myXG / (myXG + oppXG) * 100);
@@ -1501,6 +1519,13 @@ const APP = (() => {
                 `<div class="transfer-log-item"><span class="tlog-dot" style="background:${t.in ? 'var(--accent)' : 'var(--accent-red)'}"></span><div class="tlog-info">${t.in ? 'IN' : 'OUT'}: ${esc(t.name)}</div><span class="tlog-fee">${money(t.fee)}</span></div>`).join('')
               : `<div class="stat-label">No transfers yet this save.</div>`}</div>
           </div>
+          <div class="budget-panel">
+            <div class="card-title">League Transfer News</div>
+            <div class="transfer-log">${(gameState.transferNews || []).length
+              ? gameState.transferNews.slice(0, 12).map(n =>
+                `<div class="transfer-log-item"><div class="tlog-info">${esc(n.text)}</div><span class="tlog-fee text-muted">${esc(n.date)}</span></div>`).join('')
+              : `<div class="stat-label">No transfer activity around the league yet.</div>`}</div>
+          </div>
         </div>
       </div>`;
 
@@ -1875,6 +1900,17 @@ const APP = (() => {
     recordTransferIncome(o.fee); // handles balance + seasonIncome.sales for the finances path
     gameState.tactics.lineup = gameState.tactics.lineup.filter(id => id !== o.playerId);
     if (gameState.tactics.lineup.length < 11) gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());
+    // Actually move the player into the buying club's squad and spend their budget —
+    // otherwise a player "sold to Chelsea" would just vanish from the league.
+    const buyer = gameState.clubs[o.clubId];
+    if (buyer) {
+      p.clubId = buyer.id;
+      p.transferListed = false;
+      p.listingPrice = null;
+      buyer.players.push(p);
+      buyer.budget = Math.round(((buyer.budget || 0) - o.fee) * 10) / 10;
+      recalcSqRating(buyer);
+    }
     gameState.transferLog.unshift({ in: false, name: o.playerName, fee: o.fee });
     // Clear all offers for this player
     gameState.pendingOffers = offers.filter(x => x.playerId !== o.playerId);
@@ -3385,12 +3421,9 @@ const APP = (() => {
     const opp = gameState.clubs[oppId];
     if (!opp) { el.innerHTML = `<div class="empty-state"><div class="empty-state-text">Opponent data unavailable.</div></div>`; return; }
 
-    const aiTac = ENGINE.deriveAITactics(opp);
-    const formKeys = Object.keys(DATA.FORMATIONS);
-    const h = opp.id.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-    const oppFormKey = formKeys[h % formKeys.length];
-    const oppForm = DATA.FORMATIONS[oppFormKey] || DATA.FORMATIONS['4-3-3'];
-    const oppXI = autoPickXI(opp, oppFormKey);
+    const aiTac = opp.tactics || ENGINE.deriveAITactics(opp);
+    const oppForm = DATA.FORMATIONS[aiTac.formation] || DATA.FORMATIONS['4-3-3'];
+    const oppXI = opp.lineup && opp.lineup.length === 11 ? opp.lineup : autoPickXI(opp, aiTac.formation);
     const oppXISet = new Set(oppXI);
 
     const pressLabel = { high: 'High Press', medium: 'Medium Block', low: 'Low Block' };
@@ -3400,11 +3433,16 @@ const APP = (() => {
     const myForm = activeTacticForm();
     const myXI   = gameState.tactics.lineup;
     const mySlot = myForm.positions.map(p => p.pos);
+    const oppSlot = oppForm.positions.map(p => p.pos);
     const xgRes = ENGINE.calcMatchXG(
       myIsHome ? gameState.myClub : opp,
       myIsHome ? opp : gameState.myClub,
       myIsHome ? myTac : aiTac,
-      myIsHome ? aiTac : myTac
+      myIsHome ? aiTac : myTac,
+      myIsHome ? myXI : oppXI,
+      myIsHome ? oppXI : myXI,
+      myIsHome ? mySlot : oppSlot,
+      myIsHome ? oppSlot : mySlot
     );
     const myXG  = myIsHome ? xgRes.homeXG : xgRes.awayXG;
     const oppXG = myIsHome ? xgRes.awayXG : xgRes.homeXG;
@@ -3777,27 +3815,25 @@ const APP = (() => {
     if (!fixture) return;
     const home = gameState.clubs[fixture.home], away = gameState.clubs[fixture.away];
     const myIsHome = fixture.home === gameState.myClubId;
-    // Give each club a consistent formation based on their id
-    const formKeys = Object.keys(DATA.FORMATIONS);
-    const clubFormation = (club) => {
-      const h = club.id.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-      return formKeys[h % formKeys.length];
-    };
-    const homeFormation = myIsHome ? gameState.tactics.formation : clubFormation(home);
-    const awayFormation = myIsHome ? clubFormation(away) : gameState.tactics.formation;
-    const myForm = homeFormation === 'custom' ? gameState.tactics.customFormation : null;
-    const homeXI = myIsHome ? gameState.tactics.lineup : autoPickXI(home, homeFormation);
-    const awayXI = myIsHome ? autoPickXI(away, awayFormation) : gameState.tactics.lineup;
+    const aiClub = myIsHome ? away : home;
+    const aiTactics = aiClub.tactics || ENGINE.deriveAITactics(aiClub);
+    const aiFormKey = aiTactics.formation || '4-3-3';
+    const aiForm = DATA.FORMATIONS[aiFormKey] || DATA.FORMATIONS['4-3-3'];
+    const aiXI = aiClub.lineup && aiClub.lineup.length === 11 ? aiClub.lineup : autoPickXI(aiClub, aiFormKey);
+    const aiSlotPos = aiForm.positions.map(p => p.pos);
+    const homeFormation = myIsHome ? gameState.tactics.formation : aiFormKey;
+    const awayFormation = myIsHome ? aiFormKey : gameState.tactics.formation;
+    const myForm = gameState.tactics.formation === 'custom' ? gameState.tactics.customFormation : null;
+    const homeXI = myIsHome ? gameState.tactics.lineup : aiXI;
+    const awayXI = myIsHome ? aiXI : gameState.tactics.lineup;
     const myTactics = { ...gameState.tactics, customFormation: myForm };
-    const aiTactics = myIsHome ? ENGINE.deriveAITactics(away) : ENGINE.deriveAITactics(home);
-    const myFormObj  = myIsHome ? activeTacticForm() : null;
-    const mySlotPos  = myFormObj ? myFormObj.positions.map(p => p.pos) : null;
+    const mySlotPos = activeTacticForm().positions.map(p => p.pos);
     const result = ENGINE.simulateMatch(home, away, {
       homeXI, awayXI,
       homeTactics: myIsHome ? myTactics : aiTactics,
       awayTactics: myIsHome ? aiTactics : myTactics,
-      homeSlotPositions: myIsHome ? mySlotPos : null,
-      awaySlotPositions: myIsHome ? null : mySlotPos,
+      homeSlotPositions: myIsHome ? mySlotPos : aiSlotPos,
+      awaySlotPositions: myIsHome ? aiSlotPos : mySlotPos,
     });
     result.commentary = [];
     ui.match = {
@@ -4851,6 +4887,9 @@ const APP = (() => {
               aiXIArr[idx] = onP.id;
               m2.aiSubsUsed = (m2.aiSubsUsed || 0) + 1;
               const subEv = { min: sim.min, type: 'sub', team: aiTeam, playerOff: offP, playerOn: onP };
+              ev.push(subEv);
+              ev.sort((a, b) => a.min - b.min);
+              if (sim.min < 90) reSimFromMinute(sim.min);
               addMatchEvent(subEv);
               eventsThisMin.push(subEv);
             }
@@ -5199,9 +5238,17 @@ const APP = (() => {
     m.htActiveTab = null;
   }
 
-  function reSimSecondHalf() {
+  // Re-simulates everything after `splitMinute` using the current XI/tactics, so a player
+  // who has just been subbed off (or a tactics change) can no longer affect events past that
+  // point — without this, the rest of the match would keep playing out from the pre-sub events.
+  // `keepThroughMinute` (defaults to splitMinute) lets halftime keep its synthetic min:46 sub markers.
+  function reSimFromMinute(splitMinute, keepThroughMinute = splitMinute) {
     const m = ui.match;
     const home = m.home, away = m.away;
+    const aiClub = m.myIsHome ? away : home;
+    const aiTactics = aiClub.tactics || ENGINE.deriveAITactics(aiClub);
+    const aiForm = DATA.FORMATIONS[aiTactics.formation] || DATA.FORMATIONS['4-3-3'];
+    const aiSlotPos = aiForm.positions.map(p => p.pos);
     const myFormKey = m.currentTactics.formation;
     const myFormObj = myFormKey === 'custom' && m.currentTactics.customFormation
       ? m.currentTactics.customFormation
@@ -5210,26 +5257,35 @@ const APP = (() => {
     const newResult = ENGINE.simulateMatch(home, away, {
       homeXI: m.currentHomeXI,
       awayXI: m.currentAwayXI,
-      homeTactics: m.myIsHome ? { ...m.currentTactics } : ENGINE.deriveAITactics(away),
-      awayTactics: m.myIsHome ? ENGINE.deriveAITactics(away) : { ...m.currentTactics },
-      homeSlotPositions: m.myIsHome ? mySlotPos : null,
-      awaySlotPositions: m.myIsHome ? null : mySlotPos,
+      homeTactics: m.myIsHome ? { ...m.currentTactics } : aiTactics,
+      awayTactics: m.myIsHome ? aiTactics : { ...m.currentTactics },
+      homeSlotPositions: m.myIsHome ? mySlotPos : aiSlotPos,
+      awaySlotPositions: m.myIsHome ? aiSlotPos : mySlotPos,
     });
-    // Use the new sim's first-45-min events as the second half (shift min by +45)
-    const newSecondHalf = newResult.events
-      .filter(e => e.min <= 45)
-      .map(e => ({ ...e, min: e.min + 45 }));
-    // Keep first-half events + any halftime sub events (min <= 46) from original result
-    const firstHalf = m.result.events.filter(e => e.min <= 46);
-    m.result.events = [...firstHalf, ...newSecondHalf].sort((a, b) => a.min - b.min);
-    // Recalculate final score
-    const hs2 = newSecondHalf.filter(e => e.type === 'goal' && e.team === 'home').length;
-    const as2 = newSecondHalf.filter(e => e.type === 'goal' && e.team === 'away').length;
-    m.result.homeScore = m.sim.hs + hs2;
-    m.result.awayScore = m.sim.as + as2;
-    // Reset the event pointer to just after min 46
-    m.sim.idx = m.result.events.findIndex(e => e.min > 46);
+    // Use the new sim's early events as the remainder of the match (shift min by splitMinute)
+    const remainingMins = 90 - splitMinute;
+    const newRemainder = newResult.events
+      .filter(e => e.min > 0 && e.min <= remainingMins)
+      .map(e => ({ ...e, min: e.min + splitMinute }));
+    // Keep everything already played (plus any synthetic sub markers up to keepThroughMinute)
+    const kept = m.result.events.filter(e => e.min <= keepThroughMinute);
+    const merged = [...kept, ...newRemainder].sort((a, b) => a.min - b.min);
+    // Mutate the existing array in place — the running tick() loop holds its own reference
+    // to ui.match.result.events, so reassigning the property here wouldn't reach it.
+    m.result.events.length = 0;
+    m.result.events.push(...merged);
+    // Recalculate final score: what's already on the board + new goals in the regenerated remainder
+    const hsNew = newRemainder.filter(e => e.type === 'goal' && e.team === 'home').length;
+    const asNew = newRemainder.filter(e => e.type === 'goal' && e.team === 'away').length;
+    m.result.homeScore = m.sim.hs + hsNew;
+    m.result.awayScore = m.sim.as + asNew;
+    // Reset the event pointer to just after the kept window
+    m.sim.idx = m.result.events.findIndex(e => e.min > keepThroughMinute);
     if (m.sim.idx < 0) m.sim.idx = m.result.events.length;
+  }
+
+  function reSimSecondHalf() {
+    reSimFromMinute(45, 46);
     notify('2nd half tactics applied', 'info');
   }
 
@@ -5337,7 +5393,11 @@ const APP = (() => {
         const idx = myXIArr.indexOf(offId);
         if (idx >= 0) { myXIArr[idx] = onId; xiSet.delete(offId); xiSet.add(onId); }
         m.subsUsed++;
-        addMatchEvent({ min: m.sim.min, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP });
+        const subEv = { min: m.sim.min, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP };
+        m.result.events.push(subEv);
+        m.result.events.sort((a, b) => a.min - b.min);
+        if (m.sim.min < 90) reSimFromMinute(m.sim.min);
+        addMatchEvent(subEv);
         updatePitchDotsAfterSubs();
         closeModal();
         notify(`${onP?.lastName || '?'} on for ${offP?.lastName || '?'}`, 'info');
@@ -5393,24 +5453,28 @@ const APP = (() => {
     });
   }
 
+  // Weekly injury recovery / fitness top-up — runs for every club so AI players actually
+  // recover from injuries instead of staying flagged forever; only the user's club gets toasts.
   function tickInjuries() {
-    const myId = gameState.myClubId;
-    gameState.myClub.players.forEach(p => {
-      if (!p.injured) {
-        p.fitness = Math.min(100, (p.fitness ?? 80) + FITNESS_RECOVER_WEEK);
-      } else {
-        p.injuryWeeks = Math.max(0, (p.injuryWeeks || 0) - 1);
-        if (p.injuryWeeks <= 0) {
-          const inj = INJURY_TYPES.find(t => t.id === p.injuryType);
-          if (inj?.potDrop > 0) {
-            p.pot = Math.max(p.ovr, p.pot - inj.potDrop);
-            notify(`${p.name} has recovered but their potential has dropped after their ${inj.label}.`, 'warning');
+    const myClub = gameState.myClub;
+    Object.values(gameState.clubs).forEach(club => {
+      club.players.forEach(p => {
+        if (!p.injured) {
+          p.fitness = Math.min(100, (p.fitness ?? 80) + FITNESS_RECOVER_WEEK);
+        } else {
+          p.injuryWeeks = Math.max(0, (p.injuryWeeks || 0) - 1);
+          if (p.injuryWeeks <= 0) {
+            const inj = INJURY_TYPES.find(t => t.id === p.injuryType);
+            if (inj?.potDrop > 0) {
+              p.pot = Math.max(p.ovr, p.pot - inj.potDrop);
+              if (club === myClub) notify(`${p.name} has recovered but their potential has dropped after their ${inj.label}.`, 'warning');
+            }
+            p.injured    = false;
+            p.injuryType = null;
+            p.fitness    = 65; // return at 65% — not full fitness
           }
-          p.injured    = false;
-          p.injuryType = null;
-          p.fitness    = 65; // return at 65% — not full fitness
         }
-      }
+      });
     });
   }
 
@@ -5423,8 +5487,8 @@ const APP = (() => {
     Object.values(gameState.clubs).forEach(club => {
       let grew = false;
       club.players.forEach(p => {
-        if (p.ovr >= p.pot) return;
-        const growChance = p.age <= 21 ? 0.06 : p.age <= 25 ? 0.045 : p.age <= 29 ? 0.02 : 0.0075;
+        if (p.ovr >= p.pot || p.age >= 30) return; // development is over past 30 — decline only from here
+        const growChance = p.age <= 21 ? 0.06 : p.age <= 25 ? 0.045 : 0.02; // <= 29
         for (let i = 0; i < weeks && p.ovr < p.pot; i++) {
           if (Math.random() < growChance) {
             p.ovr++;
@@ -5434,19 +5498,111 @@ const APP = (() => {
           }
         }
       });
-      if (grew) club.sqRating = Math.round(club.players.reduce((s, x) => s + x.ovr, 0) / club.players.length);
+      if (grew) recalcSqRating(club);
     });
   }
 
-  function applyMatchInjuries(events) {
-    (events || []).forEach(ev => {
-      if (ev.type === 'injury' && ev.player && !ev.player.injured) {
-        const inj = INJURY_TYPES.find(t => t.id === ev.injuryType) || INJURY_TYPES[0];
-        ev.player.injured       = true;
-        ev.player.injuryType    = ev.injuryType;
-        ev.player.injuryWeeks   = rand(inj.minWeeks, inj.maxWeeks);
-        ev.player.careerInjuries = (ev.player.careerInjuries || 0) + 1;
-        ev.player.fitness        = Math.max(5, (ev.player.fitness ?? 80) - 40);
+  // AI clubs keep their starting XI current (drops injured/transferred-out players),
+  // drain/recover fitness for playing it like the user's club does, and occasionally
+  // tweak one tactical dial based on recent form — a lightweight stand-in for a manager
+  // reacting to results, mirroring the user's own tactics screen.
+  function tickAIClubs() {
+    const myId = gameState.myClubId;
+    const formKeys = Object.keys(DATA.FORMATIONS);
+    const mentalities = ['defensive', 'balanced', 'attacking'];
+    const pressings = ['low', 'medium', 'high'];
+    const styles = ['direct', 'balanced', 'possession', 'counter', 'gegenpressing', 'longball'];
+    Object.values(gameState.clubs).forEach(club => {
+      if (club.id === myId) return;
+      if (!club.tactics) club.tactics = DATA.seedClubTactics(club);
+      club.lineup = autoPickXI(club, club.tactics.formation);
+      // AI matches don't track discrete subs, so the whole nominal XI gets the starter drain.
+      applyMatchFitness(club, club.lineup, []);
+
+      if (Math.random() >= 0.12) return; // most weeks, stay the course
+      const recent = (club.form || []).slice(-3);
+      const losses = recent.filter(r => r === 'L').length;
+      const wins = recent.filter(r => r === 'W').length;
+      if (losses >= 2) {
+        if (Math.random() < 0.5) club.tactics.mentality = 'attacking';
+        else club.tactics.pressing = 'high';
+      } else if (wins >= 2) {
+        if (Math.random() < 0.4) club.tactics.pressing = 'medium';
+      } else {
+        const field = pick(['formation', 'mentality', 'pressing', 'style']);
+        if (field === 'formation') club.tactics.formation = pick(formKeys);
+        else if (field === 'mentality') club.tactics.mentality = pick(mentalities);
+        else if (field === 'pressing') club.tactics.pressing = pick(pressings);
+        else club.tactics.style = pick(styles);
+      }
+    });
+  }
+
+  function pushTransferNews(text) {
+    if (!gameState.transferNews) gameState.transferNews = [];
+    gameState.transferNews.unshift({ text, date: fmtDate(gameState.currentDate) });
+    if (gameState.transferNews.length > 30) gameState.transferNews.length = 30;
+  }
+
+  // AI clubs trade among themselves and sign free agents within their own budget —
+  // sell side flags surplus players with the same `transferListed` flag the market
+  // already reads; buy side targets each club's weakest position group. Deliberately
+  // does not touch the user's club or gameState.transferLog (that's user-perspective
+  // only and feeds season-review spend/earn totals).
+  function tickAITransfers() {
+    if (!ENGINE.isTransferWindowOpen(gameState)) return;
+    const myId = gameState.myClubId;
+    const aiClubs = Object.values(gameState.clubs).filter(c => c.id !== myId);
+
+    // Sell side: occasionally flag a surplus/ambitious player for transfer.
+    aiClubs.forEach(club => {
+      if (Math.random() >= 0.08) return;
+      const candidates = club.players.filter(p => !p.transferListed && !p.injured && playerAmbition(p, club) > 0.55);
+      if (!candidates.length) return;
+      pick(candidates).transferListed = true;
+    });
+
+    // Buy side: a handful of clubs each week try to fix their weakest position group.
+    const fits = (club, p) => playerPrestige(p.ovr) <= (club.rep || 1) + 1.5;
+    aiClubs.filter(() => Math.random() < 0.2).slice(0, 6).forEach(club => {
+      if ((club.budget || 0) < 1) return;
+      const groups = { GK: [], DEF: [], MID: [], ATT: [] };
+      club.players.forEach(p => groups[group(p.pos)].push(p));
+      const weakest = Object.entries(groups)
+        .map(([g, ps]) => ({ g, avg: ps.length ? ps.reduce((s, p) => s + p.ovr, 0) / ps.length : 0 }))
+        .sort((a, b) => a.avg - b.avg)[0];
+      if (!weakest) return;
+
+      const freePick = (gameState.freeAgents || [])
+        .filter(p => group(p.pos) === weakest.g && p.ovr > weakest.avg && fits(club, p))
+        .sort((a, b) => b.ovr - a.ovr)[0];
+      if (freePick) {
+        gameState.freeAgents.splice(gameState.freeAgents.indexOf(freePick), 1);
+        freePick.clubId = club.id; freePick.contract = rand(2, 4); freePick.transferListed = false;
+        club.players.push(freePick);
+        recalcSqRating(club);
+        pushTransferNews(`${club.name} signed free agent ${freePick.name} (${freePick.pos}, ${freePick.ovr} OVR)`);
+        return;
+      }
+
+      let bestListed = null, bestSeller = null;
+      aiClubs.forEach(seller => {
+        if (seller.id === club.id) return;
+        seller.players.forEach(p => {
+          if (!p.transferListed || group(p.pos) !== weakest.g || p.ovr <= weakest.avg || !fits(club, p)) return;
+          if (!bestListed || p.ovr > bestListed.ovr) { bestListed = p; bestSeller = seller; }
+        });
+      });
+      if (bestListed) {
+        const fee = Math.max(0.1, Math.round(bestListed.value * (0.85 + Math.random() * 0.3) * 10) / 10);
+        if ((club.budget || 0) < fee) return;
+        bestSeller.players.splice(bestSeller.players.indexOf(bestListed), 1);
+        bestListed.clubId = club.id; bestListed.transferListed = false; bestListed.contract = rand(2, 4);
+        club.players.push(bestListed);
+        club.budget = Math.round((club.budget - fee) * 10) / 10;
+        bestSeller.budget = Math.round((bestSeller.budget + fee) * 10) / 10;
+        recalcSqRating(club); recalcSqRating(bestSeller);
+        pushTransferNews(`${club.name} signed ${bestListed.name} from ${bestSeller.name} for ${money(fee)}`);
       }
     });
   }
@@ -5464,12 +5620,11 @@ const APP = (() => {
     const subbedOn  = (result.events || []).filter(e => e.type === 'sub' && e.team === (ui.match.myIsHome ? 'home' : 'away')).map(e => e.playerOn?.id).filter(Boolean);
     applyMatchFitness(gameState.myClub, myXI || [], subbedOn);
 
-    // Apply injuries that occurred during the match for AI clubs & confirm user club injuries
-    applyMatchInjuries(result.events);
-
     // Tick injury recovery once per match cycle
     tickInjuries();
     tickPlayerDevelopment(1);
+    tickAIClubs();
+    tickAITransfers();
 
     // Remove injured players from the lineup
     const tac = gameState.tactics;
@@ -5549,13 +5704,11 @@ const APP = (() => {
     if (f.played) return;
     const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
     if (!h || !a) { f.played = true; return; }
-    const r = ENGINE.simulateMatch(h, a);
-    f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-    ENGINE.recordResult(gameState, f, r.homeScore, r.awayScore);
+    ENGINE.simBulkFixture(gameState, f);
     if (f.home === gameState.myClubId || f.away === gameState.myClubId) {
       const opp = f.home === gameState.myClubId ? a : h;
-      const my = f.home === gameState.myClubId ? r.homeScore : r.awayScore;
-      const og = f.home === gameState.myClubId ? r.awayScore : r.homeScore;
+      const my = f.home === gameState.myClubId ? f.homeScore : f.awayScore;
+      const og = f.home === gameState.myClubId ? f.awayScore : f.homeScore;
       notify(`${comp.short}: ${gameState.myClub.name} ${my}–${og} ${opp.name}`, my > og ? 'success' : my === og ? 'info' : 'warning');
     }
   }
@@ -5767,13 +5920,7 @@ const APP = (() => {
      ============================================= */
   function endSeason() {
     // finish any remaining league fixtures
-    gameState.fixtures.filter(f => !f.played).forEach(f => {
-      const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
-      if (!h || !a) { f.played = true; return; }
-      const r = ENGINE.simulateMatch(h, a);
-      f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-      ENGINE.recordResult(gameState, f, r.homeScore, r.awayScore);
-    });
+    gameState.fixtures.filter(f => !f.played).forEach(f => ENGINE.simBulkFixture(gameState, f));
     // wrap up competitions
     if (gameState.european) Object.values(gameState.european).forEach(comp => {
       if (comp.stage === 'league') { comp.fixtures.filter(f => !f.played).forEach(f => simEuroFixture(comp, f)); startEuroKnockout(comp); }
@@ -6160,7 +6307,6 @@ const APP = (() => {
     gameState.wageViolations = 0;  // reset each season
     gameState.transferBans = {};   // reset rejected players each season
     Object.values(gameState.clubs).forEach(club => {
-      let totalOvr = 0;
       club.players.forEach(p => {
         p.age++;
         // Growth toward potential now happens week-to-week during the season
@@ -6176,9 +6322,9 @@ const APP = (() => {
         // Full pre-season recovery — injuries clear, fitness restored
         if (!p.injured) p.fitness = 100;
         else if ((p.injuryWeeks || 0) <= 0) { p.injured = false; p.injuryType = null; p.fitness = 80; }
-        totalOvr += p.ovr;
       });
-      club.sqRating = Math.round(totalOvr / club.players.length);
+      if (club.id !== gameState.myClubId) club.lineup = autoPickXI(club, club.tactics?.formation || '4-3-3');
+      recalcSqRating(club);
       club.tableStats = { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 };
       club.europeanStats = { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 };
       club.form = []; club.results = [];
@@ -6241,6 +6387,8 @@ const APP = (() => {
     tickFinances(1);
     tickInjuries();
     tickPlayerDevelopment(1);
+    tickAIClubs();
+    tickAITransfers();
     checkIncomingOffers();
     checkWageBudget();
     // Prompt sponsor renewal if needed during preseason
@@ -6601,6 +6749,11 @@ const APP = (() => {
     } catch (e) { notify('Save file is corrupted.', 'error'); return; }
     if (!state.myClub) { notify('Save file is invalid.', 'error'); return; }
     if (!state.slotId) state.slotId = slotId;   // migrate old saves
+    if (!state.transferNews) state.transferNews = [];
+    Object.values(state.clubs).forEach(c => {   // migrate saves from before AI tactics/lineup existed
+      if (!c.tactics) c.tactics = DATA.seedClubTactics(c);
+      if (!c.lineup) c.lineup = [];
+    });
     gameState = state;
     running = false;
     ui.match = null;

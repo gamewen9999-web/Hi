@@ -301,12 +301,175 @@ const FORMATIONS = {
   '4-4-2 D':{ name:'4-4-2 D',positions:[{pos:'GK',x:50,y:92},{pos:'RB',x:82,y:78},{pos:'CB',x:62,y:80},{pos:'CB',x:38,y:80},{pos:'LB',x:18,y:78},{pos:'RM',x:82,y:60},{pos:'CM',x:62,y:62},{pos:'CM',x:38,y:62},{pos:'LM',x:18,y:60},{pos:'ST',x:62,y:30},{pos:'ST',x:38,y:30}]},
 };
 
-const FIRST_NAMES = ['James','John','Michael','David','Chris','Tom','Daniel','Jack','Ryan','Alex','Sam','Adam','Luke','Matt','Ben','Josh','Nathan','Oliver','Liam','Harry','Marcus','Kai','Jude','Phil','Mason','Bukayo','Trent','Declan','Jordan','Callum','Pedro','Carlos','Juan','Luis','Diego','Sergio','Alejandro','Pablo','Jorge','Marco','Luca','Lorenzo','Federico','Giovanni','Matteo','Antoine','Kylian','Ousmane','Theo','Hugo','Florian','Marcel','Thomas','Julian','Robert','Leroy','Karim','Sadio','Mo','Virgil','Kevin','Eden','Romelu','Ruben','Bernardo','Joao','Rafael','Andre','Gabriel','Willian','Richarlison','Thiago','Fabinho','Aymeric','Riyad','Youri','Timothy','Christian','Pierre','Erling','Vinicius','Rodrygo','Eder','Milan','Stefan','Dusan','Lautaro','Paulo','Ciro','Tammy','Dominic','Michail','Raheem','Danny','Emmanuel','Wilfried','Adama','Heung-Min','Takehiro','Kaoru','Hwang','Min-jae','Kim'];
-const LAST_NAMES  = ['Smith','Jones','Williams','Brown','Taylor','Davies','Evans','Wilson','Thomas','Roberts','Johnson','Walker','Wright','Robinson','Thompson','White','Hughes','Edwards','Green','Hall','Wood','Harris','Martin','Jackson','Clarke','Turner','Hill','Scott','Young','Morris','Baker','Fernandez','Garcia','Martinez','Lopez','Rodriguez','Sanchez','Perez','Gonzalez','Hernandez','Muller','Schmidt','Schneider','Fischer','Weber','Meyer','Wagner','Becker','Schulz','Hoffmann','Rossi','Ferrari','Russo','Bianchi','Esposito','Romano','Ricci','Marino','Greco','Bruno','Dubois','Martin','Bernard','Moreau','Laurent','Simon','Michel','Leroy','Roux','David','Silva','Santos','Ferreira','Pereira','Costa','Oliveira','Rodrigues','Alves','Nascimento','Sousa','Mane','Salah','Kante','Pogba','Benzema','Giroud','Lloris','Mbappe','Griezmann','Dembele','Rashford','Saka','Mount','Rice','Alexander-Arnold'];
-const NATIONALITIES = ['English','Spanish','German','French','Italian','Brazilian','Argentine','Portuguese','Dutch','Belgian','Senegalese','Egyptian','Ivorian','Ghanaian','Nigerian','South Korean','Japanese','Croatian','Serbian','Polish','Swedish','Danish','Norwegian','Swiss','Austrian','Czech','Uruguayan','Colombian','Mexican','American'];
-
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function pickWeightedPairs(pairs) {
+  const total = pairs.reduce((s, p) => s + p[1], 0);
+  let r = Math.random() * total;
+  for (const p of pairs) { r -= p[1]; if (r <= 0) return p[0]; }
+  return pairs[pairs.length - 1][0];
+}
+
+// Name pools grouped by region rather than one-per-nationality — nationalities that share
+// naming conventions (e.g. Croatian/Serbian/Bosnian, or the smaller European nations with
+// no dedicated pool) draw from the same list. NATIONALITY_POOL_KEY below maps every
+// nationality label we can assign to the pool it should actually draw names from.
+const NAME_POOLS = {
+  British:    { first:['James','John','Michael','David','Chris','Tom','Daniel','Jack','Ryan','Alex','Sam','Adam','Luke','Matt','Ben','Josh','Nathan','Oliver','Liam','Harry','Marcus','Jude','Mason','Bukayo','Trent','Declan','Jordan','Callum','Theo','Tammy','Dominic','Raheem','Danny'],
+              last:['Smith','Jones','Williams','Brown','Taylor','Davies','Evans','Wilson','Thomas','Roberts','Johnson','Walker','Wright','Robinson','Thompson','White','Hughes','Edwards','Green','Hall','Wood','Harris','Martin','Jackson','Clarke','Turner','Hill','Scott','Young','Morris','Baker','Rashford','Saka','Mount','Rice','Alexander-Arnold'] },
+  Scottish:   { first:['Andy','Scott','Stuart','Callum','Ryan','Kieran','Liam','Aaron','Lewis','Craig','Grant','Ross','Kenny'],
+              last:['Robertson','Tierney','McGregor','Ferguson','Stewart','MacKay','Fraser','Burns','Christie','Dykes','Adams','McTominay'] },
+  Welsh:      { first:['Gareth','Aaron','Ben','Joe','Dan','Rhys','Tom','Connor','Brennan','Ethan'],
+              last:['Bale','Ramsey','Allen','James','Wilson','Roberts','Davies','Williams','Moore','Johnson'] },
+  Irish:      { first:['Seamus','Aiden','Conor','Liam','Shane','Declan','James','Nathan','Jayson','Evan'],
+              last:["O'Brien","Egan","Doherty","Brady","Hendrick","Collins","Duffy","Parrott","Idah","Cullen"] },
+  Spanish:    { first:['Carlos','Juan','Luis','Diego','Sergio','Alejandro','Pablo','Jorge','Alvaro','Marcos','Pedro','Ruben','Inaki','Nico','Fermin'],
+              last:['Fernandez','Garcia','Martinez','Lopez','Rodriguez','Sanchez','Perez','Gonzalez','Hernandez','Torres','Navas','Merino','Olmo','Cucurella'] },
+  French:     { first:['Antoine','Kylian','Ousmane','Theo','Hugo','Florian','Marcel','Thomas','Julian','Aurelien','William','Mattéo','Bradley','Eduardo'],
+              last:['Dubois','Bernard','Moreau','Laurent','Simon','Michel','Leroy','Roux','Mbappe','Griezmann','Dembele','Kante','Tchouameni','Konate'] },
+  German:     { first:['Florian','Marcel','Julian','Robert','Thomas','Niklas','Joshua','Leon','Kai','Jamal','Ilkay','Maximilian'],
+              last:['Muller','Schmidt','Schneider','Fischer','Weber','Meyer','Wagner','Becker','Schulz','Hoffmann','Kimmich','Gundogan','Havertz'] },
+  Italian:    { first:['Marco','Luca','Lorenzo','Federico','Giovanni','Matteo','Ciro','Nicolo','Gianluigi','Alessandro','Davide','Sandro'],
+              last:['Rossi','Ferrari','Russo','Bianchi','Esposito','Romano','Ricci','Marino','Greco','Bruno','Barella','Chiesa','Donnarumma'] },
+  Portuguese: { first:['Joao','Rafael','Andre','Bernardo','Bruno','Diogo','Goncalo','Ruben','Pedro','Vitinha','Renato'],
+              last:['Silva','Santos','Ferreira','Pereira','Costa','Oliveira','Rodrigues','Alves','Nascimento','Sousa','Fernandes','Neves'] },
+  Brazilian:  { first:['Gabriel','Andre','Willian','Richarlison','Thiago','Fabinho','Rodrygo','Vinicius','Lucas','Bruno','Antony','Endrick','Raphinha'],
+              last:['Silva','Santos','Pereira','Costa','Oliveira','Souza','Lima','Ribeiro','Carvalho','Barbosa','Martinelli','Casemiro'] },
+  Argentine:  { first:['Lautaro','Paulo','Nicolas','Rodrigo','Enzo','Julian','Alexis','Angel','Leandro','Giovani','Exequiel'],
+              last:['Fernandez','Martinez','Gonzalez','Lopez','Romero','Acuna','Otamendi','Di Maria','Mac Allister','Paredes'] },
+  Dutch:      { first:['Virgil','Frenkie','Memphis','Denzel','Cody','Matthijs','Donyell','Steven','Xavi','Jurrien','Joey'],
+              last:['de Jong','van Dijk','Bergwijn','Dumfries','Gakpo','de Ligt','Malen','Berghuis','Simons','Timber'] },
+  Belgian:    { first:['Eden','Kevin','Romelu','Youri','Thibaut','Axel','Jeremy','Leandro','Charles','Amadou'],
+              last:['Hazard','De Bruyne','Lukaku','Tielemans','Courtois','Witsel','Doku','Trossard','De Ketelaere','Onana'] },
+  Turkish:    { first:['Burak','Hakan','Cengiz','Merih','Kerem','Arda','Orkun','Yusuf','Kenan','Ozan'],
+              last:['Yilmaz','Calhanoglu','Under','Demiral','Akturkoglu','Kokcu','Guler','Akman','Karaman','Soyuncu'] },
+  Greek:      { first:['Kostas','Giorgos','Vangelis','Tasos','Dimitris','Christos','Petros','Nikos'],
+              last:['Tsimikas','Manolas','Bakasetas','Pavlidis','Mantalos','Fortounis','Masouras','Vlachodimos'] },
+  Ukrainian:  { first:['Andriy','Oleksandr','Mykola','Ruslan','Vitaliy','Yevhen','Taras','Artem'],
+              last:['Shevchenko','Zinchenko','Mudryk','Yarmolenko','Malinovskyi','Sudakov','Trubin','Tymchyk'] },
+  Balkan:     { first:['Luka','Ivan','Marko','Milan','Dusan','Stefan','Nikola','Vedran','Josip','Edin','Miralem'],
+              last:['Modric','Kovacic','Brozovic','Vlasic','Jovic','Milenkovic','Vlahovic','Mitrovic','Dzeko','Pjanic','Kolasinac'] },
+  Polish:     { first:['Robert','Piotr','Wojciech','Jakub','Kamil','Krystian','Przemysław','Sebastian'],
+              last:['Lewandowski','Zielinski','Szczesny','Bednarek','Milik','Glik','Piszczek','Kaminski'] },
+  Slavic:     { first:['Tomas','Petr','Jakub','Pavel','Martin','Vladimir','Filip','Stanislav'],
+              last:['Novak','Cerny','Soucek','Coufal','Hubocan','Hamsik','Skriniar','Lobotka'] },
+  Scandinavian:{ first:['Erling','Martin','Alexander','Viktor','Mathias','Rasmus','Joakim','Kasper','Robin'],
+              last:['Haaland','Odegaard','Berg','Hojbjerg','Eriksen','Olsen','Andersen','Nilsson','Forsberg'] },
+  American:   { first:['Christian','Tyler','Weston','Brenden','Gio','Ricardo','Tim','Sergino','Folarin'],
+              last:['Pulisic','Adams','McKennie','Reyna','Aaronson','Dest','Balogun','Weah','Robinson'] },
+  Latin:      { first:['Carlos','Diego','Mateo','Santiago','Jose','Eduardo','Fernando','Andres','Cristian'],
+              last:['Vargas','Morales','Ramirez','Castillo','Mendez','Torres','Cuadrado','Falcao','Suarez','Cavani'] },
+  WestAfrican:{ first:['Sadio','Mo','Wilfried','Adama','Emmanuel','Hakim','Ismaila','Bukayo','Iheanacho','Thomas'],
+              last:['Mane','Salah','Zaha','Traore','Sarr','Diatta','Toure','Diaby','Osimhen','Partey'] },
+  NorthAfrican:{ first:['Mohamed','Achraf','Youssef','Sofiane','Riyad','Karim','Hakim','Yassine'],
+              last:['Salah','Hakimi','En-Nesyri','Mahrez','Boufal','Benzema','Ziyech','Bounou'] },
+  EastAsian:  { first:['Heung-Min','Takehiro','Kaoru','Hwang','Min-jae','Kim','Daichi','Wataru','Ritsu'],
+              last:['Son','Tomiyasu','Mitoma','Hee-chan','Kang-in','Doan','Endo','Kubo'] },
+  Other:      { first:['Aleksandar','Dario','Borja','Emil','Nemanja','Goran','Ivo','Pavel','Tibor'],
+              last:['Petrov','Markovic','Horvat','Novak','Kralev','Stoyanov','Andric','Kovac'] },
+};
+
+// Every assignable nationality label maps to one of the pools above for *naming* purposes,
+// even though the displayed nationality stays specific (e.g. a club in Bosnia still reads
+// "Bosnian", it just draws a Balkan-style name).
+const NATIONALITY_POOL_KEY = {
+  English:'British', Scottish:'Scottish', Welsh:'Welsh', Irish:'Irish', American:'American',
+  Spanish:'Spanish', Mexican:'Spanish', Colombian:'Latin', Uruguayan:'Latin', Chilean:'Latin', Peruvian:'Latin', Paraguayan:'Latin', Venezuelan:'Latin',
+  French:'French', Belgian:'Belgian',
+  German:'German', Austrian:'German', Swiss:'German',
+  Italian:'Italian',
+  Portuguese:'Portuguese', Brazilian:'Brazilian', Argentine:'Argentine',
+  Dutch:'Dutch',
+  Turkish:'Turkish', Greek:'Greek', Cypriot:'Greek',
+  Ukrainian:'Ukrainian',
+  Croatian:'Balkan', Serbian:'Balkan', Bosnian:'Balkan', Slovenian:'Balkan', Montenegrin:'Balkan', Macedonian:'Balkan', Kosovan:'Balkan', Albanian:'Balkan',
+  Polish:'Polish',
+  Czech:'Slavic', Slovak:'Slavic', Hungarian:'Slavic', Romanian:'Slavic', Bulgarian:'Slavic', Moldovan:'Slavic', Belarusian:'Slavic',
+  Swedish:'Scandinavian', Danish:'Scandinavian', Norwegian:'Scandinavian', Finnish:'Scandinavian', Icelandic:'Scandinavian',
+  Senegalese:'WestAfrican', Ivorian:'WestAfrican', Ghanaian:'WestAfrican', Nigerian:'WestAfrican', Malian:'WestAfrican', Cameroonian:'WestAfrican',
+  Egyptian:'NorthAfrican', Moroccan:'NorthAfrican', Algerian:'NorthAfrican', Tunisian:'NorthAfrican',
+  'South Korean':'EastAsian', Japanese:'EastAsian',
+  Israeli:'Other', Armenian:'Other', Azerbaijani:'Other', Georgian:'Other', Maltese:'Italian', Gibraltarian:'British',
+};
+const ALL_NATIONALITIES = Object.keys(NATIONALITY_POOL_KEY);
+
+// Each country's squad mix: weighted [nationality, weight] pairs. Anything not listed
+// for a country falls back to a generic "mostly home nation, some Europe" spread.
+const COUNTRY_NATIONALITY_WEIGHTS = {
+  England:    [['English',24],['Scottish',5],['Welsh',4],['Irish',5],['French',4],['Brazilian',3],['Portuguese',3],['Dutch',2],['Belgian',2],['Nigerian',2],['Senegalese',2],['Ivorian',2],['Ghanaian',2],['Spanish',2],['American',2],['South Korean',1],['Argentine',1]],
+  Spain:      [['Spanish',60],['Argentine',10],['Brazilian',7],['Uruguayan',4],['Colombian',3],['French',3],['Moroccan',3],['Portuguese',3],['Dutch',2],['English',2],['Croatian',1],['Senegalese',2]],
+  Germany:    [['German',55],['Austrian',4],['Swiss',2],['French',4],['Polish',4],['Turkish',5],['Croatian',3],['Serbian',3],['Brazilian',3],['Dutch',3],['Ghanaian',2],['Nigerian',2],['Senegalese',2],['Czech',2],['American',2]],
+  Italy:      [['Italian',55],['Argentine',6],['Brazilian',5],['French',5],['Serbian',3],['Croatian',3],['Senegalese',3],['Nigerian',3],['Ivorian',3],['Belgian',3],['Dutch',2],['Polish',2],['Ghanaian',2],['Colombian',2],['Uruguayan',2],['English',1]],
+  France:     [['French',50],['Senegalese',6],['Ivorian',5],['Ghanaian',3],['Nigerian',3],['Moroccan',5],['Algerian',4],['Portuguese',4],['Brazilian',4],['Belgian',3],['Argentine',2],['Dutch',2],['Polish',2],['Croatian',2],['Serbian',2],['Italian',2],['English',1]],
+  Portugal:   [['Portuguese',55],['Brazilian',20],['French',4],['Spanish',4],['Argentine',3],['Senegalese',3],['Nigerian',3],['Cameroonian',2],['Moroccan',2],['Dutch',2],['Belgian',2]],
+  Netherlands:[['Dutch',60],['Belgian',6],['Moroccan',6],['Ghanaian',4],['Nigerian',4],['Senegalese',3],['Polish',3],['German',3],['Turkish',3],['French',3],['English',2],['American',3],['Other',6]],
+  Turkey:     [['Turkish',65],['Brazilian',5],['French',4],['Dutch',4],['Croatian',3],['Serbian',3],['German',4],['Senegalese',3],['Nigerian',3],['Ghanaian',2],['English',2],['Portuguese',2]],
+  Scotland:   [['Scottish',55],['English',12],['Irish',6],['Welsh',2],['French',4],['American',3],['Nigerian',3],['Ghanaian',3],['Senegalese',3],['Dutch',2],['Croatian',2],['Polish',3],['Spanish',2]],
+  Belgium:    [['Belgian',50],['French',8],['Dutch',8],['Moroccan',8],['Senegalese',4],['Ivorian',3],['Ghanaian',3],['Other',6],['Polish',3],['Italian',3],['English',3],['German',4]],
+  Ukraine:    [['Ukrainian',70],['Brazilian',6],['Croatian',4],['Serbian',3],['Nigerian',3],['Polish',4],['Slovak',3],['Other',7]],
+  Greece:     [['Greek',65],['Brazilian',5],['Nigerian',4],['Albanian',4],['Serbian',4],['Croatian',3],['Argentine',3],['Other',12]],
+  Austria:    [['Austrian',55],['German',12],['Serbian',6],['Croatian',5],['Bosnian',4],['Hungarian',4],['Turkish',4],['Nigerian',3],['Other',7]],
+  Switzerland:[['Swiss',50],['French',8],['Italian',6],['Serbian',6],['Croatian',5],['Albanian',5],['Portuguese',6],['Spanish',4],['Other',10]],
+  Croatia:    [['Croatian',75],['Bosnian',6],['Serbian',4],['German',4],['Brazilian',3],['Other',8]],
+  Serbia:     [['Serbian',75],['Croatian',5],['Bosnian',5],['Montenegrin',4],['Brazilian',3],['Other',8]],
+  Bosnia:     [['Bosnian',70],['Serbian',8],['Croatian',8],['German',5],['Other',9]],
+  Slovenia:   [['Slovenian',70],['Croatian',8],['Serbian',6],['Bosnian',4],['Other',12]],
+  Poland:     [['Polish',75],['Ukrainian',6],['Brazilian',3],['Slovak',3],['German',4],['Other',9]],
+  Czechia:    [['Czech',70],['Slovak',10],['Ukrainian',5],['Polish',5],['Other',10]],
+  Slovakia:   [['Slovak',70],['Czech',10],['Ukrainian',5],['Hungarian',5],['Other',10]],
+  Hungary:    [['Hungarian',75],['German',6],['Serbian',5],['Slovak',5],['Other',9]],
+  Romania:    [['Romanian',75],['Hungarian',6],['Bulgarian',4],['Moldovan',5],['Other',10]],
+  Bulgaria:   [['Bulgarian',75],['Romanian',6],['Macedonian',5],['Other',14]],
+  Israel:     [['Israeli',70],['Nigerian',5],['Ghanaian',4],['French',5],['Brazilian',4],['Other',12]],
+  Cyprus:     [['Cypriot',55],['Greek',15],['Nigerian',6],['Brazilian',5],['Other',19]],
+  Malta:      [['Maltese',60],['Italian',12],['English',6],['Spanish',5],['Other',17]],
+  Gibraltar:  [['Gibraltarian',55],['Spanish',18],['English',15],['Other',12]],
+  Iceland:    [['Icelandic',75],['Danish',6],['Norwegian',5],['Swedish',5],['Other',9]],
+  Denmark:    [['Danish',70],['Swedish',5],['Norwegian',4],['Nigerian',4],['Ghanaian',3],['Other',14]],
+  Sweden:     [['Swedish',65],['Danish',5],['Norwegian',4],['Nigerian',4],['Ghanaian',4],['Other',18]],
+  Norway:     [['Norwegian',70],['Swedish',6],['Danish',5],['Nigerian',4],['Other',15]],
+  Finland:    [['Finnish',75],['Swedish',6],['Other',19]],
+  Armenia:    [['Armenian',70],['Brazilian',5],['Other',25]],
+  Azerbaijan: [['Azerbaijani',70],['Brazilian',5],['Georgian',5],['Other',20]],
+  'North Macedonia':[['Macedonian',70],['Serbian',8],['Albanian',8],['Other',14]],
+  Kosovo:     [['Kosovan',70],['Albanian',12],['Serbian',5],['Other',13]],
+  Ireland:    [['Irish',65],['English',15],['Scottish',5],['Nigerian',4],['Other',11]],
+};
+
+function clubCountry(club) {
+  return club.country || LEAGUES[club.league]?.country || 'England';
+}
+
+// Pick a nationality weighted by the club's country, then draw the name from the
+// nationality's own pool — replaces the old fully-independent random pick of name +
+// nationality, which routinely produced mismatched combinations.
+// Real squads get markedly more domestic the lower the division — a National League squad
+// is overwhelmingly English, while a Premier League one is genuinely multinational. Only
+// England has multiple league levels in this game (the other "big" leagues and the european
+// filler clubs are always level 1), so this only ever kicks in for English tiers below the PL —
+// level 1 just uses each country table's own authored home/foreign mix.
+const DOMESTIC_FRACTION_BY_LEVEL = { 2: 0.50, 3: 0.62, 4: 0.75, 5: 0.88 };
+
+function pickNameAndNationality(club) {
+  const country = clubCountry(club);
+  const baseWeights = COUNTRY_NATIONALITY_WEIGHTS[country];
+  let nationality = 'English';
+  if (baseWeights) {
+    const level = LEAGUES[club.league]?.level || 1;
+    const targetFrac = DOMESTIC_FRACTION_BY_LEVEL[level];
+    let weights = baseWeights;
+    if (targetFrac) {
+      const homeNat = baseWeights[0][0];
+      const restTotal = baseWeights.filter(([nat]) => nat !== homeNat).reduce((s, [, w]) => s + w, 0);
+      const homeWeight = restTotal * targetFrac / (1 - targetFrac);
+      weights = baseWeights.map(([nat, w]) => [nat, nat === homeNat ? homeWeight : w]);
+    }
+    nationality = pickWeightedPairs(weights);
+  }
+  const poolKey = NATIONALITY_POOL_KEY[nationality] || 'Other';
+  const pool = NAME_POOLS[poolKey] || NAME_POOLS.Other;
+  return { nationality, firstName: pick(pool.first), lastName: pick(pool.last) };
+}
 
 // Market wages scale sharply with division: a 63-rated player earns ~£5.8k in PL context
 // but only ~£2-3k in League One and £0.9k in League Two. Same ability, different market.
@@ -319,9 +482,21 @@ const LEAGUE_WAGE_MULTS = {
   european:        1.00,
 };
 
-function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league') {
-  const firstName = pick(FIRST_NAMES);
-  const lastName  = pick(LAST_NAMES);
+// Depth tier shifts (and re-widens) the OVR anchor so a squad has real internal spread
+// instead of every player clustering within ~14 points of clubRating regardless of role.
+// 0 = undisputed starter/key player, 1 = rotation starter (today's old default band),
+// 2 = backup, 3 = fringe/academy filler.
+const DEPTH_TIERS = [
+  { shift: 6,   lo: 3, hi: 9 },
+  { shift: 0,   lo: 6, hi: 6 },
+  { shift: -7,  lo: 6, hi: 4 },
+  { shift: -15, lo: 7, hi: 4 },
+];
+
+function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league', opts = {}) {
+  const country = opts.country || LEAGUES[leagueKey]?.country || 'England';
+  const { nationality, firstName, lastName } = pickNameAndNationality({ country, league: leagueKey });
+  const depth = DEPTH_TIERS[Math.min(Math.max(opts.depthTier ?? 1, 0), DEPTH_TIERS.length - 1)];
   const ageAdj = age < 18 ? (age - 18) * 4 : 0; // under-18s are rawer: -4 per year below 18
   const base = clubRating + rand(-5, 5) + ageAdj;
 
@@ -353,17 +528,26 @@ function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league') 
   // OVR = mean of top 4 stats across all attrs
   const top4 = Object.values(attrs).sort((a, b) => b - a).slice(0, 4);
   let rawOvr = Math.round(top4.reduce((s, v) => s + v, 0) / 4);
-  // Anchor to the club's level: no League Two club fields a 75-rated star.
+  // Anchor to the club's level (and depth-tier role): no League Two club fields a
+  // 75-rated star, but a club's 1st-choice players should still clearly outrank its fringe.
   // (Transfermarkt: best L2 player ~£1.5m; outlier rolls were inflating whole-tier values.)
-  const anchor = clubRating + ageAdj;
-  rawOvr = Math.max(anchor - 8, Math.min(anchor + 6, rawOvr));
+  const anchor = clubRating + ageAdj + depth.shift;
+  rawOvr = Math.max(anchor - depth.lo, Math.min(anchor + depth.hi, rawOvr));
   // Soft cap: compress above 87 — 90-rated players should be very rare world-class
   const cappedOvr = rawOvr <= 87 ? rawOvr : 87 + Math.round((rawOvr - 87) * 0.22);
   const ovr = Math.max(38, Math.min(91, cappedOvr));
-  // potGap scales with club quality: lower-league players have lower ceilings
-  const potGap = age < 18
-    ? rand(0, Math.round((42 - age) * 1.1))
-    : rand(0, Math.max(0, Math.round((32 - age) * 0.65)));
+  // potGap = realistic remaining headroom above current ability, banded by age —
+  // not by current quality, so a low-rated teen still has real upside rather than
+  // already being "finished" at a low rating. It tapers through the late 20s and
+  // hits a hard 0 at 30: development is over, only decline is left from here.
+  // Combined with tickPlayerDevelopment's own age cutoff and per-week growth odds,
+  // most players still fall short of fully reaching their potential.
+  const potGap = age >= 30 ? 0
+    : age <= 17 ? rand(10, Math.round((42 - age) * 1.1))
+    : age <= 20 ? rand(6, 22)
+    : age <= 23 ? rand(3, 14)
+    : age <= 26 ? rand(1, 8)
+    : rand(0, 4); // 27-29: fading but not necessarily zero yet
   const pot  = Math.min(93, ovr + potGap);
 
   const value = calcValue(ovr, age);
@@ -384,7 +568,7 @@ function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league') 
     name: `${firstName} ${lastName}`,
     pos,
     age: age || rand(17, 35),
-    nationality: pick(NATIONALITIES),
+    nationality,
     ovr,
     pot,
     attrs,
@@ -424,6 +608,350 @@ function calcValue(ovr, age) {
   return Math.max(0.003, Math.round(base * ageMult * 100) / 100);
 }
 
+// Real players for key squad slots, keyed by club id. Each entry is a compact tuple:
+// [firstName, lastName, position, age, nationality, ovr, pot]. Only ~14-16 notable
+// players per covered club — the rest of the squad is filled by the generator above.
+// Ages/ratings are calibrated as of the 2025-26 season; they age and develop normally
+// from here via the same systems as every other player.
+const REAL_PLAYERS = {
+  man_city: [
+    ["Ederson","Moraes","GK",32,"Brazilian",84,84],
+    ["Ruben","Dias","CB",28,"Portuguese",87,89],
+    ["John","Stones","CB",31,"English",83,83],
+    ["Josko","Gvardiol","CB",23,"Croatian",86,91],
+    ["Nathan","Ake","CB",30,"Dutch",82,82],
+    ["Rico","Lewis","RB",20,"English",80,88],
+    ["Rodrigo","Hernandez","CDM",29,"Spanish",90,91],
+    ["Mateo","Kovacic","CM",31,"Croatian",82,82],
+    ["Matheus","Nunes","CM",27,"Portuguese",81,83],
+    ["Bernardo","Silva","CAM",31,"Portuguese",86,86],
+    ["Phil","Foden","LW",25,"English",87,90],
+    ["Jeremy","Doku","LW",23,"Belgian",85,89],
+    ["Savio","Moreira","RW",21,"Brazilian",82,88],
+    ["Erling","Haaland","ST",25,"Norwegian",91,92],
+    ["Omar","Marmoush","ST",26,"Egyptian",83,85],
+    ["Tijjani","Reijnders","CM",27,"Dutch",84,86],
+  ],
+  arsenal: [
+    ["David","Raya","GK",30,"Spanish",85,85],
+    ["William","Saliba","CB",24,"French",87,90],
+    ["Gabriel","Magalhaes","CB",27,"Brazilian",86,87],
+    ["Jurrien","Timber","RB",24,"Dutch",83,87],
+    ["Riccardo","Calafiori","LB",23,"Italian",83,87],
+    ["Myles","Lewis-Skelly","LB",19,"English",78,88],
+    ["Declan","Rice","CM",26,"English",87,89],
+    ["Martin","Odegaard","CAM",26,"Norwegian",87,89],
+    ["Mikel","Merino","CM",29,"Spanish",82,83],
+    ["Bukayo","Saka","RW",23,"English",88,91],
+    ["Gabriel","Martinelli","LW",24,"Brazilian",83,86],
+    ["Kai","Havertz","ST",26,"German",83,84],
+    ["Viktor","Gyokeres","ST",27,"Swedish",85,86],
+    ["Leandro","Trossard","LW",30,"Belgian",81,81],
+    ["Eberechi","Eze","CAM",27,"English",83,84],
+    ["Noni","Madueke","RW",23,"English",80,85],
+  ],
+  liverpool: [
+    ["Alisson","Becker","GK",33,"Brazilian",85,85],
+    ["Giorgi","Mamardashvili","GK",25,"Georgian",78,83],
+    ["Virgil","van Dijk","CB",34,"Dutch",85,85],
+    ["Ibrahima","Konate","CB",26,"French",85,87],
+    ["Joe","Gomez","CB",28,"English",78,78],
+    ["Milos","Kerkez","LB",21,"Hungarian",82,88],
+    ["Jeremie","Frimpong","RB",24,"Dutch",83,87],
+    ["Ryan","Gravenberch","CM",23,"Dutch",85,89],
+    ["Alexis","Mac Allister","CM",26,"Argentine",85,87],
+    ["Dominik","Szoboszlai","CM",24,"Hungarian",84,87],
+    ["Florian","Wirtz","CAM",22,"German",87,92],
+    ["Mohamed","Salah","RW",33,"Egyptian",89,89],
+    ["Cody","Gakpo","LW",26,"Dutch",83,85],
+    ["Alexander","Isak","ST",25,"Swedish",87,89],
+    ["Hugo","Ekitike","ST",23,"French",80,85],
+    ["Federico","Chiesa","RW",27,"Italian",78,79],
+  ],
+  chelsea: [
+    ["Robert","Sanchez","GK",27,"Spanish",79,81],
+    ["Filip","Jorgensen","GK",23,"Danish",75,80],
+    ["Levi","Colwill","CB",22,"English",81,87],
+    ["Wesley","Fofana","CB",24,"French",80,84],
+    ["Benoit","Badiashile","CB",24,"French",78,82],
+    ["Reece","James","RB",25,"English",82,86],
+    ["Marc","Cucurella","LB",27,"Spanish",81,82],
+    ["Moises","Caicedo","CDM",23,"Ecuadorian",85,89],
+    ["Enzo","Fernandez","CM",24,"Argentine",84,87],
+    ["Romeo","Lavia","CM",21,"Belgian",78,85],
+    ["Cole","Palmer","CAM",23,"English",87,90],
+    ["Pedro","Neto","RW",25,"Portuguese",81,84],
+    ["Jadon","Sancho","LW",25,"English",76,78],
+    ["Nicolas","Jackson","ST",24,"Senegalese",79,83],
+    ["Liam","Delap","ST",22,"English",78,84],
+    ["Joao","Pedro","ST",23,"Brazilian",82,86],
+  ],
+  man_utd: [
+    ["Andre","Onana","GK",29,"Cameroonian",79,80],
+    ["Senne","Lammens","GK",23,"Belgian",74,79],
+    ["Lisandro","Martinez","CB",27,"Argentine",81,82],
+    ["Matthijs","de Ligt","CB",26,"Dutch",81,82],
+    ["Leny","Yoro","CB",19,"French",78,88],
+    ["Noussair","Mazraoui","RB",27,"Moroccan",79,80],
+    ["Diogo","Dalot","RB",26,"Portuguese",80,81],
+    ["Patrick","Dorgu","LB",20,"Danish",76,85],
+    ["Manuel","Ugarte","CDM",24,"Uruguayan",80,83],
+    ["Carlos","Casemiro","CDM",33,"Brazilian",80,80],
+    ["Bruno","Fernandes","CAM",31,"Portuguese",86,86],
+    ["Mason","Mount","CM",26,"English",76,78],
+    ["Amad","Diallo","RW",23,"Ivorian",81,85],
+    ["Bryan","Mbeumo","RW",25,"Cameroonian",83,85],
+    ["Matheus","Cunha","ST",26,"Brazilian",82,83],
+    ["Benjamin","Sesko","ST",22,"Slovenian",80,87],
+  ],
+  tottenham: [
+    ["Guglielmo","Vicario","GK",28,"Italian",82,83],
+    ["Cristian","Romero","CB",27,"Argentine",83,84],
+    ["Micky","van de Ven","CB",24,"Dutch",82,86],
+    ["Kota","Takai","CB",20,"Japanese",74,82],
+    ["Pedro","Porro","RB",25,"Spanish",81,83],
+    ["Destiny","Udogie","LB",22,"Italian",80,86],
+    ["Rodrigo","Bentancur","CM",28,"Uruguayan",80,80],
+    ["Yves","Bissouma","CDM",28,"Malian",79,79],
+    ["James","Maddison","CAM",28,"English",83,83],
+    ["Dejan","Kulusevski","RW",25,"Swedish",82,85],
+    ["Brennan","Johnson","RW",24,"Welsh",79,82],
+    ["Mohammed","Kudus","LW",25,"Ghanaian",80,83],
+    ["Richarlison","Andrade","ST",28,"Brazilian",78,78],
+    ["Dominic","Solanke","ST",27,"English",80,80],
+    ["Randal","Kolo Muani","ST",26,"French",80,82],
+  ],
+  newcastle: [
+    ["Nick","Pope","GK",33,"English",82,82],
+    ["Sven","Botman","CB",25,"Dutch",81,84],
+    ["Fabian","Schar","CB",33,"Swiss",79,79],
+    ["Jamaal","Lascelles","CB",31,"English",73,73],
+    ["Kieran","Trippier","RB",35,"English",77,77],
+    ["Tino","Livramento","RB",22,"English",80,85],
+    ["Dan","Burn","LB",33,"English",76,76],
+    ["Bruno","Guimaraes","CDM",27,"Brazilian",86,87],
+    ["Sandro","Tonali","CM",25,"Italian",84,86],
+    ["Joelinton","Lira","CM",28,"Brazilian",80,80],
+    ["Anthony","Gordon","LW",24,"English",83,86],
+    ["Jacob","Murphy","RW",30,"English",77,77],
+    ["Harvey","Barnes","LW",27,"English",78,79],
+    ["Yoane","Wissa","ST",28,"Congolese",80,80],
+    ["Nick","Woltemade","ST",23,"German",80,85],
+  ],
+  aston_villa: [
+    ["Emiliano","Martinez","GK",33,"Argentine",84,84],
+    ["Pau","Torres","CB",28,"Spanish",81,81],
+    ["Ezri","Konsa","CB",27,"English",79,80],
+    ["Tyrone","Mings","CB",32,"English",76,76],
+    ["Matty","Cash","RB",28,"Polish",78,78],
+    ["Lucas","Digne","LB",32,"French",76,76],
+    ["Boubacar","Kamara","CDM",25,"French",81,83],
+    ["Youri","Tielemans","CM",28,"Belgian",80,80],
+    ["John","McGinn","CM",30,"Scottish",80,80],
+    ["Morgan","Rogers","CAM",23,"English",82,87],
+    ["Emiliano","Buendia","CAM",28,"Argentine",77,77],
+    ["Ollie","Watkins","ST",29,"English",85,85],
+    ["Donyell","Malen","RW",26,"Dutch",80,81],
+    ["Evann","Guessand","ST",23,"Ivorian",77,82],
+  ],
+  west_ham: [
+    ["Alphonse","Areola","GK",32,"French",76,76],
+    ["Max","Kilman","CB",28,"English",78,78],
+    ["Konstantinos","Mavropanos","CB",27,"Greek",77,77],
+    ["Aaron","Wan-Bissaka","RB",27,"English",78,78],
+    ["Emerson","Palmieri","LB",31,"Italian",75,75],
+    ["Edson","Alvarez","CDM",27,"Mexican",80,81],
+    ["Tomas","Soucek","CM",30,"Czech",79,79],
+    ["James","Ward-Prowse","CM",30,"English",78,78],
+    ["Lucas","Paqueta","CAM",27,"Brazilian",81,82],
+    ["Jarrod","Bowen","RW",28,"English",81,81],
+    ["Crysencio","Summerville","LW",23,"Dutch",79,83],
+    ["Niclas","Fullkrug","ST",32,"German",78,78],
+    ["Guido","Rodriguez","CDM",31,"Argentine",77,77],
+  ],
+  brighton: [
+    ["Bart","Verbruggen","GK",23,"Dutch",78,84],
+    ["Jan Paul","van Hecke","CB",25,"Dutch",78,82],
+    ["Lewis","Dunk","CB",33,"English",77,77],
+    ["Igor","Julio","CB",27,"Brazilian",76,76],
+    ["Tariq","Lamptey","RB",25,"English",75,77],
+    ["Pervis","Estupinan","LB",27,"Ecuadorian",79,80],
+    ["Carlos","Baleba","CDM",21,"Cameroonian",82,89],
+    ["Mats","Wieffer","CM",25,"Dutch",79,83],
+    ["Yankuba","Minteh","RW",21,"Gambian",79,86],
+    ["Kaoru","Mitoma","LW",28,"Japanese",81,82],
+    ["Brajan","Gruda","CAM",21,"German",76,83],
+    ["Danny","Welbeck","ST",34,"English",76,76],
+    ["Georginio","Rutter","CF",23,"French",79,84],
+  ],
+  brentford: [
+    ["Caoimhin","Kelleher","GK",27,"Irish",78,80],
+    ["Nathan","Collins","CB",24,"Irish",79,82],
+    ["Sepp","van den Berg","CB",23,"Dutch",77,82],
+    ["Kristoffer","Ajer","CB",27,"Norwegian",76,76],
+    ["Aaron","Hickey","RB",23,"Scottish",76,80],
+    ["Keane","Lewis-Potter","LB",24,"English",76,78],
+    ["Yehor","Yarmoliuk","CM",21,"Ukrainian",75,81],
+    ["Mathias","Jensen","CM",29,"Danish",76,76],
+    ["Mikkel","Damsgaard","CAM",25,"Danish",79,81],
+    ["Kevin","Schade","RW",23,"German",79,84],
+    ["Igor","Thiago","ST",23,"Brazilian",77,82],
+    ["Dango","Ouattara","RW",23,"Burkinabe",76,81],
+  ],
+  wolves: [
+    ["Jose","Sa","GK",32,"Portuguese",78,78],
+    ["Yerson","Mosquera","CB",24,"Colombian",75,79],
+    ["Emmanuel","Agbadou","CB",28,"Ivorian",76,76],
+    ["Ladislav","Krejci","CB",27,"Czech",76,77],
+    ["Matt","Doherty","RB",33,"Irish",73,73],
+    ["Jackson","Tchatchoua","RB",22,"Belgian",74,80],
+    ["Marshall","Munetsi","CM",29,"Zimbabwean",76,76],
+    ["Joao","Gomes","CM",24,"Brazilian",79,83],
+    ["Andre","Trindade","CM",23,"Brazilian",77,82],
+    ["Jean-Ricner","Bellegarde","CAM",26,"French",74,75],
+    ["Hwang","Hee-chan","ST",29,"South Korean",78,78],
+    ["Jorgen","Strand Larsen","ST",25,"Norwegian",78,80],
+    ["Fer","Lopez","LW",20,"Spanish",76,84],
+  ],
+  crystal: [
+    ["Dean","Henderson","GK",28,"English",80,80],
+    ["Marc","Guehi","CB",25,"English",81,84],
+    ["Maxence","Lacroix","CB",25,"French",78,80],
+    ["Chris","Richards","CB",25,"American",76,78],
+    ["Daniel","Munoz","RB",29,"Colombian",79,79],
+    ["Tyrick","Mitchell","LB",26,"English",78,79],
+    ["Will","Hughes","CM",30,"English",75,75],
+    ["Adam","Wharton","CM",21,"English",80,87],
+    ["Daichi","Kamada","CAM",29,"Japanese",76,76],
+    ["Ismaila","Sarr","RW",27,"Senegalese",80,80],
+    ["Jean-Philippe","Mateta","ST",28,"French",80,80],
+    ["Yeremy","Pino","RW",22,"Spanish",76,82],
+    ["Justin","Devenny","CM",21,"English",72,78],
+  ],
+  fulham: [
+    ["Bernd","Leno","GK",33,"German",80,80],
+    ["Calvin","Bassey","CB",25,"Nigerian",77,79],
+    ["Joachim","Andersen","CB",29,"Danish",79,79],
+    ["Issa","Diop","CB",28,"French",75,75],
+    ["Kenny","Tete","RB",30,"Dutch",76,76],
+    ["Antonee","Robinson","LB",28,"American",79,79],
+    ["Joao","Palhinha","CDM",30,"Portuguese",81,81],
+    ["Sander","Berge","CM",27,"Norwegian",77,77],
+    ["Emile","Smith Rowe","CAM",25,"English",77,78],
+    ["Alex","Iwobi","LW",29,"Nigerian",79,79],
+    ["Adama","Traore","RW",29,"Spanish",77,77],
+    ["Raul","Jimenez","ST",34,"Mexican",75,75],
+    ["Rodrigo","Muniz","ST",24,"Brazilian",76,79],
+  ],
+  everton: [
+    ["Jordan","Pickford","GK",32,"English",83,83],
+    ["James","Tarkowski","CB",33,"English",78,78],
+    ["Jarrad","Branthwaite","CB",23,"English",81,87],
+    ["Jake","O'Brien","CB",24,"Irish",75,79],
+    ["Nathan","Patterson","RB",23,"Scottish",74,78],
+    ["Vitaliy","Mykolenko","LB",26,"Ukrainian",77,78],
+    ["Idrissa","Gueye","CDM",36,"Senegalese",73,73],
+    ["James","Garner","CM",24,"English",76,79],
+    ["Iliman","Ndiaye","CAM",25,"Senegalese",79,81],
+    ["Dwight","McNeil","LW",26,"English",79,79],
+    ["Jack","Grealish","LW",30,"English",81,81],
+    ["Beto","Betuncal","ST",27,"Portuguese",76,76],
+    ["Tim","Iroegbunam","CM",22,"English",74,79],
+  ],
+  nottm_forest: [
+    ["Matz","Sels","GK",33,"Belgian",82,82],
+    ["Murillo","Santos","CB",23,"Brazilian",81,86],
+    ["Nikola","Milenkovic","CB",28,"Serbian",80,80],
+    ["Morato","Carmo","CB",23,"Brazilian",74,79],
+    ["Neco","Williams","RB",24,"Welsh",77,79],
+    ["Ola","Aina","RB",28,"Nigerian",78,78],
+    ["Nicolas","Dominguez","CDM",27,"Argentine",79,80],
+    ["Elliot","Anderson","CM",23,"English",78,82],
+    ["Morgan","Gibbs-White","CAM",25,"English",82,84],
+    ["Anthony","Elanga","RW",23,"Swedish",80,84],
+    ["Callum","Hudson-Odoi","LW",25,"English",76,78],
+    ["Chris","Wood","ST",34,"New Zealander",80,80],
+    ["Taiwo","Awoniyi","ST",28,"Nigerian",78,78],
+  ],
+  bournemouth: [
+    ["Djordje","Petrovic","GK",26,"Serbian",78,81],
+    ["Marcos","Senesi","CB",28,"Argentine",78,78],
+    ["James","Hill","CB",23,"English",73,78],
+    ["Bafode","Diakite","CB",24,"French",76,80],
+    ["Adam","Smith","RB",34,"English",73,73],
+    ["Alex","Jimenez","LB",20,"Spanish",75,84],
+    ["Ryan","Christie","CM",30,"Scottish",76,76],
+    ["Alex","Scott","CM",22,"English",76,81],
+    ["Tyler","Adams","CDM",26,"American",76,77],
+    ["David","Brooks","CAM",28,"Welsh",76,76],
+    ["Antoine","Semenyo","RW",25,"Ghanaian",80,82],
+    ["Evanilson","Barbosa","ST",25,"Brazilian",79,82],
+  ],
+  leeds: [
+    ["Lucas","Perri","GK",27,"Brazilian",77,78],
+    ["Pascal","Struijk","CB",26,"Dutch",76,77],
+    ["Joe","Rodon","CB",28,"Welsh",75,75],
+    ["Jayden","Bogle","RB",25,"English",76,77],
+    ["Gustaf","Lagerbielke","CB",24,"Swedish",73,76],
+    ["Gabriel","Gudmundsson","LB",26,"Swedish",74,74],
+    ["Ethan","Ampadu","CDM",24,"Welsh",77,79],
+    ["Ilia","Gruev","CM",24,"Bulgarian",74,75],
+    ["Brenden","Aaronson","CAM",24,"American",75,77],
+    ["Daniel","James","RW",27,"Welsh",76,76],
+    ["Noah","Okafor","LW",25,"Swiss",76,78],
+    ["Joel","Piroe","ST",26,"Dutch",77,77],
+  ],
+  burnley: [
+    ["James","Trafford","GK",22,"English",78,84],
+    ["Maxime","Esteve","CB",23,"French",75,79],
+    ["Axel","Tuanzebe","CB",27,"English",72,72],
+    ["CJ","Egan-Riley","CB",22,"English",73,78],
+    ["Connor","Roberts","RB",30,"Welsh",73,73],
+    ["Quentin","Merlin","LB",23,"French",74,79],
+    ["Josh","Cullen","CM",29,"Irish",75,75],
+    ["Josh","Laurent","CM",30,"English",73,73],
+    ["Jaidon","Anthony","LW",25,"English",74,75],
+    ["Lesley","Ugochukwu","CM",21,"French",75,82],
+    ["Loum","Tchaouna","RW",22,"French",73,80],
+    ["Lyle","Foster","ST",25,"South African",75,77],
+  ],
+  sunderland: [
+    ["Robin","Roefs","GK",23,"Dutch",75,81],
+    ["Dan","Ballard","CB",26,"Northern Irish",75,76],
+    ["Nordi","Mukiele","CB",27,"French",76,76],
+    ["Trai","Hume","RB",23,"Northern Irish",74,77],
+    ["Reinildo","Mandava","LB",31,"Mozambican",73,73],
+    ["Granit","Xhaka","CM",32,"Swiss",80,80],
+    ["Habib","Diarra","CM",21,"Senegalese",76,83],
+    ["Chris","Rigg","CAM",18,"English",74,86],
+    ["Romaine","Mundle","RW",21,"English",71,79],
+    ["Wilson","Isidor","ST",24,"French",74,79],
+    ["Eliezer","Mayenda","ST",20,"French",73,82],
+  ],
+};
+
+// Builds one authored real player: reuses generatePlayer purely as the attrs engine
+// (anchored to the authored OVR so stats feel appropriate for that ability level), then
+// overrides identity/ability fields with the authored real-world values. Potential still
+// follows the existing realistic age-banding — there's no "real" published potential data,
+// so it's calibrated the same way the rest of the game's potential system is.
+function buildRealPlayer(entry, club) {
+  const [first, last, pos, age, nationality, ovr, pot] = entry;
+  const id = `${club.id}_real_${first}${last}`.replace(/[^A-Za-z0-9]/g, '');
+  const p = generatePlayer(id, pos, ovr, age, club.league, { depthTier: 1 });
+  p.firstName = first;
+  p.lastName = last;
+  p.name = `${first} ${last}`;
+  p.nationality = nationality;
+  p.ovr = ovr;
+  p.pot = Math.max(ovr, pot != null ? pot : ovr);
+  p.value = calcValue(p.ovr, p.age);
+  const wageBase = p.ovr >= 60 ? Math.pow(1.155, p.ovr - 60) * 3.8 : Math.pow(0.80, 60 - p.ovr) * 3.8;
+  const leagueMult = LEAGUE_WAGE_MULTS[club.league] ?? 1.0;
+  p.wage = Math.max(0.5, Math.min(350, Math.round(wageBase * leagueMult * (0.85 + rand(0, 20) / 100) * 10) / 10));
+  return p;
+}
+
 const POSITION_SETS = {
   GK:  ['GK'],
   DEF: ['RB','CB','CB','LB'],
@@ -432,7 +960,14 @@ const POSITION_SETS = {
 };
 
 function generateSquad(club) {
-  const players = [];
+  // Real-roster clubs get their authored key players first; the procedural generator
+  // only fills whatever's left of each position group, continuing the depth ranking
+  // (so a real club's fringe/academy slots are still properly fringe-tier, not stars).
+  const real = (REAL_PLAYERS[club.id] || []).map(entry => buildRealPlayer(entry, club));
+  const realPosCounts = {};
+  real.forEach(p => { realPosCounts[p.pos] = (realPosCounts[p.pos] || 0) + 1; });
+
+  const players = [...real];
   let pid = 0;
   const positions = [
     { pos:'GK',  count:3 },
@@ -452,14 +987,36 @@ function generateSquad(club) {
   // Lower-league clubs run leaner squads (~25 players vs ~30 at the top, like real life)
   const lean = club.sqRating < 66;
   const trimmable = new Set(['GK','CB','CM','ST','CF']);
+  const country = clubCountry(club);
   positions.forEach(({ pos, count }) => {
     if (lean && trimmable.has(pos)) count = Math.max(1, count - 1);
-    for (let i = 0; i < count; i++) {
-      const age = pos === 'GK' ? rand(22, 36) : rand(17, 33);
-      players.push(generatePlayer(`${club.id}_p${pid++}`, pos, club.sqRating, age, club.league));
+    const already = realPosCounts[pos] || 0;
+    const remaining = Math.max(0, count - already);
+    for (let i = 0; i < remaining; i++) {
+      const depthTier = Math.min(already + i, 3);
+      // Deeper depth tiers skew younger (development/academy players), not just lower-rated.
+      const age = pos === 'GK' ? rand(22, 36)
+        : depthTier >= 3 ? rand(16, 21)
+        : depthTier === 2 ? rand(18, 30)
+        : rand(19, 33);
+      players.push(generatePlayer(`${club.id}_p${pid++}`, pos, club.sqRating, age, club.league, { country, depthTier }));
     }
   });
   return players;
+}
+
+// Seed tactics for every club so AI clubs start with a real (if simple) setup —
+// main.js's weekly tick picks the actual starting XI and may nudge these over time.
+function seedClubTactics(data) {
+  const formKeys = Object.keys(FORMATIONS);
+  const hash = data.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rep = data.rep || 3;
+  return {
+    formation: formKeys[hash % formKeys.length],
+    mentality: 'balanced',
+    pressing: rep >= 4 ? 'high' : rep >= 2 ? 'medium' : 'low',
+    style: rep >= 4 ? 'possession' : rep >= 3 ? 'balanced' : rep >= 2 ? 'direct' : 'counter',
+  };
 }
 
 function buildClub(data) {
@@ -469,6 +1026,8 @@ function buildClub(data) {
     budget: data.budget,
     wageBudget: data.wage,
     players: generateSquad(data),
+    tactics: seedClubTactics(data),
+    lineup: [],
     form: [],
     results: [],
     tableStats: { played:0, won:0, drawn:0, lost:0, gf:0, ga:0, points:0 },
@@ -783,4 +1342,4 @@ const CLUB_BADGE_FILTER = {
   "swansea": "brightness(0) invert(1)"
 };
 
-window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, generatePlayer, generateFreeAgents, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE, CLUB_BADGE_FILTER };
+window.DATA = { LEAGUES, CLUBS_DATA, FORMATIONS, buildClub, seedClubTactics, generatePlayer, generateFreeAgents, getInitials, calcValue, CLUB_BADGES, CLUB_BADGE_SCALE, CLUB_BADGE_FILTER };

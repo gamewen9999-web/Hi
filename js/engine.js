@@ -21,6 +21,10 @@ const ENGINE = (() => {
     for (const t of types) { r -= t.weight; if (r <= 0) return t; }
     return types[types.length - 1];
   }
+  // Tired players get hurt more often. 1x at 95+ fitness, scaling up to ~7x near empty.
+  function fatigueInjuryMult(fitness) {
+    return 1 + Math.max(0, (95 - (fitness ?? 80)) / 15);
+  }
   function goalsFromXG(xg) {
     // Box-Muller normal distribution centred on xg, variance = xg
     const u1 = Math.random(), u2 = Math.random();
@@ -90,7 +94,19 @@ const ENGINE = (() => {
   }
 
   /* ---- MATCH SIMULATION ---- */
-  function effectiveRating(club) {
+  // Rates a club by its actual starting XI (with OOP penalty applied), not the whole squad —
+  // bench depth shouldn't change how strong a team plays on the day. Falls back to a full-squad
+  // average when no XI is known (e.g. quick previews before a lineup/formation is settled).
+  function effectiveRating(club, xi, slotPositions) {
+    if (xi && xi.length) {
+      const vals = xi.map((id, i) => {
+        const p = club.players.find(x => x.id === id);
+        if (!p) return null;
+        const factor = slotPositions ? oopFactor(p.pos, slotPositions[i]) : 1.0;
+        return (p.ovr || 60) * factor;
+      }).filter(v => v != null);
+      if (vals.length) return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
     if (club.players && club.players.length) {
       const avg = club.players.reduce((s, p) => s + (p.ovr || 60), 0) / club.players.length;
       return Math.round(avg);
@@ -205,7 +221,7 @@ const ENGINE = (() => {
   //   • a string (legacy: treated as mentality)
   //   • an object { mentality, formation, pressing, style, customFormation? }
   // Returns { homeXG, awayXG, hStr } — hStr is used downstream for possession calc.
-  function calcMatchXG(homeClub, awayClub, homeTactics, awayTactics) {
+  function calcMatchXG(homeClub, awayClub, homeTactics, awayTactics, homeXI, awayXI, homeSlotPositions, awaySlotPositions) {
     const hTac = typeof homeTactics === 'string' ? { mentality: homeTactics } : (homeTactics || {});
     const aTac = typeof awayTactics === 'string' ? { mentality: awayTactics } : (awayTactics || {});
 
@@ -216,11 +232,11 @@ const ENGINE = (() => {
     const hStyle = hTac.style     || 'balanced';
     const aStyle = aTac.style     || 'balanced';
 
-    // 1. Base xG from squad ratings + mentality (home gets 1.1× advantage).
+    // 1. Base xG from starting-XI ratings + mentality (home gets 1.1× advantage).
     const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
     const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2  };
-    const hR   = effectiveRating(homeClub);
-    const aR   = effectiveRating(awayClub);
+    const hR   = effectiveRating(homeClub, homeXI, homeSlotPositions);
+    const aR   = effectiveRating(awayClub, awayXI, awaySlotPositions);
     const hAtk = hR * (offMod[hMen] || 1.0) * 1.1;
     const hDef = hR * (defMod[hMen] || 1.0);
     const aAtk = aR * (offMod[aMen] || 1.0);
@@ -362,7 +378,7 @@ const ENGINE = (() => {
     const aXI      = opts.awayXI || null;
     const hSlotPos = opts.homeSlotPositions || null; // e.g. ['GK','CB','CB','RB','LB',...]
     const aSlotPos = opts.awaySlotPositions || null;
-    const { homeXG, awayXG, hStr } = calcMatchXG(homeClub, awayClub, hTac, aTac);
+    const { homeXG, awayXG, hStr } = calcMatchXG(homeClub, awayClub, hTac, aTac, hXI, aXI, hSlotPos, aSlotPos);
     const hStyle = hTac.style || 'balanced';
     const aStyle = aTac.style || 'balanced';
 
@@ -452,8 +468,9 @@ const ENGINE = (() => {
         } else if (r < yellowP) {
           events.push({ min: min+1, type: 'yellow', team, player: tackler });
         }
-        // Bad tackles can injure the target
-        const injP = isSlide ? 0.12 : 0.04;
+        // Bad tackles can injure the target — tired legs are slower to react, so a tired
+        // target is more likely to come off worse from the same tackle.
+        const injP = (isSlide ? 0.12 : 0.04) * (1 + Math.max(0, (90 - (target?.fitness ?? 80)) / 30));
         const targetTeam = tacklerClub === homeClub ? 'away' : 'home';
         const alreadyHurt = events.some(ev => ev.type === 'injury' && ev.player?.id === target?.id);
         if (target && !target.injured && !alreadyHurt && Math.random() < injP) {
@@ -480,10 +497,9 @@ const ENGINE = (() => {
         .filter(p => !p.injured)
         .sort(() => Math.random() - 0.5);
       for (const p of pool) {
-        const fitness  = p.fitness ?? 80;
         const injCount = p.careerInjuries || 0;
-        // base 1.5%; low energy multiplies risk up to 5×; prior injuries add 15% each
-        const fatigueMult = 1 + Math.max(0, (80 - fitness) / 20);
+        // base 1.5%; low fitness multiplies risk up to ~7×; prior injuries add 15% each
+        const fatigueMult = fatigueInjuryMult(p.fitness);
         const historyMult = 1 + injCount * 0.15;
         const chance = 0.015 * fatigueMult * historyMult;
         if (Math.random() < chance) {
@@ -605,19 +621,41 @@ const ENGINE = (() => {
         ev.player.yellowCards = (ev.player.yellowCards||0)+1;
       } else if (ev.type === 'red' && ev.player) {
         ev.player.redCards = (ev.player.redCards||0)+1;
+      } else if (ev.type === 'injury' && ev.player && !ev.player.injured) {
+        // recordResult runs for every fixture (user's match, European, bulk sims) so this
+        // is the one place injuries land on every club's players, not just the user's.
+        const inj = INJURY_TYPES.find(t => t.id === ev.injuryType) || INJURY_TYPES[0];
+        ev.player.injured        = true;
+        ev.player.injuryType     = ev.injuryType;
+        ev.player.injuryWeeks    = rand(inj.minWeeks, inj.maxWeeks);
+        ev.player.careerInjuries = (ev.player.careerInjuries || 0) + 1;
+        ev.player.fitness        = Math.max(5, (ev.player.fitness ?? 80) - 40);
       }
     });
   }
 
+  // Bulk/background fixture sim (AI-vs-AI matches the user never watches) — uses each
+  // club's own persisted lineup/tactics when available so bench depth and OOP penalties
+  // matter here too, instead of silently falling back to player-array order.
+  function simBulkFixture(gameState, f) {
+    const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
+    if (!h || !a) { f.played = true; return; }
+    const slotPos = (club) => (DATA.FORMATIONS[club.tactics?.formation] || DATA.FORMATIONS['4-3-3']).positions.map(p => p.pos);
+    const hXI = h.lineup && h.lineup.length === 11 ? h.lineup : null;
+    const aXI = a.lineup && a.lineup.length === 11 ? a.lineup : null;
+    const r = simulateMatch(h, a, {
+      homeXI: hXI, awayXI: aXI,
+      homeTactics: h.tactics, awayTactics: a.tactics,
+      homeSlotPositions: hXI ? slotPos(h) : null,
+      awaySlotPositions: aXI ? slotPos(a) : null,
+    });
+    f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
+    recordResult(gameState, f, r.homeScore, r.awayScore);
+  }
+
   function simulateSameDay(gameState, referenceFixture) {
     const ds = referenceFixture.date.toDateString();
-    const simF = (f) => {
-      const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
-      if (!h || !a) { f.played = true; return; }
-      const r = simulateMatch(h, a);
-      f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-      recordResult(gameState, f, r.homeScore, r.awayScore);
-    };
+    const simF = (f) => simBulkFixture(gameState, f);
     gameState.fixtures
       .filter(f => !f.played && f.date.toDateString() === ds && f.id !== referenceFixture.id)
       .forEach(simF);
@@ -635,13 +673,7 @@ const ENGINE = (() => {
   function continueToNextFixture(gameState) {
     const next = getNextFixture(gameState);
     if (!next) return;
-    const simF = (f) => {
-      const h = gameState.clubs[f.home], a = gameState.clubs[f.away];
-      if (!h || !a) { f.played = true; return; }
-      const r = simulateMatch(h, a);
-      f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-      recordResult(gameState, f, r.homeScore, r.awayScore);
-    };
+    const simF = (f) => simBulkFixture(gameState, f);
     gameState.fixtures
       .filter(f => !f.played && f.date < next.date)
       .forEach(simF);
@@ -893,7 +925,7 @@ const ENGINE = (() => {
 
   return {
     generateSchedule, simulateMatch, calcMatchXG, recordResult,
-    simulateSameDay, continueToNextFixture,
+    simulateSameDay, continueToNextFixture, simBulkFixture,
     getNextFixture, getLeagueTable, getMyPosition,
     setupEuropean, setupCups,
     getTransferMarket, isTransferWindowOpen,
