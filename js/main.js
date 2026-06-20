@@ -2043,7 +2043,10 @@ const APP = (() => {
   function initFinances(club) {
     const rep = Math.max(1, Math.min(5, Math.round(club.rep)));
     return {
-      balance:        FIN_INIT_BAL[rep] || 10,
+      // Each club's own authored budget (already differentiated club-by-club in CLUBS_DATA),
+      // not a flat per-reputation-star amount — a small National League club and the
+      // division's best-funded side shouldn't start with an identical balance.
+      balance:        club.budget != null ? club.budget : (FIN_INIT_BAL[rep] || 10),
       boardConfidence:50,
       sponsor:        _genSponsor(club, 50, false),
       sleeve:         null,   // sleeve sponsor slot — sold by the manager
@@ -2186,12 +2189,16 @@ const APP = (() => {
     }
   }
 
-  function tickFinances(weeks) {
+  // isGameweek: whether this tick corresponds to an actual league fixture round being
+  // broadcast — TV equal-share money is real-world tied to league gameweeks, not to cup/
+  // European fixtures (which carry their own separate prize-money model) or to preseason
+  // weeks where no league football is being played at all.
+  function tickFinances(weeks, isGameweek = true) {
     const fin = gameState.finances;
     if (!fin) return;
     const club = gameState.myClub;
     const rep  = Math.max(1, Math.min(5, Math.round(club.rep)));
-    const weeklyTV      = FIN_TV_LEAGUE[leagueLevel(club)] / 52;
+    const weeklyTV      = isGameweek ? FIN_TV_LEAGUE[leagueLevel(club)] / 52 : 0;
     const weeklyKitDeal = (fin.kitDeal?.annualValue || 0) / 52;
     const weeklySponsor = (fin.sponsor?.weeklyValue || 0) + (fin.sleeve?.weeklyValue || 0) + (fin.stadium?.weeklyValue || 0) + weeklyKitDeal;
     const weeklyMerch   = weeklyMerchandise(club);
@@ -5634,9 +5641,12 @@ const APP = (() => {
       if (tac.lineup.length < 11) tac.lineup = autoPickXI(gameState.myClub, activeTacticForm());
     }
 
-    // Finance tick: ~1 week between matches, plus matchday income for home games
-    tickFinances(1);
-    if (fixture.type !== 'european' && fixture.type !== 'cup') awardMatchdayIncome(ui.match.myIsHome);
+    // Finance tick: ~1 week between matches, plus matchday income for home league games.
+    // TV money only counts this as a gameweek for actual league fixtures — cup/European
+    // ties have their own prize money and shouldn't also draw league TV equal-share.
+    const isLeagueFixture = fixture.type !== 'european' && fixture.type !== 'cup';
+    tickFinances(1, isLeagueFixture);
+    if (isLeagueFixture) awardMatchdayIncome(ui.match.myIsHome);
     checkWageBudget();
 
     // Board confidence: per-match bump/dip weighted by opponent strength
@@ -6384,7 +6394,7 @@ const APP = (() => {
 
   function advancePreseasonWeek() {
     gameState.currentDate = new Date(gameState.currentDate.getTime() + 7 * 86400000);
-    tickFinances(1);
+    tickFinances(1, false); // no league gameweek during preseason — no TV money
     tickInjuries();
     tickPlayerDevelopment(1);
     tickAIClubs();
