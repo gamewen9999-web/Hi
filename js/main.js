@@ -848,11 +848,15 @@ const APP = (() => {
 
     const swapMode = !!ui.swapMode;
     const swapSel  = ui.swapSel || null;
+    const pickSlot = ui.pickSlot != null ? ui.pickSlot : null;
 
     const pitchPlayers = activeForm.positions.map((slot, i) => {
       const p = club.players.find(x => x.id === lineup[i]);
-      if (!p) return `<div class="pitch-player pitch-empty" data-slot="${i}" style="left:${slot.x}%;top:${slot.y}%">
-        <div class="pitch-player-circle empty-slot">${slot.pos}</div></div>`;
+      if (!p) {
+        const selEmpty = pickSlot === i ? ' swap-sel' : '';
+        return `<div class="pitch-player pitch-empty${selEmpty}" data-slot="${i}" style="left:${slot.x}%;top:${slot.y}%">
+          <div class="pitch-player-circle empty-slot">${slot.pos}</div></div>`;
+      }
       const sel = swapSel === p.id ? ' swap-sel' : '';
       const dim = swapMode && swapSel && swapSel !== p.id ? ' swap-dim' : '';
       const oopF  = ENGINE.oopFactor(p.pos, slot.pos);
@@ -880,7 +884,16 @@ const APP = (() => {
     }).join('');
 
     const innerTab = ui.tacticsTab || 'tactics';
-    const swapHint = swapMode ? (swapSel ? 'Pick who to swap with' : 'Pick a player') : '';
+    const pickActive = pickSlot != null;
+    const barActive = swapMode || pickActive;
+    const swapHint = pickActive ? 'Pick a player to fill this slot'
+      : swapMode ? (swapSel ? 'Pick who to swap with' : 'Pick a player') : '';
+    // Bench strip only shows up while picking a destination/source player — the pitch
+    // itself has no player list, so clicking an empty circle needs somewhere to choose
+    // a name from without forcing a trip to the Squad tab.
+    const benchStrip = barActive
+      ? `<div class="bench-row">${benchChips || '<span class="bench-empty">No bench players available</span>'}</div>`
+      : '';
 
     m.innerHTML = `
       <div class="view-header"><div><div class="view-title">Tactics</div><div class="view-subtitle">${activeForm.name} · ${cap(tac.mentality)} · ${pressLabels[tac.pressing]} · ${styleLabels[tac.style]}</div></div></div>
@@ -889,7 +902,7 @@ const APP = (() => {
           <div class="pitch-swap-bar">
             <span class="pitch-swap-hint">${swapHint}</span>
             <button id="pitch-auto-xi-btn" class="btn-secondary">Auto XI</button>
-            <button id="pitch-swap-btn" class="${swapMode ? 'btn-warning' : 'btn-secondary'}">${swapMode ? 'Cancel' : 'Swap'}</button>
+            <button id="pitch-swap-btn" class="${barActive ? 'btn-warning' : 'btn-secondary'}">${barActive ? 'Cancel' : 'Swap'}</button>
           </div>
           <div class="tactics-pitch">
             <div class="tactics-pitch-lines">
@@ -898,6 +911,7 @@ const APP = (() => {
             </div>
             ${pitchPlayers}
           </div>
+          ${benchStrip}
         </div>
         <div class="tactics-options-panel">
           <div class="tac-inner-tab-row">
@@ -916,16 +930,30 @@ const APP = (() => {
     // Auto XI button
     $('pitch-auto-xi-btn').addEventListener('click', () => {
       tac.excluded = []; tac.lineup = autoPickXI(club, activeTacticForm(), []);
-      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
+      ui.swapSel = null; ui.swapMode = false; ui.pickSlot = null;
+      recalcSqRating(club); renderTactics(m);
     });
 
-    // Swap button
+    // Swap/Cancel button — also backs out of "pick a player for this slot" mode
     $('pitch-swap-btn').addEventListener('click', () => {
+      if (pickActive) { ui.pickSlot = null; ui.swapMode = false; renderTactics(m); return; }
       ui.swapMode = !ui.swapMode; ui.swapSel = null; renderTactics(m);
     });
 
+    // Move pid into the empty slot at lineup index `slot`, vacating wherever pid
+    // currently sits in the lineup (if anywhere) so they don't end up duplicated.
+    function fillSlot(slot, pid) {
+      const oldIdx = tac.lineup.indexOf(pid);
+      if (oldIdx >= 0) tac.lineup[oldIdx] = null;
+      tac.lineup[slot] = pid;
+      tac.excluded = (tac.excluded || []).filter(id => id !== pid);
+      ui.swapSel = null; ui.swapMode = false; ui.pickSlot = null;
+      recalcSqRating(club); renderTactics(m);
+    }
+
     // Click handler for any player (pitch or bench)
     function handlePlayerClick(pid) {
+      if (ui.pickSlot != null) { fillSlot(ui.pickSlot, pid); return; }
       if (!ui.swapMode && lineupSet.has(pid)) {
         // clicking on-field player outside swap mode → enter swap mode and select
         ui.swapMode = true; ui.swapSel = pid; renderTactics(m); return;
@@ -939,16 +967,21 @@ const APP = (() => {
       if (idxA >= 0 && idxB >= 0) { tac.lineup[idxA] = pid; tac.lineup[idxB] = ui.swapSel; }
       else if (idxA >= 0) { tac.lineup[idxA] = pid; tac.excluded = (tac.excluded||[]).filter(id=>id!==pid); }
       else if (idxB >= 0) { tac.lineup[idxB] = ui.swapSel; tac.excluded = (tac.excluded||[]).filter(id=>id!==ui.swapSel); }
-      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
+      ui.swapSel = null; ui.swapMode = false;
+      recalcSqRating(club); renderTactics(m);
     }
 
     m.querySelectorAll('.pitch-player:not(.pitch-empty)').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
+    m.querySelectorAll('.bench-chip').forEach(el => el.addEventListener('click', () => handlePlayerClick(el.dataset.id)));
     m.querySelectorAll('.pitch-empty').forEach(el => el.addEventListener('click', () => {
-      if (!ui.swapSel) return;
       const slot = parseInt(el.dataset.slot);
-      tac.lineup[slot] = ui.swapSel;
-      tac.excluded = (tac.excluded||[]).filter(id => id !== ui.swapSel);
-      ui.swapSel = null; ui.swapMode = false; renderTactics(m);
+      if (ui.swapSel) { fillSlot(slot, ui.swapSel); return; }
+      // No player selected yet — clicking the empty circle itself now starts
+      // "pick a player for this slot" instead of requiring Auto XI + a manual
+      // swap afterwards. Clicking the same slot again cancels the pick.
+      ui.pickSlot = ui.pickSlot === slot ? null : slot;
+      ui.swapMode = ui.pickSlot != null;
+      renderTactics(m);
     }));
 
     if (innerTab === 'tactics') renderTacticsInner($('tac-inner-body'), m, club, tac, activeForm, lineup, lineupSet, excluded, slotMap);
@@ -1135,7 +1168,7 @@ const APP = (() => {
       if (!gameState.savedCustomFormations) gameState.savedCustomFormations = [];
       gameState.savedCustomFormations.push(cf);
       tac.customFormation = cf; tac.formation = 'custom'; tac.lineup = autoPickXI(club, cf);
-      renderTactics(m);
+      recalcSqRating(club); renderTactics(m);
     });
   }
 
@@ -1251,7 +1284,7 @@ const APP = (() => {
           tac.excluded = (tac.excluded || []).filter(id => id !== pid);
         }
         ui.swapSel = null; ui.swapMode = false;
-        renderTactics(m); return;
+        recalcSqRating(club); renderTactics(m); return;
       }
 
       // No swap pending — open player modal
@@ -1262,7 +1295,7 @@ const APP = (() => {
       tac.excluded = [];
       tac.lineup   = autoPickXI(club, activeTacticForm(), []);
       ui.swapSel = null; ui.swapMode = false;
-      renderTactics(m);
+      recalcSqRating(club); renderTactics(m);
     });
   }
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -5876,6 +5909,7 @@ const APP = (() => {
       const injured = new Set(gameState.myClub.players.filter(p => p.injured).map(p => p.id));
       tac.lineup = tac.lineup.filter(id => !injured.has(id));
       if (tac.lineup.length < 11) tac.lineup = autoPickXI(gameState.myClub, activeTacticForm());
+      recalcSqRating(gameState.myClub);
     }
 
     // Finance tick: ~1 week between matches, plus matchday income for home league games.
