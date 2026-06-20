@@ -5745,20 +5745,72 @@ const APP = (() => {
     });
   }
 
-  // Weekly potential-driven growth: a player with room left in their potential
-  // (pot > ovr) has a small per-week chance to gain +1 OVR, weighted younger.
+  // Stats relevant to each position group — growth nudges one of these rather than
+  // every attribute, mirroring how generatePlayer differentiates stat ranges by role.
+  const DEV_ATTRS = {
+    GK:  ['gkReflexes', 'gkPositioning', 'passing', 'physical'],
+    DEF: ['defending', 'physical', 'passing', 'pace'],
+    MID: ['passing', 'dribbling', 'defending', 'physical'],
+    ATT: ['shooting', 'dribbling', 'pace', 'passing'],
+  };
+  // OVR is derived the same way generatePlayer first set it — mean of the top 4
+  // attrs — so it only moves when a gain actually lands among a player's best
+  // stats, and is hard-capped at their potential ceiling.
+  function recomputeOvrFromAttrs(p) {
+    const top4 = Object.values(p.attrs).sort((a, b) => b - a).slice(0, 4);
+    const fromAttrs = Math.round(top4.reduce((s, v) => s + v, 0) / 4);
+    // Authored real-player OVRs don't always exactly match their (independently
+    // randomized) attrs — never let growth read as a regression because of that.
+    return Math.min(p.pot, Math.max(p.ovr, fromAttrs));
+  }
+
+  // Weekly potential-driven growth: players gain individual stats over time
+  // (weighted toward their weakest relevant attribute, so raw teens round out
+  // and established pros sharpen their strengths) and OVR just follows from
+  // that — a much slower, textured climb than a flat OVR dice roll, and one
+  // that tapers hard with age instead of stopping abruptly at 30. Most players
+  // still won't fully reach their listed potential before growth ends; the rare
+  // "breakout" roll for highly-rated teens is what occasionally lets a wonderkid
+  // explode rather than everyone climbing at the same slow trickle.
   // Runs for every club (so the league stays balanced over multiple seasons),
   // but only the user's club gets a toast — nobody needs an AI youth update.
   function tickPlayerDevelopment(weeks) {
     const myClub = gameState.myClub;
+    const growChanceFor = (age) => age <= 17 ? 0.05 : age <= 19 ? 0.042 : age <= 21 ? 0.035
+      : age <= 23 ? 0.026 : age <= 25 ? 0.018 : age <= 27 ? 0.011 : 0.006; // 28-29
     Object.values(gameState.clubs).forEach(club => {
       let grew = false;
       club.players.forEach(p => {
-        if (p.ovr >= p.pot || p.age >= 30) return; // development is over past 30 — decline only from here
-        const growChance = p.age <= 21 ? 0.06 : p.age <= 25 ? 0.045 : 0.02; // <= 29
+        if (p.ovr >= p.pot || p.age >= 30 || !p.attrs) return; // development is over past 30 — decline only from here
+        const pool = DEV_ATTRS[group(p.pos)] || Object.keys(p.attrs);
+        const chance = growChanceFor(p.age);
         for (let i = 0; i < weeks && p.ovr < p.pot; i++) {
-          if (Math.random() < growChance) {
-            p.ovr++;
+          // Rare breakout: a teen prospect with real headroom occasionally jumps
+          // several points at once instead of the usual one-stat trickle.
+          if (p.age <= 19 && (p.pot - p.ovr) >= 8 && Math.random() < 0.012) {
+            const burst = rand(2, 4);
+            for (let b = 0; b < burst; b++) {
+              const cands = pool.filter(k => p.attrs[k] < 99);
+              if (!cands.length) break;
+              const k = cands[Math.floor(Math.random() * cands.length)];
+              p.attrs[k] = Math.min(99, p.attrs[k] + 1);
+            }
+            const newOvr = recomputeOvrFromAttrs(p);
+            if (newOvr !== p.ovr) {
+              p.ovr = newOvr; p.value = DATA.calcValue(p.ovr, p.age); grew = true;
+              if (club === myClub) notify(`${p.name} has burst onto the scene — now ${p.ovr} OVR!`, 'success');
+            }
+            continue;
+          }
+          if (Math.random() >= chance) continue;
+          const cands = pool.filter(k => p.attrs[k] < 99).sort((a, b) => p.attrs[a] - p.attrs[b]);
+          if (!cands.length) continue;
+          // Usually the weakest relevant stat, occasionally the next-weakest.
+          const k = cands[Math.random() < 0.75 ? 0 : Math.min(1, cands.length - 1)];
+          p.attrs[k] = Math.min(99, p.attrs[k] + 1);
+          const newOvr = recomputeOvrFromAttrs(p);
+          if (newOvr !== p.ovr) {
+            p.ovr = newOvr;
             p.value = DATA.calcValue(p.ovr, p.age);
             grew = true;
             if (club === myClub) notify(`${p.name} has improved to ${p.ovr} OVR!`, 'success');
