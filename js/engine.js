@@ -304,6 +304,10 @@ const ENGINE = (() => {
   function oopFactor(playerPos, slotPos) {
     if (!slotPos || playerPos === slotPos) return 1.0;
     if (playerPos === 'GK' || slotPos === 'GK') return 0.35;
+    // CF never appears as a slot in any formation (every front line is tagged ST) —
+    // treat it as a true synonym of ST rather than penalizing it for a gap in the
+    // formation data.
+    if ((playerPos === 'CF' && slotPos === 'ST') || (playerPos === 'ST' && slotPos === 'CF')) return 1.0;
     const pd = POS_DEPTH[playerPos] ?? 5;
     const sd = POS_DEPTH[slotPos] ?? 5;
     const dist = Math.abs(pd - sd);
@@ -878,21 +882,34 @@ const ENGINE = (() => {
   /* ---- TRANSFER NEGOTIATION ----
      A negotiation has two phases: agree a fee with the selling club, then
      agree personal terms (wages) with the player. Fees are in £m, wages £k/wk. */
+
+  // Real fees aren't all clean £100k multiples — round more coarsely as the fee
+  // gets bigger (big deals are reported in round figures; cheap ones aren't),
+  // and let fees genuinely land under £100k for low-value players instead of
+  // being floored there.
+  function roundFee(v) {
+    if (v <= 0) return 0;
+    if (v >= 50) return Math.round(v);            // ≥£50m -> nearest £1m
+    if (v >= 10) return Math.round(v * 4) / 4;     // £10-50m -> nearest £250k
+    if (v >= 1)  return Math.round(v * 20) / 20;   // £1-10m -> nearest £50k
+    return Math.round(v * 100) / 100;              // <£1m -> nearest £10k
+  }
+
   function startNegotiation(player, sellerClub) {
     const youngBoost = player.age <= 23 ? 0.06 : 0;
     const potBoost = (player.pot - player.ovr) >= 8 ? 0.04 : 0;
     const repBoost = (sellerClub.rep >= 4 && player.ovr >= 80) ? 0.04 : 0;
     // Club asks 12-20% above market; won't accept below 82-93% of value
-    const asking = Math.round(player.value * (1.12 + rand(0, 8) / 100) * 10) / 10;
+    const asking = roundFee(player.value * (1.12 + rand(0, 8) / 100));
     const minMult = Math.max(0.82, 0.87 + youngBoost + potBoost + repBoost + rand(0, 6) / 100);
-    const minFee = Math.max(0.1, Math.round(player.value * minMult * 10) / 10);
+    const minFee = Math.max(0.01, roundFee(player.value * minMult));
     // Player wants 20-40% more than current wage
-    const wageDemand = Math.max(0.4, Math.round(player.wage * (1.25 + rand(3, 20) / 100) * 100) / 100);
+    const wageDemand = Math.max(0.05, Math.round(player.wage * (1.25 + rand(3, 20) / 100) * 100) / 100);
     return {
       asking,
       minFee,
       wageDemand,
-      minWage: Math.max(0.4, Math.round(wageDemand * 0.92 * 100) / 100),
+      minWage: Math.max(0.05, Math.round(wageDemand * 0.92 * 100) / 100),
       feeRound: 0,
       wageRound: 0,
     };
@@ -904,7 +921,7 @@ const ENGINE = (() => {
     if (neg.feeRound >= 4) return { decision: 'walk' };
     if (offer >= neg.minFee * 0.78) {
       const midpoint = (neg.asking + neg.minFee) / 2;
-      const counter = Math.max(neg.minFee, Math.round(((offer + midpoint) / 2) * 10) / 10);
+      const counter = Math.max(neg.minFee, roundFee((offer + midpoint) / 2));
       neg.asking = counter;
       return { decision: 'counter', counter };
     }
@@ -929,7 +946,7 @@ const ENGINE = (() => {
     getNextFixture, getLeagueTable, getMyPosition,
     setupEuropean, setupCups,
     getTransferMarket, isTransferWindowOpen,
-    startNegotiation, evaluateFeeOffer, evaluateWageOffer,
+    startNegotiation, evaluateFeeOffer, evaluateWageOffer, roundFee,
     buildCustomFormation, deriveAITactics, FORM_ATTRS, PRESS_PRESET, STYLE_ATK,
     oopFactor, posGroup, INJURY_TYPES,
   };

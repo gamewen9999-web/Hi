@@ -2259,6 +2259,10 @@ select, input, button, textarea { font-family: inherit; }
 .neg-field select { width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-size: 14px; font-weight: 600; font-family: inherit; outline: none; cursor: pointer; }
 .neg-field select:focus { border-color: var(--accent); }
 .neg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.neg-waiting { text-align: center; padding: 18px 0 10px; }
+.neg-waiting-icon { font-size: 28px; margin-bottom: 8px; }
+.neg-waiting-text { font-size: 14px; font-weight: 600; color: var(--text); }
+.neg-waiting-sub { font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px; }
 
 /* Progress bar */
 .progress-track { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }

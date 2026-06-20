@@ -356,6 +356,7 @@ const APP = (() => {
       preseason: true,
       sacked: false,
       pendingOffers: [],
+      negotiations: [],
       tactics: { formation: '4-3-3', mentality: 'balanced', pressing: 'medium', style: 'balanced', lineup: [], customFormation: null, excluded: [] },
       scouts: [],
       scoutBlocked: {},
@@ -505,12 +506,14 @@ const APP = (() => {
   /* ---------------------------------------------
      LINEUP
      --------------------------------------------- */
+  // Mirrors the same depth-based adjacency the match engine uses for the live OOP
+  // penalty (ENGINE.oopFactor), so auto-picked lineups prefer the player the engine
+  // will actually rate highest in that slot — e.g. a CDM beats a CAM for a CDM-ish
+  // slot, instead of both scoring identically just for sharing the "MID" bucket.
   function posScore(playerPos, slotPos) {
     const gp = group(playerPos), gs = group(slotPos);
     if (gp === 'GK' || gs === 'GK') return gp === gs ? 100 : 0;
-    if (playerPos === slotPos) return 100;
-    if (gp === gs) return 60;
-    return 20;
+    return Math.round(ENGINE.oopFactor(playerPos, slotPos) * 100);
   }
   function activeTacticForm() {
     const tac = gameState.tactics;
@@ -598,7 +601,8 @@ const APP = (() => {
               ? `<button class="btn-secondary btn-lg" id="sr-menu" style="flex:1">Return to Main Menu</button>`
               : canStart
                 ? `<button class="btn-primary btn-lg" id="dash-begin-season" style="flex:1">▶ Begin Season ${gameState.season}</button>`
-                : `<button class="btn-secondary btn-lg" id="dash-advance-week" style="flex:1">⏩ Advance One Week</button>`
+                : `<button class="btn-secondary btn-lg" id="dash-advance-week" style="flex:1">⏩ Advance One Week</button>
+                   <button class="btn-secondary btn-lg" id="dash-advance-day" style="flex:0 0 auto">+1 Day</button>`
             }
           </div>
         </div>
@@ -612,6 +616,7 @@ const APP = (() => {
         m.querySelector('#dash-begin-season').addEventListener('click', beginSeasonFromPreseason);
       } else {
         m.querySelector('#dash-advance-week').addEventListener('click', advancePreseasonWeek);
+        m.querySelector('#dash-advance-day').addEventListener('click', advanceOneDay);
       }
       return;
     }
@@ -636,7 +641,8 @@ const APP = (() => {
           <div class="nm-actions">${gameState.sacked
             ? `<button class="btn-secondary btn-lg" style="flex:1;opacity:0.5;cursor:not-allowed" disabled>▶ Play Match</button>
                <button class="btn-gold btn-lg" id="dash-return-menu">Return to Menu</button>`
-            : `<button class="btn-primary btn-lg" id="dash-play" style="flex:1">▶ Play Match</button>`
+            : `<button class="btn-primary btn-lg" id="dash-play" style="flex:1">▶ Play Match</button>
+               ${next.date.getTime() > gameState.currentDate.getTime() ? `<button class="btn-secondary btn-lg" id="dash-advance-day" style="flex:0 0 auto">+1 Day</button>` : ''}`
           }</div>
         </div>`;
     } else {
@@ -719,6 +725,7 @@ const APP = (() => {
       </div>`;
 
     if (next && !gameState.sacked) $('dash-play')?.addEventListener('click', playNextMatch);
+    if (next && !gameState.sacked) $('dash-advance-day')?.addEventListener('click', advanceOneDay);
     if (gameState.sacked) $('dash-return-menu')?.addEventListener('click', () => { setAutoSaveRunning(false); gameState = null; showScreen('start'); });
     $('dash-continue-season')?.addEventListener('click', startNextSeason);
 
@@ -1388,15 +1395,17 @@ const APP = (() => {
     const _st = m.scrollTop;
     const open = ENGINE.isTransferWindowOpen(gameState);
     const club = gameState.myClub;
-    const offers = gameState.pendingOffers || [];
+    const offers = (gameState.negotiations || []).filter(n => n.type === 'incoming');
+    const preContracts = gameState.preContracts || [];
+    const pendingNote = !open && preContracts.length ? ` · ${preContracts.length} pre-contract${preContracts.length > 1 ? 's' : ''} pending` : '';
     const banner = open
       ? `<div class="tw-banner"><span class="tw-dot open-dot"></span> Transfer window is OPEN</div>`
-      : `<div class="tw-banner closed"><span class="tw-dot closed-dot"></span> Transfer window is closed (opens Jul–Aug & Jan)</div>`;
+      : `<div class="tw-banner closed"><span class="tw-dot closed-dot"></span> Transfer window is closed (opens Jul–Aug & Jan)${pendingNote}</div>`;
 
-    const preContracts = gameState.preContracts || [];
     let listHtml;
     if (ui.transferTab === 'market') {
-      let market = gameState.market || [];
+      const preSignedIds = new Set(preContracts.map(pc => pc.playerData.id));
+      let market = (gameState.market || []).filter(p => !preSignedIds.has(p.id));
       if (ui.transferSearch) market = market.filter(p => p.name.toLowerCase().includes(ui.transferSearch));
       if (ui.transferPos !== 'all') market = market.filter(p => group(p.pos) === ui.transferPos);
       listHtml = market.slice(0, 250).map(p => `
@@ -1421,25 +1430,14 @@ const APP = (() => {
           <span class="tp-ovr">${p.ovr}</span><span class="tp-value">Free</span>
         </div>`).join('')
         : emptyList('No free agents available right now.');
-    } else if (ui.transferTab === 'presign') {
-      listHtml = preContracts.length
-        ? preContracts.map(pc => `
-        <div class="transfer-player-item">
-          <span class="tp-pos pos-badge ${posClass(pc.playerData.pos)}">${pc.playerData.pos}</span>
-          <div class="tp-info">
-            <div class="tp-name">${esc(pc.playerData.name)} <span class="tp-tag listed">Pre-contract</span></div>
-            <div class="tp-club">Age ${pc.playerData.age} · ${esc(pc.sellerName || 'Free Agent')} · Fee: ${pc.agreedFee > 0 ? money(pc.agreedFee) : 'Free'} · ${money(pc.agreedWage/1000)}/wk</div>
-          </div>
-          <span class="tp-ovr">${pc.playerData.ovr}</span>
-          <span class="tp-value text-accent">Activates next window</span>
-          <button class="btn-sm btn-secondary presign-cancel" data-pcid="${pc.id}">Cancel</button>
-        </div>`).join('')
-        : emptyList('No pre-contracts signed. During a closed window, pre-sign players from the transfer market to lock them in for the next window.');
     } else if (ui.transferTab === 'offers') {
       if (!offers.length) {
         listHtml = emptyList(open ? 'No offers yet. List players for sale and wait for clubs to bid.' : 'Transfer window is closed — no incoming offers.');
       } else {
-        listHtml = offers.map(o => `
+        listHtml = offers.map(o => {
+          const waiting = o.awaiting === 'club';
+          const daysLeft = waiting ? Math.max(1, Math.ceil((o.responseDue - gameState.currentDate) / DAY_MS)) : 0;
+          return `
           <div class="transfer-player-item offer-item">
             <span class="tp-pos pos-badge ${posClass(o.playerPos)}">${o.playerPos}</span>
             <div class="tp-info">
@@ -1447,13 +1445,43 @@ const APP = (() => {
               <div class="tp-club">${esc(o.clubName)} · ${o.date} · Market value ${money(o.marketValue || o.listingPrice)}</div>
             </div>
             <span class="tp-ovr">${o.playerOvr}</span>
-            <span class="tp-value text-gold">${money(o.fee)}</span>
-            <div class="offer-actions">
-              <button class="btn-primary btn-sm offer-accept" data-oid="${o.id}">Accept</button>
-              <button class="btn-secondary btn-sm offer-counter" data-oid="${o.id}">Counter</button>
-              <button class="btn-secondary btn-sm offer-reject" data-oid="${o.id}">Reject</button>
+            <span class="tp-value text-gold">${money(o.lastCounter || o.fee)}</span>
+            ${waiting
+              ? `<div class="offer-actions"><span class="neg-waiting-sub">Awaiting their response · ${daysLeft}d</span></div>`
+              : `<div class="offer-actions">
+                  <button class="btn-primary btn-sm offer-accept" data-oid="${o.id}">Accept</button>
+                  <button class="btn-secondary btn-sm offer-counter" data-oid="${o.id}">Counter</button>
+                  <button class="btn-secondary btn-sm offer-reject" data-oid="${o.id}">Reject</button>
+                </div>`}
+          </div>`;
+        }).join('');
+      }
+    } else if (ui.transferTab === 'negotiations') {
+      const negs = gameState.negotiations || [];
+      if (!negs.length) {
+        listHtml = emptyList('No negotiations in progress. Bid on a player on the Market, or list one of your own for sale.');
+      } else {
+        listHtml = negs.map(N => {
+          const isOut = N.type === 'outgoing';
+          const waiting = N.awaiting === 'club';
+          const daysLeft = waiting ? Math.max(1, Math.ceil((N.responseDue - gameState.currentDate) / DAY_MS)) : 0;
+          const key = N.stage === 'terms' ? money(N.agreedFee) : money(isOut ? (N.lastFee ?? N.neg.asking) : (N.lastCounter ?? N.fee));
+          let statusHtml;
+          if (N.stage === 'outbid') statusHtml = `<span class="tp-tag exp">Outbid!</span> <button class="btn-secondary btn-sm neg-dismiss" data-nid="${N.id}">Dismiss</button>`;
+          else if (waiting) statusHtml = `<span class="neg-waiting-sub">Responds in ${daysLeft}d${N.rival ? ' · rival interest' : ''}</span>`;
+          else statusHtml = `<button class="btn-primary btn-sm neg-respond" data-nid="${N.id}" data-type="${N.type}">Respond</button>`;
+          return `
+          <div class="transfer-player-item offer-item">
+            <span class="tp-pos pos-badge ${posClass(N.playerPos)}">${N.playerPos}</span>
+            <div class="tp-info">
+              <div class="tp-name">${esc(N.playerName)} <span class="tp-tag listed">${isOut ? 'Buying' : 'Selling'}</span></div>
+              <div class="tp-club">${esc(N.clubName)} · ${N.stage === 'terms' ? 'Personal terms' : 'Fee negotiation'}</div>
             </div>
-          </div>`).join('');
+            <span class="tp-ovr">${N.playerOvr}</span>
+            <span class="tp-value text-gold">${key}</span>
+            <div class="offer-actions">${statusHtml}</div>
+          </div>`;
+        }).join('');
       }
     } else {
       // My Squad — sell tab
@@ -1475,9 +1503,10 @@ const APP = (() => {
       }).join('');
     }
 
-    const offerBadge = offers.length ? ` <span class="offer-badge">${offers.length}</span>` : '';
-    const preBadge = preContracts.length ? ` <span class="offer-badge">${preContracts.length}</span>` : '';
-    const subtitles = { market: 'Transfer Market', sell: 'My Squad', free: 'Free Agents', presign: 'Pre-contracts', offers: 'Incoming Offers' };
+    const offerBadge = offers.some(o => o.awaiting === 'user') ? ` <span class="offer-badge">${offers.filter(o => o.awaiting === 'user').length}</span>` : '';
+    const negCount = (gameState.negotiations || []).length;
+    const negBadge = negCount ? ` <span class="offer-badge">${negCount}</span>` : '';
+    const subtitles = { market: 'Transfer Market', sell: 'My Squad', free: 'Free Agents', offers: 'Incoming Offers', negotiations: 'Negotiations' };
     m.innerHTML = `
       <div class="view-header"><div><div class="view-title">Transfers</div><div class="view-subtitle">${subtitles[ui.transferTab] || ''}</div></div></div>
       ${banner}
@@ -1486,9 +1515,9 @@ const APP = (() => {
           <div class="transfer-tabs">
             <button class="transfer-tab ${ui.transferTab==='market'?'active':''}" data-t="market">Market</button>
             <button class="transfer-tab ${ui.transferTab==='free'?'active':''}" data-t="free">Free Agents</button>
-            <button class="transfer-tab ${ui.transferTab==='presign'?'active':''}" data-t="presign">Pre-sign${preBadge}</button>
             <button class="transfer-tab ${ui.transferTab==='sell'?'active':''}" data-t="sell">My Squad</button>
             <button class="transfer-tab ${ui.transferTab==='offers'?'active':''}" data-t="offers">Offers${offerBadge}</button>
+            <button class="transfer-tab ${ui.transferTab==='negotiations'?'active':''}" data-t="negotiations">Negotiations${negBadge}</button>
           </div>
           ${ui.transferTab === 'market' ? `
           <div class="transfer-search">
@@ -1498,7 +1527,7 @@ const APP = (() => {
             </select>
           </div>` : ''}
           ${ui.transferTab === 'free' ? `<div class="tp-hint">Free agents can be signed <b>any time</b> — no transfer window needed.</div>` : ''}
-          ${ui.transferTab === 'presign' ? `<div class="tp-hint">Pre-contracts agreed now <b>activate at the next transfer window</b>. Click market players during a closed window to pre-sign them.</div>` : ''}
+          ${!open && ui.transferTab === 'market' ? `<div class="tp-hint">Transfer window closed — offers made now are <b>pre-contracts</b> that activate at the next window.</div>` : ''}
           ${ui.transferTab === 'sell' ? `<div class="tp-hint">Click <b>List</b> to put a player on the market. Clubs will make offers over time.</div>` : ''}
           <div class="transfer-player-list">${listHtml}</div>
         </div>
@@ -1541,6 +1570,14 @@ const APP = (() => {
     m.querySelectorAll('.offer-accept').forEach(el => el.addEventListener('click', () => acceptOffer(el.dataset.oid)));
     m.querySelectorAll('.offer-counter').forEach(el => el.addEventListener('click', () => showCounterModal(el.dataset.oid)));
     m.querySelectorAll('.offer-reject').forEach(el => el.addEventListener('click', () => rejectOffer(el.dataset.oid)));
+    m.querySelectorAll('.neg-respond').forEach(el => el.addEventListener('click', () => {
+      if (el.dataset.type === 'outgoing') { ui.activeNegotiationId = el.dataset.nid; renderNegotiation(); }
+      else { ui.transferTab = 'offers'; renderTransfers(m); }
+    }));
+    m.querySelectorAll('.neg-dismiss').forEach(el => el.addEventListener('click', () => {
+      gameState.negotiations = (gameState.negotiations || []).filter(n => n.id !== el.dataset.nid);
+      renderTransfers(m);
+    }));
     m.scrollTop = _st;
   }
   function emptyList(text) { return `<div class="empty-state"><div class="empty-state-text">${text}</div></div>`; }
@@ -1686,10 +1723,19 @@ const APP = (() => {
     return !!(gameState.transferBans && gameState.transferBans[playerId]);
   }
 
+  function hasPreContract(playerId) {
+    return (gameState.preContracts || []).some(pc => pc.playerData.id === playerId);
+  }
+
+  const DAY_MS = 86400000;
+  function addDays(date, n) { return new Date(date.getTime() + n * DAY_MS); }
+
   function openNegotiation(playerId, clubId) {
-    if (!ENGINE.isTransferWindowOpen(gameState)) return notify('Transfer window is closed.', 'error');
     if (clubId === gameState.myClubId) return;
     if (isTransferBanned(playerId)) return notify('That player won\'t entertain a move to your club again this season.', 'warning');
+    if (hasPreContract(playerId)) return notify('You\'ve already agreed a pre-contract with that player.', 'warning');
+    const existing = (gameState.negotiations || []).find(n => n.type === 'outgoing' && n.playerId === playerId);
+    if (existing) { ui.activeNegotiationId = existing.id; return renderNegotiation(); }
     const seller = gameState.clubs[clubId];
     const p = seller && seller.players.find(x => x.id === playerId);
     if (!p) return;
@@ -1701,22 +1747,34 @@ const APP = (() => {
       markTransferBan(playerId);
       return notify(`${p.name} ${reason}`, 'warning');
     }
-    ui.negotiation = {
-      playerId, clubId, stage: 'fee',
+    // Closed window → this negotiation settles as a pre-contract that activates
+    // at the next window instead of moving the player immediately.
+    const preSign = !ENGINE.isTransferWindowOpen(gameState);
+    const openMsg = preSign
+      ? `Transfer window is closed — ${seller.name} will only agree a pre-contract for the next window.`
+      : `${seller.name} are willing to listen to offers for ${p.name}.`;
+    const N = {
+      id: `neg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      type: 'outgoing', playerId, clubId, clubName: seller.name,
+      playerName: p.name, playerPos: p.pos, playerOvr: p.ovr,
+      stage: 'fee', awaiting: 'user', responseDue: null, preSign,
       neg: ENGINE.startNegotiation(p, seller),
-      agreedFee: null, agreedWage: null, lastFee: null, lastWage: null,
-      msg: `${seller.name} are willing to listen to offers for ${p.name}.`,
-      tone: 'info',
-      msgLog: [{ text: `${seller.name} are willing to listen to offers for ${p.name}.`, tone: 'info' }],
+      agreedFee: null, agreedWage: null, lastFee: null, lastWage: null, contractLength: 3,
+      rival: null, lastTouch: new Date(gameState.currentDate),
+      msgLog: [{ text: openMsg, tone: 'info' }],
     };
+    if (!gameState.negotiations) gameState.negotiations = [];
+    gameState.negotiations.push(N);
+    ui.activeNegotiationId = N.id;
     renderNegotiation();
   }
 
   function renderNegotiation() {
-    const N = ui.negotiation; if (!N) return;
+    const N = (gameState.negotiations || []).find(n => n.id === ui.activeNegotiationId);
+    if (!N) return;
     const seller = gameState.clubs[N.clubId];
     const p = seller.players.find(x => x.id === N.playerId);
-    if (!p) { ui.negotiation = null; return closeModal(); }
+    if (!p) { ui.activeNegotiationId = null; return closeModal(); }
     const neg = N.neg;
     const budget = gameState.finances?.balance ?? gameState.myClub.budget;
     const steps = ['fee', 'terms', 'done'];
@@ -1726,7 +1784,19 @@ const APP = (() => {
     ).join('<span class="neg-arrow">›</span>');
 
     let body = '';
-    if (N.stage === 'fee') {
+    if (N.stage === 'outbid') {
+      body = `<div class="neg-waiting"><div class="neg-waiting-icon">✗</div><div class="neg-waiting-text">You were outbid for ${esc(p.name)}.</div></div>
+        <div class="neg-actions"><button class="btn-secondary" id="neg-close">Close</button></div>`;
+    } else if (N.awaiting === 'club') {
+      const daysLeft = Math.max(1, Math.ceil((N.responseDue - gameState.currentDate) / DAY_MS));
+      body = `
+        <div class="neg-waiting">
+          <div class="neg-waiting-icon">⏳</div>
+          <div class="neg-waiting-text">Awaiting ${esc(seller.name)}'s response${N.rival ? ` — <b>${esc(N.rival.clubName)}</b> are also in talks` : ''}</div>
+          <div class="neg-waiting-sub">Expect a reply in ${daysLeft} day${daysLeft === 1 ? '' : 's'}</div>
+        </div>
+        <div class="neg-actions"><button class="btn-secondary" id="neg-close">Close</button></div>`;
+    } else if (N.stage === 'fee') {
       body = `
         <div class="neg-row"><span>Market value</span><span class="fw-700 text-gold">${money(p.value)}</span></div>
         <div class="neg-row"><span>Club asking price</span><span class="fw-700">${money(neg.asking)}</span></div>
@@ -1762,81 +1832,109 @@ const APP = (() => {
           <span class="neg-ovr">${p.ovr}</span>
         </div>
         <div class="neg-steps">${stepBar}</div>
-        <div class="neg-log">${(N.msgLog || [{ text: N.msg, tone: N.tone }]).map((m, i, arr) =>
+        <div class="neg-log">${(N.msgLog || []).map((m, i, arr) =>
           `<div class="neg-msg ${m.tone}${i === arr.length - 1 ? ' latest' : ''}">${m.text}</div>`
         ).join('')}</div>
         ${body}
       </div>`);
 
-    const submit = $('neg-submit'), walk = $('neg-walk'), input = $('neg-input');
-    if (walk) walk.addEventListener('click', () => { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); notify('You walked away from the table.', 'info'); });
+    const submit = $('neg-submit'), walk = $('neg-walk'), input = $('neg-input'), closeBtn = $('neg-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => {
+      if (N.stage === 'outbid') gameState.negotiations = gameState.negotiations.filter(n => n.id !== N.id);
+      ui.activeNegotiationId = null; closeModal();
+    });
+    if (walk) walk.addEventListener('click', () => {
+      markTransferBan(N.playerId);
+      gameState.negotiations = gameState.negotiations.filter(n => n.id !== N.id);
+      ui.activeNegotiationId = null; closeModal(); notify('You walked away from the table.', 'info');
+    });
     const contractSel = $('neg-contract-len');
-    if (contractSel) contractSel.addEventListener('change', () => { ui.negotiation.contractLength = parseInt(contractSel.value); });
+    if (contractSel) contractSel.addEventListener('change', () => { N.contractLength = parseInt(contractSel.value); });
     if (submit) submit.addEventListener('click', () => {
       const val = parseFloat(input.value);
       if (isNaN(val) || val < 0) return notify('Enter a valid amount.', 'error');
-      if (contractSel) ui.negotiation.contractLength = parseInt(contractSel.value);
-      if (N.stage === 'fee') handleFeeOffer(val); else handleWageOffer(val);
+      if (contractSel) N.contractLength = parseInt(contractSel.value);
+      if (N.stage === 'fee') handleFeeOffer(N, val); else handleWageOffer(N, val);
     });
     if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && submit) submit.click(); });
     const log = document.querySelector('.neg-log');
     if (log) log.scrollTop = log.scrollHeight;
   }
 
-  function handleFeeOffer(offer) {
-    const N = ui.negotiation, seller = gameState.clubs[N.clubId];
+  // Submitting a bid/wage offer no longer resolves inline — it just records the
+  // offer and puts the ball in the seller's court for a few days, mirroring how
+  // an incoming offer already worked. resolveNegotiationResponses() (called from
+  // every time-advance path) is what actually runs evaluateFeeOffer/evaluateWageOffer
+  // once responseDue arrives.
+  function handleFeeOffer(N, offer) {
+    const seller = gameState.clubs[N.clubId];
     N.lastFee = offer;
     N.msgLog.push({ text: `You bid ${money(offer)}.`, tone: 'you' });
     const balance = gameState.finances?.balance ?? gameState.myClub.budget;
     if (offer > balance) {
-      N.msg = `Not enough funds — club balance is ${money(balance)}.`; N.tone = 'bad';
-      N.msgLog.push({ text: N.msg, tone: N.tone });
+      N.msgLog.push({ text: `Not enough funds — club balance is ${money(balance)}.`, tone: 'bad' });
       return renderNegotiation();
     }
-    const r = ENGINE.evaluateFeeOffer(N.neg, offer);
-    if (r.decision === 'accept') { N.agreedFee = offer; N.stage = 'terms'; N.msg = `${seller.name} accept ${money(offer)}! Now agree personal terms with the player.`; N.tone = 'good'; }
-    else if (r.decision === 'counter') { N.msg = `${seller.name} reject ${money(offer)}, but would accept ${money(r.counter)}.`; N.tone = 'info'; }
-    else if (r.decision === 'reject') { N.msg = `${seller.name} dismiss your ${money(offer)} bid as far too low.`; N.tone = 'bad'; }
-    else { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); return notify(`${seller.name} have ended negotiations.`, 'warning'); }
-    N.msgLog.push({ text: N.msg, tone: N.tone });
+    N.awaiting = 'club';
+    N.responseDue = addDays(gameState.currentDate, rand(3, 10));
+    N.lastTouch = new Date(gameState.currentDate);
+    N.msgLog.push({ text: `${seller.name} will consider your offer.`, tone: 'info' });
+    notify(`Bid of ${money(offer)} sent to ${seller.name} — expect a response within the week.`, 'info');
     renderNegotiation();
   }
 
-  function handleWageOffer(offer) {
-    const N = ui.negotiation, seller = gameState.clubs[N.clubId];
+  function handleWageOffer(N, offer) {
+    const seller = gameState.clubs[N.clubId];
     const p = seller.players.find(x => x.id === N.playerId);
     N.lastWage = offer;
     N.msgLog.push({ text: `You offer ${money(offer / 1000)}/wk.`, tone: 'you' });
-    const r = ENGINE.evaluateWageOffer(N.neg, offer);
-    if (r.decision === 'accept') { N.agreedWage = offer; return completeTransfer(); }
-    else if (r.decision === 'counter') { N.msg = `${p.name} rejects ${money(offer / 1000)}/wk but would sign for ${money(N.neg.wageDemand / 1000)}/wk.`; N.tone = 'info'; }
-    else if (r.decision === 'reject') { N.msg = `${p.name} is insulted by an offer of just ${money(offer / 1000)}/wk.`; N.tone = 'bad'; }
-    else { markTransferBan(N.playerId); ui.negotiation = null; closeModal(); return notify(`${p.name} rejected your contract terms.`, 'warning'); }
-    N.msgLog.push({ text: N.msg, tone: N.tone });
+    N.awaiting = 'club';
+    N.responseDue = addDays(gameState.currentDate, rand(3, 10));
+    N.lastTouch = new Date(gameState.currentDate);
+    N.msgLog.push({ text: `${p.name} will think it over.`, tone: 'info' });
+    notify(`Contract offer sent to ${p.name} — expect a response within the week.`, 'info');
     renderNegotiation();
   }
 
-  function completeTransfer() {
-    const N = ui.negotiation; if (!N) return;
+  function completeTransfer(N) {
     const seller = gameState.clubs[N.clubId];
     const p = seller.players.find(x => x.id === N.playerId);
-    if (!p) { ui.negotiation = null; return closeModal(); }
+    if (!p) { gameState.negotiations = gameState.negotiations.filter(n => n.id !== N.id); return; }
     const balanceNow = gameState.finances?.balance ?? gameState.myClub.budget;
-    if (N.agreedFee > balanceNow) { ui.negotiation = null; closeModal(); return notify(`Not enough funds — balance is ${money(balanceNow)}.`, 'error'); }
-    seller.players = seller.players.filter(x => x.id !== N.playerId);
-    p.wage = N.agreedWage;
-    p.contract = N.contractLength || 3;
-    gameState.myClub.players.push(p);
-    recalcSqRating(gameState.myClub);
-    recalcSqRating(seller);
-    if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance - N.agreedFee) * 10) / 10;
-    else gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
-    recordTransferExpense(N.agreedFee);
-    gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
-    gameState.transferLog.unshift({ in: true, name: p.name, fee: N.agreedFee });
-    notify(`Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
-    ui.negotiation = null;
-    closeModal();
+    if (N.agreedFee > balanceNow) {
+      gameState.negotiations = gameState.negotiations.filter(n => n.id !== N.id);
+      if (ui.activeNegotiationId === N.id) { ui.activeNegotiationId = null; closeModal(); }
+      return notify(`Not enough funds to complete the ${p.name} deal — balance is ${money(balanceNow)}.`, 'error');
+    }
+    if (N.preSign) {
+      if (!gameState.preContracts) gameState.preContracts = [];
+      gameState.preContracts.push({
+        id: `pre_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        playerData: { ...p },
+        sellerClubId: N.clubId,
+        sellerName: seller.name,
+        agreedFee: N.agreedFee,
+        agreedWage: N.agreedWage,
+        agreedYears: N.contractLength || 3,
+      });
+      gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
+      notify(`Pre-contract agreed with ${p.name} — joins on ${money(N.agreedWage / 1000)}/wk when the window opens.`, 'success');
+    } else {
+      seller.players = seller.players.filter(x => x.id !== N.playerId);
+      p.wage = N.agreedWage;
+      p.contract = N.contractLength || 3;
+      gameState.myClub.players.push(p);
+      recalcSqRating(gameState.myClub);
+      recalcSqRating(seller);
+      if (gameState.finances) gameState.finances.balance = Math.round((gameState.finances.balance - N.agreedFee) * 10) / 10;
+      else gameState.myClub.budget = Math.round((gameState.myClub.budget - N.agreedFee) * 10) / 10;
+      recordTransferExpense(N.agreedFee);
+      gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
+      gameState.transferLog.unshift({ in: true, name: p.name, fee: N.agreedFee });
+      notify(`Signed ${p.name} for ${money(N.agreedFee)} on ${money(N.agreedWage / 1000)}/wk!`, 'success');
+    }
+    gameState.negotiations = gameState.negotiations.filter(n => n.id !== N.id);
+    if (ui.activeNegotiationId === N.id) { ui.activeNegotiationId = null; closeModal(); }
     updateSidebar();
     renderTransfers($('main-content'));
   }
@@ -1851,7 +1949,7 @@ const APP = (() => {
         <p class="text-muted" style="margin-bottom:16px">Market value: <span class="text-gold fw-700">${money(p.value)}</span></p>
         <div class="neg-field" style="margin-bottom:18px">
           <label>Asking price (£m)</label>
-          <input id="listing-price-input" type="number" step="0.5" min="0.1" value="${defaultPrice}">
+          <input id="listing-price-input" type="number" step="${p.value < 0.5 ? '0.01' : '0.1'}" min="0.01" value="${defaultPrice}">
         </div>
         <p class="text-muted" style="font-size:12px;margin-bottom:18px">Clubs will make offers over time. Higher prices may take longer to attract bids.</p>
         <div class="pm-actions" style="justify-content:center">
@@ -1863,7 +1961,7 @@ const APP = (() => {
     $('listing-confirm').addEventListener('click', () => {
       const price = parseFloat($('listing-price-input').value);
       if (isNaN(price) || price <= 0) return notify('Enter a valid asking price.', 'error');
-      listForSale(playerId, Math.round(price * 10) / 10);
+      listForSale(playerId, ENGINE.roundFee(price));
       closeModal();
     });
   }
@@ -1880,18 +1978,18 @@ const APP = (() => {
     const p = gameState.myClub.players.find(x => x.id === playerId);
     if (!p) return;
     p.listingPrice = null;
-    // Remove any pending offers for this player
-    gameState.pendingOffers = (gameState.pendingOffers || []).filter(o => o.playerId !== playerId);
+    // Remove any pending incoming offers for this player
+    gameState.negotiations = (gameState.negotiations || []).filter(n => !(n.type === 'incoming' && n.playerId === playerId));
     notify(`${p.name} removed from transfer list.`, 'info');
     renderTransfers($('main-content'));
   }
 
-  function acceptOffer(offerId) {
-    const offers = gameState.pendingOffers || [];
-    const o = offers.find(x => x.id === offerId);
-    if (!o) return;
+  // Actually moves the player to the buying club and settles the money — shared by
+  // a direct Accept click and by resolveNegotiationResponses() once a counter the
+  // AI club is willing to meet comes back.
+  function completeIncomingSale(o) {
     const idx = gameState.myClub.players.findIndex(x => x.id === o.playerId);
-    if (idx < 0) return notify('Player no longer in squad.', 'error');
+    if (idx < 0) { gameState.negotiations = (gameState.negotiations || []).filter(n => n.id !== o.id); return notify('Player no longer in squad.', 'error'); }
     if (gameState.myClub.players.length <= 16) return notify('Squad too small to sell more players.', 'error');
     const p = gameState.myClub.players[idx];
     gameState.myClub.players.splice(idx, 1);
@@ -1912,23 +2010,29 @@ const APP = (() => {
       recalcSqRating(buyer);
     }
     gameState.transferLog.unshift({ in: false, name: o.playerName, fee: o.fee });
-    // Clear all offers for this player
-    gameState.pendingOffers = offers.filter(x => x.playerId !== o.playerId);
-    notify(`${o.playerName} sold to ${o.clubShort} for ${money(o.fee)}!`, 'success');
+    // Clear every other negotiation for this player too (e.g. a rival club's competing offer)
+    gameState.negotiations = (gameState.negotiations || []).filter(n => n.playerId !== o.playerId);
+    notify(`${o.playerName} sold to ${buyer ? buyer.name : o.clubName} for ${money(o.fee)}!`, 'success');
     updateSidebar();
     renderTransfers($('main-content'));
   }
 
+  function acceptOffer(offerId) {
+    const o = (gameState.negotiations || []).find(x => x.id === offerId);
+    if (!o) return;
+    completeIncomingSale(o);
+  }
+
   function rejectOffer(offerId) {
-    gameState.pendingOffers = (gameState.pendingOffers || []).filter(o => o.id !== offerId);
+    gameState.negotiations = (gameState.negotiations || []).filter(o => o.id !== offerId);
     notify('Offer rejected.', 'info');
     renderTransfers($('main-content'));
   }
 
   function showCounterModal(offerId) {
-    const o = (gameState.pendingOffers || []).find(x => x.id === offerId);
+    const o = (gameState.negotiations || []).find(x => x.id === offerId);
     if (!o) return;
-    const suggested = Math.round(o.listingPrice * 10) / 10;
+    const suggested = ENGINE.roundFee(o.listingPrice);
     showModal(`
       <div style="text-align:center">
         <h2 style="margin-bottom:4px">Counter Offer</h2>
@@ -1940,7 +2044,7 @@ const APP = (() => {
         </div>
         <div class="neg-field" style="margin-bottom:18px">
           <label>Your counter (£m)</label>
-          <input id="counter-price-input" type="number" step="0.5" min="0.1" value="${suggested}">
+          <input id="counter-price-input" type="number" step="${o.listingPrice < 0.5 ? '0.01' : '0.1'}" min="0.01" value="${suggested}">
         </div>
         <div class="pm-actions" style="justify-content:center">
           <button class="btn-secondary" id="counter-cancel">Cancel</button>
@@ -1951,27 +2055,26 @@ const APP = (() => {
     $('counter-submit').addEventListener('click', () => {
       const counter = parseFloat($('counter-price-input').value);
       if (isNaN(counter) || counter <= 0) return notify('Enter a valid price.', 'error');
-      counterOffer(offerId, Math.round(counter * 10) / 10);
+      counterOffer(offerId, ENGINE.roundFee(counter));
       closeModal();
     });
   }
 
+  // The AI club's actual accept/reject of this counter is decided later by
+  // resolveNegotiationResponses() once responseDue arrives — no more instant
+  // capitulate-or-walk in the same click.
   function counterOffer(offerId, counterFee) {
-    const offers = gameState.pendingOffers || [];
-    const o = offers.find(x => x.id === offerId);
+    const o = (gameState.negotiations || []).find(x => x.id === offerId);
     if (!o) return;
-    const maxWilling = o.maxWilling || (o.marketValue || o.listingPrice) * 1.15;
     if (counterFee <= o.fee) {
-      return notify(`${o.clubShort} won't accept less than their bid of ${money(o.fee)}.`, 'error');
+      return notify(`${o.clubName} won't accept less than their bid of ${money(o.fee)}.`, 'error');
     }
-    if (counterFee <= maxWilling) {
-      o.fee = counterFee;
-      acceptOffer(offerId);
-    } else {
-      gameState.pendingOffers = offers.filter(x => x.id !== offerId);
-      notify(`${o.clubShort} rejected your ${money(counterFee)} counter — they walked away.`, 'warning');
-      renderTransfers($('main-content'));
-    }
+    o.lastCounter = counterFee;
+    o.awaiting = 'club';
+    o.responseDue = addDays(gameState.currentDate, rand(3, 10));
+    o.lastTouch = new Date(gameState.currentDate);
+    notify(`Counter of ${money(counterFee)} sent to ${o.clubName} — expect a response within the week.`, 'info');
+    renderTransfers($('main-content'));
   }
 
   /* ---------------------------------------------
@@ -3151,6 +3254,7 @@ const APP = (() => {
 
   function showMarketPlayerModal(playerId, clubId) {
     if (isTransferBanned(playerId)) return notify('That player won\'t entertain a move to your club again this season.', 'warning');
+    if (hasPreContract(playerId)) return notify('You\'ve already agreed a pre-contract with that player.', 'warning');
     const seller = gameState.clubs[clubId];
     if (!seller) return;
     const mkt = (gameState.market || []).find(x => x.id === playerId && x.clubId === clubId);
@@ -3718,11 +3822,13 @@ const APP = (() => {
     const contracts = gameState.preContracts || [];
     if (!contracts.length) return;
     const activated = [];
+    const remaining = [];
     contracts.forEach(pc => {
       const seller = pc.sellerClubId ? gameState.clubs[pc.sellerClubId] : null;
       const balance = gameState.finances?.balance ?? gameState.myClub.budget;
       if (pc.agreedFee > balance) {
-        notify(`Can't complete pre-contract for ${pc.playerData.name} — insufficient funds.`, 'error');
+        notify(`Can't complete pre-contract for ${pc.playerData.name} — insufficient funds. Will retry next window.`, 'error');
+        remaining.push(pc);
         return;
       }
       if (seller) seller.players = seller.players.filter(x => x.id !== pc.playerData.id);
@@ -3737,7 +3843,7 @@ const APP = (() => {
       gameState.transferLog.unshift({ in: true, name: p.name, fee: pc.agreedFee });
       activated.push(p.name);
     });
-    gameState.preContracts = [];
+    gameState.preContracts = remaining;
     if (activated.length) notify(`Pre-contract${activated.length > 1 ? 's' : ''} activated: ${activated.join(', ')} joined the club!`, 'success');
   }
 
@@ -3748,34 +3854,155 @@ const APP = (() => {
     const myId = gameState.myClubId;
     const listed = gameState.myClub.players.filter(p => p.listingPrice != null);
     if (!listed.length) return;
-    if (!gameState.pendingOffers) gameState.pendingOffers = [];
+    if (!gameState.negotiations) gameState.negotiations = [];
     const aiClubs = Object.values(gameState.clubs).filter(c => c.id !== myId);
     listed.forEach(p => {
       if (Math.random() > 0.30) return;
       // Bid relative to market value (not listing price), 75-100% of market value
       const frac = 0.75 + Math.random() * 0.25;
-      const fee = Math.max(0.1, Math.round(p.value * frac * 10) / 10);
-      const affordable = aiClubs.filter(c => c.budget >= fee * 0.7);
+      const fee = Math.max(0.01, ENGINE.roundFee(p.value * frac));
+      // Don't let the same club bid twice while an offer from them is already outstanding —
+      // but a second, different club bidding on the same player is exactly how an incoming
+      // bidding war emerges now that offers sit around for days instead of resolving instantly.
+      const alreadyBidding = new Set(gameState.negotiations.filter(n => n.type === 'incoming' && n.playerId === p.id).map(n => n.clubId));
+      const affordable = aiClubs.filter(c => c.budget >= fee * 0.7 && !alreadyBidding.has(c.id));
       if (!affordable.length) return;
       const bidder = affordable[Math.floor(Math.random() * affordable.length)];
       // Club's max they'll pay: market value * 1.1-1.2 (for counter negotiations)
-      const maxWilling = Math.round(p.value * (1.10 + Math.random() * 0.10) * 10) / 10;
-      gameState.pendingOffers.push({
-        id: `${Date.now()}_${Math.random()}`,
+      const maxWilling = ENGINE.roundFee(p.value * (1.10 + Math.random() * 0.10));
+      gameState.negotiations.push({
+        id: `neg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        type: 'incoming', stage: 'fee', awaiting: 'user', responseDue: null,
         playerId: p.id,
         playerName: p.name,
         playerPos: p.pos,
         playerOvr: p.ovr,
         clubId: bidder.id,
         clubName: bidder.name,
-        clubShort: bidder.name || bidder.name,
+        clubShort: bidder.name,
         fee,
         maxWilling,
+        lastCounter: null,
         marketValue: p.value,
         listingPrice: p.listingPrice,
+        rival: null,
+        lastTouch: new Date(gameState.currentDate),
         date: fmtDate(gameState.currentDate),
       });
-      notify(`${bidder.name || bidder.name} have bid ${money(fee)} for ${p.name}!`, 'info');
+      notify(`${bidder.name} have bid ${money(fee)} for ${p.name}!`, 'info');
+    });
+  }
+
+  // Resolves any negotiation whose responseDue has arrived (or that's been left
+  // untouched too long) into an actual outcome. Cheap enough to run on every date
+  // advance — a match-day jump of several days, a preseason week, or the explicit
+  // Advance 1 Day control — so a response due mid-jump is never silently skipped.
+  function resolveNegotiationResponses() {
+    const now = gameState.currentDate;
+    const all = gameState.negotiations || [];
+    const keep = [];
+    all.forEach(N => {
+      if (N.stage === 'outbid') { keep.push(N); return; } // sits until the user dismisses it
+      if (N.awaiting === 'user' && (now - new Date(N.lastTouch)) > 21 * DAY_MS) {
+        if (N.type === 'outgoing') { markTransferBan(N.playerId); notify(`Talks with ${N.clubName} over ${N.playerName} lapsed.`, 'warning'); }
+        else notify(`${N.clubName}'s offer for ${N.playerName} expired.`, 'info');
+        return; // drop — stale, nobody acted on it
+      }
+      if (N.awaiting !== 'club' || !N.responseDue || N.responseDue > now) { keep.push(N); return; }
+      if (N.type === 'outgoing') resolveOutgoingResponse(N, keep);
+      else resolveIncomingResponse(N, keep);
+    });
+    gameState.negotiations = keep;
+  }
+
+  function resolveOutgoingResponse(N, keep) {
+    const seller = gameState.clubs[N.clubId];
+    const p = seller && seller.players.find(x => x.id === N.playerId);
+    if (!seller || !p) return; // player moved on elsewhere (e.g. an AI-AI sale) — just drop the deal
+    if (N.stage === 'fee') {
+      const r = ENGINE.evaluateFeeOffer(N.neg, N.lastFee);
+      if (r.decision === 'accept') {
+        N.agreedFee = N.lastFee; N.stage = 'terms'; N.awaiting = 'user'; N.lastTouch = new Date(gameState.currentDate);
+        N.msgLog.push({ text: `${seller.name} accept ${money(N.lastFee)}! Now agree personal terms with the player.`, tone: 'good' });
+        notify(`${seller.name} accepted your ${money(N.lastFee)} bid for ${p.name}!`, 'success');
+        keep.push(N);
+      } else if (r.decision === 'counter') {
+        N.awaiting = 'user'; N.lastTouch = new Date(gameState.currentDate);
+        N.msgLog.push({ text: `${seller.name} reject ${money(N.lastFee)}, but would accept ${money(r.counter)}.`, tone: 'info' });
+        notify(`${seller.name} countered your bid for ${p.name} at ${money(r.counter)}.`, 'info');
+        keep.push(N);
+      } else if (r.decision === 'reject') {
+        N.awaiting = 'user'; N.lastTouch = new Date(gameState.currentDate);
+        N.msgLog.push({ text: `${seller.name} dismiss your ${money(N.lastFee)} bid as far too low.`, tone: 'bad' });
+        notify(`${seller.name} rejected your bid for ${p.name}.`, 'warning');
+        keep.push(N);
+      } else {
+        markTransferBan(N.playerId);
+        notify(`${seller.name} have ended negotiations over ${p.name}.`, 'warning');
+      }
+    } else if (N.stage === 'terms') {
+      const r = ENGINE.evaluateWageOffer(N.neg, N.lastWage);
+      if (r.decision === 'accept') {
+        N.agreedWage = N.lastWage;
+        completeTransfer(N); // removes itself from gameState.negotiations once done
+      } else if (r.decision === 'counter') {
+        N.awaiting = 'user'; N.lastTouch = new Date(gameState.currentDate);
+        N.msgLog.push({ text: `${p.name} rejects ${money(N.lastWage / 1000)}/wk but would sign for ${money(N.neg.wageDemand / 1000)}/wk.`, tone: 'info' });
+        notify(`${p.name} countered your contract offer.`, 'info');
+        keep.push(N);
+      } else if (r.decision === 'reject') {
+        N.awaiting = 'user'; N.lastTouch = new Date(gameState.currentDate);
+        N.msgLog.push({ text: `${p.name} is insulted by an offer of just ${money(N.lastWage / 1000)}/wk.`, tone: 'bad' });
+        notify(`${p.name} rejected your wage offer.`, 'warning');
+        keep.push(N);
+      } else {
+        markTransferBan(N.playerId);
+        notify(`${p.name} rejected your contract terms.`, 'warning');
+      }
+    }
+  }
+
+  function resolveIncomingResponse(N, keep) {
+    // The user sent a counter; the AI club now decides whether to meet it.
+    const maxWilling = N.maxWilling || (N.marketValue || N.listingPrice) * 1.15;
+    if (N.lastCounter <= maxWilling) {
+      N.fee = N.lastCounter;
+      completeIncomingSale(N); // removes itself (and rival offers for the player) from gameState.negotiations
+    } else {
+      notify(`${N.clubName} rejected your ${money(N.lastCounter)} counter — they walked away.`, 'warning');
+    }
+  }
+
+  // Rival interest on a deal the user is trying to buy into — separate from the
+  // due-date resolution above so it only rolls at the existing weekly tick cadence
+  // (called alongside tickAITransfers), not on every single daily advance.
+  function rollBiddingWars() {
+    (gameState.negotiations || []).forEach(N => {
+      if (N.type !== 'outgoing' || N.stage !== 'fee') return;
+      if (!N.rival && Math.random() < 0.06) {
+        const rivals = Object.values(gameState.clubs).filter(c => c.id !== gameState.myClubId && c.id !== N.clubId);
+        if (!rivals.length) return;
+        const rival = rivals[Math.floor(Math.random() * rivals.length)];
+        const rivalOffer = ENGINE.roundFee(N.neg.minFee * (1 + rand(0, 15) / 100));
+        N.rival = { clubId: rival.id, clubName: rival.name, offer: rivalOffer };
+        N.neg.minFee = Math.max(N.neg.minFee, rivalOffer);
+        N.neg.asking = Math.max(N.neg.asking, rivalOffer);
+        N.msgLog.push({ text: `${rival.name} have also entered talks for ${N.playerName}.`, tone: 'bad' });
+        notify(`${rival.name} have also entered talks for ${N.playerName} — expect the price to climb.`, 'warning');
+      } else if (N.rival && Math.random() < 0.18) {
+        const seller = gameState.clubs[N.clubId];
+        const p = seller && seller.players.find(x => x.id === N.playerId);
+        const rivalClub = gameState.clubs[N.rival.clubId];
+        if (!seller || !p || !rivalClub) return;
+        seller.players = seller.players.filter(x => x.id !== N.playerId);
+        p.clubId = rivalClub.id; p.contract = rand(2, 4);
+        rivalClub.players.push(p);
+        recalcSqRating(rivalClub); recalcSqRating(seller);
+        gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
+        pushTransferNews(`${N.rival.clubName} completed the signing of ${N.playerName} from ${N.clubName} for ${money(N.rival.offer)}`);
+        N.stage = 'outbid'; N.awaiting = 'user';
+        notify(`You've been outbid! ${N.rival.clubName} signed ${N.playerName}.`, 'error');
+      }
     });
   }
 
@@ -5601,8 +5828,9 @@ const APP = (() => {
         });
       });
       if (bestListed) {
-        const fee = Math.max(0.1, Math.round(bestListed.value * (0.85 + Math.random() * 0.3) * 10) / 10);
+        const fee = Math.max(0.01, ENGINE.roundFee(bestListed.value * (0.85 + Math.random() * 0.3)));
         if ((club.budget || 0) < fee) return;
+        const signedId = bestListed.id;
         bestSeller.players.splice(bestSeller.players.indexOf(bestListed), 1);
         bestListed.clubId = club.id; bestListed.transferListed = false; bestListed.contract = rand(2, 4);
         club.players.push(bestListed);
@@ -5610,6 +5838,15 @@ const APP = (() => {
         bestSeller.budget = Math.round((bestSeller.budget + fee) * 10) / 10;
         recalcSqRating(club); recalcSqRating(bestSeller);
         pushTransferNews(`${club.name} signed ${bestListed.name} from ${bestSeller.name} for ${money(fee)}`);
+        // This player may also be on the user's market list, or the subject of a
+        // negotiation the user has open — both need to know they're gone now.
+        gameState.market = (gameState.market || []).filter(x => x.id !== signedId);
+        const userDeal = (gameState.negotiations || []).find(n => n.type === 'outgoing' && n.playerId === signedId);
+        if (userDeal) {
+          userDeal.stage = 'outbid'; userDeal.awaiting = 'user';
+          userDeal.msgLog.push({ text: `${club.name} completed a ${money(fee)} signing of ${bestListed.name} — you've been outbid.`, tone: 'bad' });
+          notify(`You've been outbid! ${club.name} signed ${bestListed.name}.`, 'error');
+        }
       }
     });
   }
@@ -5671,6 +5908,11 @@ const APP = (() => {
     ENGINE.simulateSameDay(gameState, fixture);
     ENGINE.continueToNextFixture(gameState);
     simulateCompetitionsUpTo(gameState.currentDate);
+
+    // Now that the date has actually moved on, resolve anything whose response was
+    // due somewhere in the days just skipped, then roll for new rival interest.
+    resolveNegotiationResponses();
+    rollBiddingWars();
 
     ui.match = null;
     delete gameState.matchSave;
@@ -6399,12 +6641,31 @@ const APP = (() => {
     tickPlayerDevelopment(1);
     tickAIClubs();
     tickAITransfers();
+    resolveNegotiationResponses();
+    rollBiddingWars();
     checkIncomingOffers();
     checkWageBudget();
     // Prompt sponsor renewal if needed during preseason
     if (gameState.finances?.sponsorNeedsRenewal) showSponsorRenewalModal();
     updateSidebar();
     renderView('dashboard');
+    autoSave();
+  }
+
+  // Step the calendar forward a single day without running the full weekly tick
+  // bundle (finances/injuries/development/AI clubs/AI transfers stay on their
+  // existing weekly cadence) — just resolves anything whose negotiation response
+  // has come due, so checking on a deal doesn't require playing a match or
+  // waiting a whole week.
+  function advanceOneDay() {
+    const next = ENGINE.getNextFixture(gameState);
+    if (next && gameState.currentDate.getTime() + DAY_MS > next.date.getTime()) {
+      return notify("Can't skip past your next fixture — play the match first.", 'warning');
+    }
+    gameState.currentDate = addDays(gameState.currentDate, 1);
+    resolveNegotiationResponses();
+    updateSidebar();
+    renderView(ui.view);
     autoSave();
   }
 
@@ -6760,6 +7021,15 @@ const APP = (() => {
     if (!state.myClub) { notify('Save file is invalid.', 'error'); return; }
     if (!state.slotId) state.slotId = slotId;   // migrate old saves
     if (!state.transferNews) state.transferNews = [];
+    if (!state.negotiations) {
+      // Pre-overhaul saves only had instantly-resolvable pendingOffers — wrap any still
+      // outstanding into the new model so they don't just vanish, ready for the user
+      // to act on immediately (no retroactive delay).
+      state.negotiations = (state.pendingOffers || []).map(o => ({
+        ...o, type: 'incoming', stage: 'fee', awaiting: 'user', responseDue: null,
+        lastTouch: state.currentDate, rival: null, msgLog: [],
+      }));
+    }
     Object.values(state.clubs).forEach(c => {   // migrate saves from before AI tactics/lineup existed
       if (!c.tactics) c.tactics = DATA.seedClubTactics(c);
       if (!c.lineup) c.lineup = [];
