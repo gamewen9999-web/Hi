@@ -6663,6 +6663,13 @@ const APP = (() => {
       return notify("Can't skip past your next fixture — play the match first.", 'warning');
     }
     gameState.currentDate = addDays(gameState.currentDate, 1);
+    // Preseason has no fixtures driving finances, so the day button needs its own
+    // pro-rated slice (1/7 of a week) of the same tickFinances the week button takes
+    // in one lump sum — otherwise clicking +1 Day seven times is a free week of
+    // sponsor/merch income and unpaid wages compared to Advance One Week. In-season,
+    // finance ticks stay tied to matches as before (advanceAfterMatch already covers
+    // it), so no tick here — that'd double-count the same week once the match resolves.
+    if (gameState.preseason) tickFinances(1 / 7, false);
     resolveNegotiationResponses();
     updateSidebar();
     renderView(ui.view);
