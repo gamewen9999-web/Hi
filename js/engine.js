@@ -390,6 +390,19 @@ const ENGINE = (() => {
     const hStyle = hTac.style || 'balanced';
     const aStyle = aTac.style || 'balanced';
 
+    // Possession: who's actually rated stronger on the day (hStr), passing quality,
+    // play style, and formation shape (a more attack-weighted formation plays with
+    // a higher line and sees more of the ball) — computed up front so the tackle
+    // simulation below can use it to decide which side is chasing the ball.
+    const hPassAvg = avgStat(homeClub, hXI, 'passing', hSlotPos);
+    const aPassAvg = avgStat(awayClub, aXI, 'passing', aSlotPos);
+    const passBias  = (hPassAvg - aPassAvg) / (hPassAvg + aPassAvg) * 12;
+    const STYLE_POSS = { direct: -8, balanced: 0, possession: 10 };
+    const stylePoss  = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
+    const hFA = formAttrs(hTac), aFA = formAttrs(aTac);
+    const formBias = Math.max(-6, Math.min(6, ((hFA.att - hFA.def) - (aFA.att - aFA.def)) * 1.2));
+    const hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + formBias + rand(-5, 5))));
+
     // Stat modifiers with OOP nerf — players out of position contribute less.
     // Shooting: avg team shooting vs 65 baseline shifts xG up to ±18%
     const hShootMod = 0.82 + (avgStat(homeClub, hXI, 'shooting', hSlotPos) / 65) * 0.18;
@@ -423,6 +436,26 @@ const ENGINE = (() => {
     const hScore = goalsFromXG(hEffXG * noise());
     const aScore = goalsFromXG(aEffXG * noise());
 
+    // Shot volume follows the team's actual output (hEffXG/aEffXG — already shaped by
+    // ratings, formation, pressing and style above) rather than the scoreline, so a
+    // dominant-but-unlucky side still racks up shots instead of just the goals they
+    // happened to score. An attacking mentality and higher pressing line both add shot
+    // volume on top of that; ~0.105 xG per shot is a roughly realistic conversion rate.
+    // Floored at the actual goals scored (you can't score more than you shot) — the
+    // near-miss events below are generated to match these totals exactly, so the live
+    // stat ticker and pitch-event dots always agree with the final shot/SOT counts.
+    const MEN_SHOT_VOL = { attacking: 1.12, balanced: 1.0, defensive: 0.86 };
+    const tacShotVol = (tac) => {
+      const press = PRESS_PRESET[tac.pressing] || PRESS_PRESET.medium;
+      return (MEN_SHOT_VOL[tac.mentality] || 1.0) * (1 + press.ownBoost * 0.6);
+    };
+    const hShots = Math.max(hScore, Math.round((hEffXG / 0.105) * tacShotVol(hTac) * (0.75 + Math.random() * 0.5)));
+    const aShots = Math.max(aScore, Math.round((aEffXG / 0.105) * tacShotVol(aTac) * (0.75 + Math.random() * 0.5)));
+    // On target is roughly a third of total shots, floored at the actual goals scored
+    // (a goal is always on target) and capped by total shots.
+    const hSOT = Math.max(hScore, Math.min(hShots, Math.round(hShots * (0.28 + Math.random() * 0.16))));
+    const aSOT = Math.max(aScore, Math.min(aShots, Math.round(aShots * (0.28 + Math.random() * 0.16))));
+
     const events = [];
 
     const addGoals = (count, team, club, xi) => {
@@ -437,12 +470,20 @@ const ENGINE = (() => {
     addGoals(hScore, 'home', homeClub, hXI);
     addGoals(aScore, 'away', awayClub, aXI);
 
-    // Near-miss shots — feed the highlight system
-    const missPool = ['shot_saved', 'shot_saved', 'shot_wide', 'shot_post'];
-    for (let i = 0; i < rand(2, 5); i++)
-      events.push({ min: rand(1, 90), type: pick(missPool), team: 'home', player: pickScorer(homeClub, hXI) });
-    for (let i = 0; i < rand(2, 5); i++)
-      events.push({ min: rand(1, 90), type: pick(missPool), team: 'away', player: pickScorer(awayClub, aXI) });
+    // Near-miss shots — generated to exactly fill out the hShots/hSOT totals above
+    // (minus the goals already added), so every shot counted in the stats bar has a
+    // matching event for the pitch dots / commentary feed to show.
+    const addNearMisses = (totalShots, onTarget, scored, team, club, xi) => {
+      const nonGoalTotal  = Math.max(0, totalShots - scored);
+      const nonGoalOnTgt  = Math.max(0, Math.min(nonGoalTotal, onTarget - scored));
+      const nonGoalOffTgt = nonGoalTotal - nonGoalOnTgt;
+      for (let i = 0; i < nonGoalOnTgt; i++)
+        events.push({ min: rand(1, 90), type: 'shot_saved', team, player: pickScorer(club, xi) });
+      for (let i = 0; i < nonGoalOffTgt; i++)
+        events.push({ min: rand(1, 90), type: Math.random() < 0.75 ? 'shot_wide' : 'shot_post', team, player: pickScorer(club, xi) });
+    };
+    addNearMisses(hShots, hSOT, hScore, 'home', homeClub, hXI);
+    addNearMisses(aShots, aSOT, aScore, 'away', awayClub, aXI);
 
     // Stat-based tackle simulation
     // Each tackle: defender vs attacker using physical+defending vs dribbling+pace
@@ -488,9 +529,16 @@ const ENGINE = (() => {
       }
     };
 
-    // 8-14 tackle moments per match spread across both teams
-    for (let i = 0; i < rand(8, 14); i++) {
-      const homeAttacks = Math.random() < 0.5;
+    // Total challenges scale with combined pressing intensity — two high-press sides
+    // contest the ball far more than two cautious low-blocks — and each individual
+    // moment goes to whichever side doesn't have the ball, weighted by possession
+    // (itself driven by ratings/formation/style above), not a flat coin flip.
+    const PRESS_TACKLE_COUNT = { high: 6.5, medium: 5.5, low: 4.5 };
+    const hPressCount = PRESS_TACKLE_COUNT[hTac.pressing] ?? 5.5;
+    const aPressCount = PRESS_TACKLE_COUNT[aTac.pressing] ?? 5.5;
+    const totalTackles = rand(Math.max(4, Math.round(hPressCount + aPressCount) - 2), Math.round(hPressCount + aPressCount) + 2);
+    for (let i = 0; i < totalTackles; i++) {
+      const homeAttacks = Math.random() * 100 < hPoss;
       simTackle(
         homeAttacks ? awayClub : homeClub, // tackler defends
         homeAttacks ? homeClub : awayClub, // target has ball
@@ -539,19 +587,6 @@ const ENGINE = (() => {
 
     events.sort((a, b) => a.min - b.min);
 
-    // Possession: passing quality + style (possession +10%, direct -8%)
-    const hPassAvg = avgStat(homeClub, hXI, 'passing');
-    const aPassAvg = avgStat(awayClub, aXI, 'passing');
-    const passBias  = (hPassAvg - aPassAvg) / (hPassAvg + aPassAvg) * 12;
-    const STYLE_POSS = { direct: -8, balanced: 0, possession: 10 };
-    const stylePoss  = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
-    const hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + rand(-5, 5))));
-    // Shots proportional to shooting stat — better shooters attempt more
-    const hShotMult = 0.85 + (avgStat(homeClub, hXI, 'shooting') / 65) * 0.15;
-    const aShotMult = 0.85 + (avgStat(awayClub, aXI, 'shooting') / 65) * 0.15;
-    const hShots = Math.round((hScore * rand(3,5) + rand(1,5)) * hShotMult);
-    const aShots = Math.round((aScore * rand(3,5) + rand(1,5)) * aShotMult);
-
     const isBackline = (pos) => pos === 'GK' || ['CB','RB','LB','RWB','LWB'].includes(pos);
     const genRatings = (club, xi, won, drew, conceded) => {
       const pool = xi
@@ -588,7 +623,7 @@ const ENGINE = (() => {
     return {
       homeScore: hScore, awayScore: aScore, events,
       stats: { possession: [hPoss, 100 - hPoss], shots: [hShots, aShots],
-               shotsOnTarget: [Math.min(hShots, hScore + rand(0,3)), Math.min(aShots, aScore + rand(0,3))] },
+               shotsOnTarget: [hSOT, aSOT] },
       homeRatings: genRatings(homeClub, hXI, hWon, drew, aScore),
       awayRatings: genRatings(awayClub, aXI, !hWon && !drew, drew, hScore),
     };

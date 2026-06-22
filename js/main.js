@@ -4162,7 +4162,7 @@ const APP = (() => {
       currentHomeXI: [...homeXI], currentAwayXI: [...awayXI],
       currentTactics: { ...gameState.tactics },
       subsUsed: 0, subsMax: 5,
-      sim: { min: 0, idx: 0, hs: 0, as: 0 },
+      sim: { min: 0, idx: 0, hs: 0, as: 0, hSh: 0, aSh: 0, hSo: 0, aSo: 0 },
       simTimer: null, speed: 1,
     };
 
@@ -5126,10 +5126,19 @@ const APP = (() => {
       if (!running || !ui.match) return;
       sim.min++;
 
+      const SHOT_TYPES = ['goal', 'shot_saved', 'shot_wide', 'shot_post'];
+      const ON_TARGET_TYPES = ['goal', 'shot_saved'];
       const eventsThisMin = [];
       while (sim.idx < ev.length && ev[sim.idx].min <= sim.min) {
         const e = ev[sim.idx++];
         if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
+        // Track shots/SOT off the same events that drive the pitch dots below, so the
+        // live stat numbers always tick up in lockstep with what's shown on the pitch.
+        if (SHOT_TYPES.includes(e.type)) {
+          const onTarget = ON_TARGET_TYPES.includes(e.type);
+          if (e.team === 'home') { sim.hSh++; if (onTarget) sim.hSo++; }
+          else { sim.aSh++; if (onTarget) sim.aSo++; }
+        }
         if (['goal', 'yellow', 'red', 'sub', 'injury'].includes(e.type)) addMatchEvent(e);
         addPitchDot(e);
         eventsThisMin.push(e);
@@ -5161,17 +5170,16 @@ const APP = (() => {
       $('match-score').textContent = `${sim.hs} – ${sim.as}`;
       $('match-time').textContent = sim.min + "'";
 
-      // Live stats — interpolate toward final pre-computed values (which reflect tactics + overalls)
+      // Live stats — possession has no discrete events so it still interpolates toward
+      // the final tactics/overalls-driven split; shots and shots-on-target are instead
+      // counted directly off the same events that just fed the pitch dots above, so the
+      // numbers and the dots can never drift apart.
       const r = ui.match.result;
       const pct = sim.min / 90;
       const [ph]   = r.stats.possession;
-      const [fsh, fsa] = r.stats.shots;
-      const [fth, fta] = r.stats.shotsOnTarget;
       const hPossLive  = Math.round(50 + (ph - 50) * pct);
-      const hShotsLive = Math.round(fsh * pct);
-      const aShotsLive = Math.round(fsa * pct);
-      const hSoTLive   = Math.round(fth * pct);
-      const aSoTLive   = Math.round(fta * pct);
+      const hShotsLive = sim.hSh, aShotsLive = sim.aSh;
+      const hSoTLive   = sim.hSo, aSoTLive   = sim.aSo;
       $('s-possession-h').textContent = hPossLive + '%';
       $('s-possession-a').textContent = (100 - hPossLive) + '%';
       $('stat-possession').style.width = hPossLive + '%';
@@ -5599,6 +5607,14 @@ const APP = (() => {
     const asNew = newRemainder.filter(e => e.type === 'goal' && e.team === 'away').length;
     m.result.homeScore = m.sim.hs + hsNew;
     m.result.awayScore = m.sim.as + asNew;
+    // Recompute shot/SOT totals directly off the merged timeline (rather than trusting
+    // either simulateMatch call's own totals) so the full-time stats bar always matches
+    // however many shot events actually ended up on the pitch after a mid-match re-sim.
+    const SHOT_TYPES = ['goal', 'shot_saved', 'shot_wide', 'shot_post'];
+    const ON_TARGET_TYPES = ['goal', 'shot_saved'];
+    const countShots = (team, types) => merged.filter(e => e.team === team && types.includes(e.type)).length;
+    m.result.stats.shots = [countShots('home', SHOT_TYPES), countShots('away', SHOT_TYPES)];
+    m.result.stats.shotsOnTarget = [countShots('home', ON_TARGET_TYPES), countShots('away', ON_TARGET_TYPES)];
     // Reset the event pointer to just after the kept window
     m.sim.idx = m.result.events.findIndex(e => e.min > keepThroughMinute);
     if (m.sim.idx < 0) m.sim.idx = m.result.events.length;
