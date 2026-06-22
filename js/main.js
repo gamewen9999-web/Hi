@@ -151,7 +151,7 @@ const APP = (() => {
     }
   }
   function repStars(rep) {
-    const r = Math.round((rep || 1) * 2) / 2;
+    const r = Math.round((rep ?? 1) * 2) / 2;
     const full = Math.floor(r);
     const hasHalf = (r % 1) === 0.5;
     return [1,2,3,4,5].map(i => {
@@ -159,6 +159,9 @@ const APP = (() => {
       return `<span class="rep-star${cls ? ' '+cls : ''}">★</span>`;
     }).join('');
   }
+  // Club prestige ranges 0-5 (0 = no reputation at all) and moves in tenths internally;
+  // repStars() rounds that to the nearest half-star for display.
+  function clampRep(v) { return Math.max(0, Math.min(5, Math.round(v * 10) / 10)); }
 
   function money(m) {
     if (m == null) return '£0';
@@ -1622,7 +1625,7 @@ const APP = (() => {
   }
   // Smooth sigmoid: 0% at gap≤0, ~20% at 0.5, ~50% at 1.0, ~80% at 2.0, caps at 90%
   function prestigeRejectChance(p, myClub) {
-    const gap = playerPrestige(p.ovr) - (myClub.rep || 1);
+    const gap = playerPrestige(p.ovr) - (myClub.rep ?? 1);
     if (gap <= 0) return 0;
     return 1 - 1 / (1 + gap * gap);
   }
@@ -1718,6 +1721,16 @@ const APP = (() => {
     addInboxMsg('club_news', pick.title, pick.body);
   }
 
+  function fileTransferRequest(p, reason, body) {
+    p.transferListed = true;
+    p.wantsMove = true;
+    p.wantsMoveReason = reason;
+    p.inboxedThisSeason = true;
+    addInboxMsg('transfer_request', `${p.name} requests a transfer`, body,
+      { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+    notify(`${p.name} has requested a transfer!`, 'warning');
+  }
+
   function generatePlayerEvents() {
     if (!gameState || !gameState.myClub) return;
     const myClub = gameState.myClub;
@@ -1725,25 +1738,37 @@ const APP = (() => {
       if (p.inboxedThisSeason || p.injured) return;
       const ambition = playerAmbition(p, myClub);
       const ovrGap   = p.ovr - (myClub.sqRating || 70);
-      // Transfer request: meaningfully above squad average, ambitious, not already listed
+      // Reason 1: feels too good for the club — meaningfully above squad average,
+      // ambitious, not already listed.
       if (ambition >= 0.65 && ovrGap >= 8 && !p.loyal && !p.transferListed && Math.random() < 0.55) {
-        p.transferListed = true;
-        p.wantsMove = true;
-        p.inboxedThisSeason = true;
-        addInboxMsg('transfer_request',
-          `${p.name} requests a transfer`,
-          `${p.name} (${p.pos}, OVR ${p.ovr}) believes he deserves to play at a higher level and has handed in a transfer request.`,
-          { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
-        notify(`${p.name} has requested a transfer!`, 'warning');
+        fileTransferRequest(p, 'ability',
+          `${p.name} (${p.pos}, OVR ${p.ovr}) believes he's outgrown the club and has handed in a transfer request. He's unlikely to sign a new contract while he feels this way.`);
       }
-      // Contract warning: expiring contract, player is ambitious enough not to renew
-      else if (p.contract <= 1 && ambition >= 0.35 && !p.inboxedThisSeason && Math.random() < 0.65) {
+      // Reason 2: starved of game time — good enough to expect to start, but has
+      // spent a long run out of the matchday XI.
+      else if ((p.benchWeeks || 0) >= 6 && ovrGap >= -3 && ambition >= 0.30 && !p.loyal && !p.transferListed && Math.random() < 0.45) {
+        fileTransferRequest(p, 'game_time',
+          `${p.name} (${p.pos}, OVR ${p.ovr}) is unhappy with his lack of game time and has handed in a transfer request. He's unlikely to sign a new contract while he's frozen out of the side.`);
+      }
+      // Contract warning: deal expires within a year. Tone depends on how settled
+      // the player is — ambitious/unhappy players are openly rejecting renewal;
+      // others are just flagged as open to talks.
+      else if (monthsUntil(p.contractEnd, gameState.currentDate) <= 12 && Math.random() < 0.65) {
         p.inboxedThisSeason = true;
-        addInboxMsg('contract_expiry',
-          `${p.name} is rejecting contract renewal`,
-          `${p.name} (${p.pos}, OVR ${p.ovr}) is unlikely to renew. Act now or he walks on a free transfer at season end.`,
-          { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
-        notify(`${p.name} is unlikely to renew his contract!`, 'warning');
+        const reluctant = p.wantsMove || ambition >= 0.35;
+        if (reluctant) {
+          addInboxMsg('contract_expiry',
+            `${p.name} is rejecting contract renewal`,
+            `${p.name} (${p.pos}, OVR ${p.ovr}) is unlikely to renew. Act now or he walks on a free transfer when his deal expires in ${fmtContractEnd(p.contractEnd)}.`,
+            { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+          notify(`${p.name} is unlikely to renew his contract!`, 'warning');
+        } else {
+          addInboxMsg('contract_expiry',
+            `${p.name}'s contract is winding down`,
+            `${p.name} (${p.pos}, OVR ${p.ovr})'s deal runs out in ${fmtContractEnd(p.contractEnd)}. He's open to talks about a new contract — best to get it sorted before he can talk to other clubs.`,
+            { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+          notify(`${p.name}'s contract is entering its final year.`, 'info');
+        }
       }
     });
   }
@@ -1955,7 +1980,7 @@ const APP = (() => {
     } else {
       seller.players = seller.players.filter(x => x.id !== N.playerId);
       p.wage = N.agreedWage;
-      p.contract = N.contractLength || 3;
+      p.contractEnd = DATA.contractEndAfterYears(gameState.currentDate, N.contractLength || 3);
       gameState.myClub.players.push(p);
       recalcSqRating(gameState.myClub);
       recalcSqRating(seller);
@@ -2065,7 +2090,10 @@ const APP = (() => {
   function showCounterModal(offerId) {
     const o = (gameState.negotiations || []).find(x => x.id === offerId);
     if (!o) return;
-    const suggested = ENGINE.roundFee(o.listingPrice);
+    // Opportunistic bids for an unlisted-but-expiring player have no listingPrice —
+    // fall back to market value as the counter-offer baseline.
+    const askingBase = o.listingPrice ?? o.marketValue ?? o.fee;
+    const suggested = ENGINE.roundFee(askingBase);
     showModal(`
       <div style="text-align:center">
         <h2 style="margin-bottom:4px">Counter Offer</h2>
@@ -2073,11 +2101,11 @@ const APP = (() => {
         <div class="pm-stats-grid" style="text-align:left;margin-bottom:16px">
           <div class="pm-stat"><span class="pm-stat-name">Their bid</span><span class="pm-stat-val text-gold">${money(o.fee)}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Market value</span><span class="pm-stat-val">${money(o.marketValue || o.listingPrice)}</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Your asking</span><span class="pm-stat-val">${money(o.listingPrice)}</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">${o.listingPrice != null ? 'Your asking' : 'Suggested counter'}</span><span class="pm-stat-val">${money(askingBase)}</span></div>
         </div>
         <div class="neg-field" style="margin-bottom:18px">
           <label>Your counter (£m)</label>
-          <input id="counter-price-input" type="number" step="${o.listingPrice < 0.5 ? '0.01' : '0.1'}" min="0.01" value="${suggested}">
+          <input id="counter-price-input" type="number" step="${askingBase < 0.5 ? '0.01' : '0.1'}" min="0.01" value="${suggested}">
         </div>
         <div class="pm-actions" style="justify-content:center">
           <button class="btn-secondary" id="counter-cancel">Cancel</button>
@@ -3127,7 +3155,7 @@ const APP = (() => {
 
     const potRatio = p.ovr > 0 ? p.pot / p.ovr : 1;
     const potVal = (key) => Math.min(99, Math.round((p.attrs[key] || 0) * potRatio));
-    const contractEnd = gameState.currentDate.getFullYear() + (p.contract || 1);
+    const contractEndLabel = fmtContractEnd(p.contractEnd);
     const potGap = p.pot - p.ovr;
     const potColor = potGap >= 10 ? 'var(--accent)' : potGap >= 5 ? 'var(--accent-gold)' : 'var(--text-muted)';
 
@@ -3187,7 +3215,7 @@ const APP = (() => {
         <div class="pm-stats-grid">
           <div class="pm-stat"><span class="pm-stat-name">Market Value</span><span class="pm-stat-val text-gold">${money(p.value)}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage/1000)}/wk</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEnd}</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEndLabel}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Potential</span><span class="pm-stat-val" style="color:${potColor}">${p.pot}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Goals</span><span class="pm-stat-val">${p.goals}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Assists</span><span class="pm-stat-val">${p.assists}</span></div>
@@ -3196,6 +3224,7 @@ const APP = (() => {
           <div class="pm-stat"><span class="pm-stat-name">Yellow Cards</span><span class="pm-stat-val">${p.yellowCards || 0}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Red Cards</span><span class="pm-stat-val">${p.redCards || 0}</span></div>
         </div>
+        ${p.wantsMove ? `<div class="pm-prestige-warn" style="margin-top:10px">${esc(p.name)} has requested a transfer (${p.wantsMoveReason === 'game_time' ? 'unhappy with his game time' : 'feels he has outgrown the club'}) and is unlikely to sign a new contract.</div>` : ''}
         <div class="pm-offer-footer" style="margin-top:12px">
           <button class="btn-secondary" style="width:100%" id="pm-renegotiate-btn">Renegotiate Contract</button>
         </div>
@@ -3218,20 +3247,24 @@ const APP = (() => {
     const renego = $('pm-renegotiate-btn');
     if (renego) renego.addEventListener('click', () => {
       const curWage = p.wage;
-      const curContract = p.contract || 1;
-      const contractEnd = gameState.currentDate.getFullYear() + curContract;
       // Minimum the player will accept: their current wage (they won't take a cut unless low morale)
       const minAccept = p.morale < 45 ? Math.round(curWage * 0.85 * 100) / 100 : curWage;
       // What they ideally want: 10-25% raise based on form and age
       const wantRaise = p.age < 28 && p.pot > p.ovr ? 1.20 : 1.10;
       const wantedWage = Math.round(curWage * wantRaise * 100) / 100;
+      // A player who's handed in a transfer request, or is otherwise ambitious for
+      // a move, won't just sign because the money's right — they may turn down even
+      // a generous offer because they want out, not a new deal here.
+      const ambition = playerAmbition(p, club);
+      const reluctant = p.wantsMove || ambition >= 0.55;
       showModal(`
         <div style="max-width:360px">
           <h2 style="margin-bottom:4px">Renegotiate Contract</h2>
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">${esc(p.name)} · ${p.pos} · Age ${p.age}</p>
+          ${reluctant ? `<div class="pm-prestige-warn" style="margin-bottom:10px">${p.wantsMove ? 'He has asked for a transfer and is unlikely to sign a new deal.' : 'He seems unsettled — there is a real chance he turns this down.'}</div>` : ''}
           <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px">
             <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Current wage</span><span>${money(curWage/1000)}/wk</span></div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Contract expires</span><span>${contractEnd}</span></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Contract expires</span><span>${contractEndLabel}</span></div>
             <div style="display:flex;justify-content:space-between"><span>Player wants</span><span style="color:var(--accent-gold)">${money(wantedWage/1000)}/wk</span></div>
           </div>
           <div style="margin-bottom:10px">
@@ -3260,7 +3293,8 @@ const APP = (() => {
           btn.classList.remove('btn-secondary');
           btn.classList.add('btn-primary');
           chosenYears = parseInt(btn.dataset.y);
-          document.getElementById('rn-years-selected').textContent = `${chosenYears}-year deal until ${gameState.currentDate.getFullYear() + chosenYears}`;
+          const newEnd = DATA.contractEndAfterYears(gameState.currentDate, chosenYears);
+          document.getElementById('rn-years-selected').textContent = `${chosenYears}-year deal until ${fmtContractEnd(newEnd)}`;
           document.getElementById('rn-offer-btn').disabled = false;
         });
       });
@@ -3268,16 +3302,25 @@ const APP = (() => {
       document.getElementById('rn-offer-btn').addEventListener('click', () => {
         const offeredWageUnits = parseFloat(document.getElementById('rn-wage-input').value) || curWage;
         if (!chosenYears) return;
-        // Acceptance check
-        const accepts = offeredWageUnits >= minAccept;
+        // Acceptance check: wage has to clear their floor, and even then a reluctant
+        // player (transfer request, or just unsettled) may still say no.
+        const meetsWage = offeredWageUnits >= minAccept;
+        const renewChance = !meetsWage ? 0 : p.wantsMove ? 0.15 : reluctant ? 0.45 : 1.0;
+        const accepts = Math.random() < renewChance;
         if (!accepts) {
-          notify(`${p.name} rejected the offer — they won't accept a wage cut.`, 'error');
+          const reason = !meetsWage ? `they won't accept a wage cut.`
+            : p.wantsMove ? `he has his heart set on a move elsewhere and won't sign a new deal.`
+            : `he's unconvinced this is the right time to commit his future here.`;
+          notify(`${p.name} rejected the offer — ${reason}`, 'error');
           closeModal();
           return;
         }
         p.wage = Math.round(offeredWageUnits * 100) / 100;
-        p.contract = chosenYears;
+        p.contractEnd = DATA.contractEndAfterYears(gameState.currentDate, chosenYears);
         p.morale = Math.min(100, p.morale + 8);
+        p.wantsMove = false;
+        p.transferListed = false;
+        p.wantsMoveReason = null;
         closeModal();
         notify(`${p.name} signed a new ${chosenYears}-year deal at ${money(p.wage/1000)}/wk.`, 'success');
         renderView('squad');
@@ -3303,7 +3346,7 @@ const APP = (() => {
       : [['Pace','pace'],['Shooting','shooting'],['Passing','passing'],['Dribbling','dribbling'],['Defending','defending'],['Physical','physical']];
     const potRatio = p.ovr > 0 ? p.pot / p.ovr : 1;
     const potVal = (key) => Math.min(99, Math.round((p.attrs[key] || 0) * potRatio));
-    const contractEnd = gameState.currentDate.getFullYear() + (p.contract || 1);
+    const contractEndLabel = fmtContractEnd(p.contractEnd);
     const potGap = p.pot - p.ovr;
     const potColor = potGap >= 10 ? 'var(--accent)' : potGap >= 5 ? 'var(--accent-gold)' : 'var(--text-muted)';
 
@@ -3368,7 +3411,7 @@ const APP = (() => {
         <div class="pm-stats-grid">
           <div class="pm-stat"><span class="pm-stat-name">Market Value</span><span class="pm-stat-val text-gold">${money(p.value)}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Wage</span><span class="pm-stat-val">${money(p.wage/1000)}/wk</span></div>
-          <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEnd}</span></div>
+          <div class="pm-stat"><span class="pm-stat-name">Contract Until</span><span class="pm-stat-val">${contractEndLabel}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Potential</span><span class="pm-stat-val" style="color:${potColor}">${p.pot}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Goals</span><span class="pm-stat-val">${p.goals}</span></div>
           <div class="pm-stat"><span class="pm-stat-name">Assists</span><span class="pm-stat-val">${p.assists}</span></div>
@@ -3490,7 +3533,7 @@ const APP = (() => {
     const agents = gameState.freeAgents || [];
     const idx = agents.findIndex(x => x.id === playerId);
     if (idx === -1) return;
-    const p = { ...agents[idx], wage: agreedWage, contract: years || 3, clubId: gameState.myClubId, clubName: gameState.myClub.name };
+    const p = { ...agents[idx], wage: agreedWage, contractEnd: DATA.contractEndAfterYears(gameState.currentDate, years || 3), clubId: gameState.myClubId, clubName: gameState.myClub.name };
     gameState.myClub.players.push(p);
     gameState.freeAgents.splice(idx, 1);
     recalcSqRating(gameState.myClub);
@@ -3865,7 +3908,7 @@ const APP = (() => {
         return;
       }
       if (seller) seller.players = seller.players.filter(x => x.id !== pc.playerData.id);
-      const p = { ...pc.playerData, wage: pc.agreedWage, contract: pc.agreedYears };
+      const p = { ...pc.playerData, wage: pc.agreedWage, contractEnd: DATA.contractEndAfterYears(gameState.currentDate, pc.agreedYears) };
       gameState.myClub.players.push(p);
       recalcSqRating(gameState.myClub);
       if (seller) recalcSqRating(seller);
@@ -3886,13 +3929,18 @@ const APP = (() => {
     if ((gameState.preContracts || []).length) activatePreContracts();
     const myId = gameState.myClubId;
     const listed = gameState.myClub.players.filter(p => p.listingPrice != null);
-    if (!listed.length) return;
+    // Clubs also circle players who AREN'T listed but whose deal runs out within a
+    // year — better to buy now (cheap) than risk losing them for nothing later.
+    const expiringUnlisted = gameState.myClub.players.filter(p =>
+      p.listingPrice == null && !p.loyal && monthsUntil(p.contractEnd, gameState.currentDate) <= 12);
+    if (!listed.length && !expiringUnlisted.length) return;
     if (!gameState.negotiations) gameState.negotiations = [];
     const aiClubs = Object.values(gameState.clubs).filter(c => c.id !== myId);
-    listed.forEach(p => {
-      if (Math.random() > 0.30) return;
-      // Bid relative to market value (not listing price), 75-100% of market value
-      const frac = 0.75 + Math.random() * 0.25;
+    const tryBid = (p, isListed) => {
+      if (Math.random() > (isListed ? 0.30 : 0.12)) return;
+      // Listed players draw fair bids (75-100% of value); an unlisted-but-expiring
+      // player draws a cheeky lowball since the club hasn't put him up for sale.
+      const frac = isListed ? (0.75 + Math.random() * 0.25) : (0.45 + Math.random() * 0.25);
       const fee = Math.max(0.01, ENGINE.roundFee(p.value * frac));
       // Don't let the same club bid twice while an offer from them is already outstanding —
       // but a second, different club bidding on the same player is exactly how an incoming
@@ -3901,8 +3949,9 @@ const APP = (() => {
       const affordable = aiClubs.filter(c => c.budget >= fee * 0.7 && !alreadyBidding.has(c.id));
       if (!affordable.length) return;
       const bidder = affordable[Math.floor(Math.random() * affordable.length)];
-      // Club's max they'll pay: market value * 1.1-1.2 (for counter negotiations)
-      const maxWilling = ENGINE.roundFee(p.value * (1.10 + Math.random() * 0.10));
+      // Club's max they'll pay: market value * 1.1-1.2 if listed; opportunistic bids
+      // won't go much past value since they know you didn't ask to sell.
+      const maxWilling = ENGINE.roundFee(p.value * (isListed ? (1.10 + Math.random() * 0.10) : (0.85 + Math.random() * 0.15)));
       gameState.negotiations.push({
         id: `neg_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         type: 'incoming', stage: 'fee', awaiting: 'user', responseDue: null,
@@ -3922,8 +3971,12 @@ const APP = (() => {
         lastTouch: new Date(gameState.currentDate),
         date: fmtDate(gameState.currentDate),
       });
-      notify(`${bidder.name} have bid ${money(fee)} for ${p.name}!`, 'info');
-    });
+      notify(isListed
+        ? `${bidder.name} have bid ${money(fee)} for ${p.name}!`
+        : `${bidder.name} have made an opportunistic bid of ${money(fee)} for ${p.name} — his contract expires in ${fmtContractEnd(p.contractEnd)}.`, 'info');
+    };
+    listed.forEach(p => tryBid(p, true));
+    expiringUnlisted.forEach(p => tryBid(p, false));
   }
 
   // Resolves any negotiation whose responseDue has arrived (or that's been left
@@ -4028,7 +4081,7 @@ const APP = (() => {
         const rivalClub = gameState.clubs[N.rival.clubId];
         if (!seller || !p || !rivalClub) return;
         seller.players = seller.players.filter(x => x.id !== N.playerId);
-        p.clubId = rivalClub.id; p.contract = rand(2, 4);
+        p.clubId = rivalClub.id; p.contractEnd = DATA.contractEndAfterYears(gameState.currentDate, rand(2, 4));
         rivalClub.players.push(p);
         recalcSqRating(rivalClub); recalcSqRating(seller);
         gameState.market = (gameState.market || []).filter(x => x.id !== N.playerId);
@@ -5603,20 +5656,35 @@ const APP = (() => {
         const selCls = isSel ? ' swap-sel' : (selOff ? ' swap-dim' : '');
         const f = p.fitness ?? 80;
         const fc = f >= 80 ? '' : f >= 55 ? ' fit-mid-dot' : ' fit-low-dot';
-        return `<div class="pitch-player${selCls}" data-suboff="${p.id}" style="left:${slot.x}%;top:${slot.y}%;cursor:pointer">
-          <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}${isSel ? ' sub-sel-circle' : ''}" title="${esc(p.name)} · ${f}% fit">${p.ovr}</div>
+        const oopF   = ENGINE.oopFactor(p.pos, slot.pos);
+        const oopLvl = oopF >= 1.0 ? '' : oopF >= 0.88 ? 'oop-minor' : oopF >= 0.70 ? 'oop-moderate' : oopF >= 0.48 ? 'oop-severe' : 'oop-extreme';
+        const oopCls = oopLvl ? ` ${oopLvl}` : '';
+        const effOvr = oopLvl ? Math.round(p.ovr * oopF) : p.ovr;
+        const oopTag = oopLvl
+          ? `<div class="pitch-player-oop ${oopLvl}">${slot.pos} &minus;${Math.round((1 - oopF) * 100)}%</div>`
+          : '';
+        return `<div class="pitch-player${selCls}${oopCls}" data-suboff="${p.id}" style="left:${slot.x}%;top:${slot.y}%;cursor:pointer">
+          <div class="pitch-player-circle ${slot.pos === 'GK' ? 'gk' : ''}${isSel ? ' sub-sel-circle' : ''}${oopCls}" title="${esc(p.name)} (${p.pos}) playing ${slot.pos} · ${f}% fit · effective OVR ${effOvr}">${effOvr}</div>
           <div class="pitch-player-name">${esc(p.lastName)}</div>
+          ${oopTag}
         </div>`;
       }).join('');
 
-      // Bench chips
+      // Bench chips — when a player is selected to come off, show how each bench
+      // candidate would fit that vacated slot positionally.
+      const offSlotPos = selOff ? activeForm.positions[myXI.indexOf(selOff)]?.pos : null;
       const benchPlayers = myClub.players.filter(p => !xiSet.has(p.id));
       const benchChips = benchPlayers.map(p => {
         const dim = !selOff ? ' bench-chip-dim' : '';
+        const oopF    = offSlotPos ? ENGINE.oopFactor(p.pos, offSlotPos) : 1.0;
+        const isOOP   = offSlotPos && oopF < 1.0;
+        const oopLvl  = !isOOP ? '' : oopF >= 0.88 ? 'oop-badge-minor' : oopF >= 0.70 ? 'oop-badge-moderate' : oopF >= 0.48 ? 'oop-badge-severe' : 'oop-badge-extreme';
+        const oopBadge = isOOP ? `<span class="oop-badge ${oopLvl}" title="Playing ${offSlotPos}, effective OVR ${Math.round(p.ovr * oopF)}">${offSlotPos} &minus;${Math.round((1 - oopF) * 100)}%</span>` : '';
         return `<div class="bench-chip${dim}" data-subon="${p.id}" style="cursor:pointer">
           <span class="pos-badge ${posClass(p.pos)}">${p.pos}</span>
           <span class="bench-chip-name">${esc(p.lastName)}</span>
           <span class="bench-chip-ovr">${p.ovr}</span>
+          ${oopBadge}
           ${fitBar(p)}
         </div>`;
       }).join('');
@@ -5797,7 +5865,7 @@ const APP = (() => {
             }
             const newOvr = recomputeOvrFromAttrs(p);
             if (newOvr !== p.ovr) {
-              p.ovr = newOvr; p.value = DATA.calcValue(p.ovr, p.age); grew = true;
+              p.ovr = newOvr; p.value = DATA.calcValue(p.ovr, p.age, club.league); grew = true;
               if (club === myClub) notify(`${p.name} has burst onto the scene — now ${p.ovr} OVR!`, 'success');
             }
             continue;
@@ -5811,13 +5879,59 @@ const APP = (() => {
           const newOvr = recomputeOvrFromAttrs(p);
           if (newOvr !== p.ovr) {
             p.ovr = newOvr;
-            p.value = DATA.calcValue(p.ovr, p.age);
+            p.value = DATA.calcValue(p.ovr, p.age, club.league);
             grew = true;
             if (club === myClub) notify(`${p.name} has improved to ${p.ovr} OVR!`, 'success');
           }
         }
       });
       if (grew) recalcSqRating(club);
+    });
+  }
+
+  // Tracks how many consecutive weeks each of the user's players has sat outside
+  // the selected XI — feeds the "not getting game time" transfer-request reason.
+  // Injured players don't accrue frustration; that's not a selection snub.
+  function tickGameTimeMorale() {
+    const myClub = gameState.myClub;
+    if (!myClub) return;
+    const xiSet = new Set(gameState.tactics?.lineup || []);
+    myClub.players.forEach(p => {
+      if (xiSet.has(p.id) || p.injured) p.benchWeeks = 0;
+      else p.benchWeeks = (p.benchWeeks || 0) + 1;
+    });
+  }
+
+  // Contracts that reach their end date without being renewed actually lapse now:
+  // the user's player leaves for free (so renewing on time genuinely matters), while
+  // an AI club's player mostly auto-renews (so rival squads don't quietly hollow out)
+  // but a minority walk too, keeping the free-agent pool topped up with departures.
+  function tickContractExpiries() {
+    const now = gameState.currentDate;
+    const myId = gameState.myClubId;
+    Object.values(gameState.clubs).forEach(club => {
+      const expired = club.players.filter(p => p.contractEnd && p.contractEnd <= now);
+      if (!expired.length) return;
+      expired.forEach(p => {
+        if (club.id === myId) {
+          club.players = club.players.filter(x => x.id !== p.id);
+          p.clubId = null; p.clubName = 'Free Agent'; p.contractEnd = null;
+          p.wantsMove = true; p.transferListed = false;
+          (gameState.freeAgents || (gameState.freeAgents = [])).push(p);
+          addInboxMsg('club_news', `${p.name} leaves on a free transfer`,
+            `${p.name}'s contract has expired and he has left the club as a free agent.`,
+            { playerId: p.id, playerPos: p.pos, playerOvr: p.ovr });
+          notify(`${p.name}'s contract has expired — he has left as a free agent.`, 'warning');
+        } else if (Math.random() < 0.88) {
+          p.contractEnd = DATA.contractEndAfterYears(now, rand(1, 3)); // quietly re-signs
+        } else {
+          club.players = club.players.filter(x => x.id !== p.id);
+          p.clubId = null; p.clubName = 'Free Agent'; p.contractEnd = null; p.wantsMove = true;
+          (gameState.freeAgents || (gameState.freeAgents = [])).push(p);
+          pushTransferNews(`${p.name} has left ${club.name} on a free transfer`);
+        }
+      });
+      recalcSqRating(club);
     });
   }
 
@@ -5882,7 +5996,7 @@ const APP = (() => {
     });
 
     // Buy side: a handful of clubs each week try to fix their weakest position group.
-    const fits = (club, p) => playerPrestige(p.ovr) <= (club.rep || 1) + 1.5;
+    const fits = (club, p) => playerPrestige(p.ovr) <= (club.rep ?? 1) + 1.5;
     aiClubs.filter(() => Math.random() < 0.2).slice(0, 6).forEach(club => {
       if ((club.budget || 0) < 1) return;
       const groups = { GK: [], DEF: [], MID: [], ATT: [] };
@@ -5897,7 +6011,7 @@ const APP = (() => {
         .sort((a, b) => b.ovr - a.ovr)[0];
       if (freePick) {
         gameState.freeAgents.splice(gameState.freeAgents.indexOf(freePick), 1);
-        freePick.clubId = club.id; freePick.contract = rand(2, 4); freePick.transferListed = false;
+        freePick.clubId = club.id; freePick.contractEnd = DATA.contractEndAfterYears(gameState.currentDate, rand(2, 4)); freePick.transferListed = false;
         club.players.push(freePick);
         recalcSqRating(club);
         pushTransferNews(`${club.name} signed free agent ${freePick.name} (${freePick.pos}, ${freePick.ovr} OVR)`);
@@ -5917,7 +6031,7 @@ const APP = (() => {
         if ((club.budget || 0) < fee) return;
         const signedId = bestListed.id;
         bestSeller.players.splice(bestSeller.players.indexOf(bestListed), 1);
-        bestListed.clubId = club.id; bestListed.transferListed = false; bestListed.contract = rand(2, 4);
+        bestListed.clubId = club.id; bestListed.transferListed = false; bestListed.contractEnd = DATA.contractEndAfterYears(gameState.currentDate, rand(2, 4));
         club.players.push(bestListed);
         club.budget = Math.round((club.budget - fee) * 10) / 10;
         bestSeller.budget = Math.round((bestSeller.budget + fee) * 10) / 10;
@@ -5951,15 +6065,18 @@ const APP = (() => {
 
     // Tick injury recovery once per match cycle
     tickInjuries();
+    tickContractExpiries();
     tickPlayerDevelopment(1);
+    tickGameTimeMorale();
     tickAIClubs();
     tickAITransfers();
 
-    // Remove injured players from the lineup
+    // Remove injured or no-longer-at-the-club players from the lineup
     const tac = gameState.tactics;
     if (tac?.lineup) {
+      const aliveIds = new Set(gameState.myClub.players.map(p => p.id));
       const injured = new Set(gameState.myClub.players.filter(p => p.injured).map(p => p.id));
-      tac.lineup = tac.lineup.filter(id => !injured.has(id));
+      tac.lineup = tac.lineup.filter(id => aliveIds.has(id) && !injured.has(id));
       if (tac.lineup.length < 11) tac.lineup = autoPickXI(gameState.myClub, activeTacticForm());
       recalcSqRating(gameState.myClub);
     }
@@ -6162,7 +6279,7 @@ const APP = (() => {
         }
       }
       if (cup.winner === myId) {
-        gameState.myClub.rep = Math.min(5, Math.round(((gameState.myClub.rep || 1) + 0.3) * 10) / 10);
+        gameState.myClub.rep = clampRep((gameState.myClub.rep ?? 1) + 0.3);
         notify(`You won the ${cup.name}! Club prestige has grown.`, 'success');
       } else {
         notify(`${cup.name}: knocked out.`, 'info');
@@ -6181,7 +6298,7 @@ const APP = (() => {
       .sort((a, b) => b.sqRating - a.sqRating);
     const n = leagueClubs.length || 20;
     const expectedPos = leagueClubs.findIndex(c => c.id === myClub.id) + 1 || Math.ceil(n / 2);
-    const rep = myClub.rep || 1;
+    const rep = myClub.rep ?? 1;
     const repAdj = rep >= 4.5 ? -2 : rep >= 3.5 ? -1 : rep <= 1.5 ? 1 : 0;
     const rel = league.relegation || 0;
     const targetPos = Math.max(1, Math.min(n - rel, expectedPos + repAdj));
@@ -6341,23 +6458,30 @@ const APP = (() => {
     const myTransfer = transfers.find(t => t.clubId === gameState.myClubId);
     const myClub = gameState.myClub;
 
-    // Club reputation changes based on season outcome
-    if (myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level < league.level) {
-      myClub.rep = Math.min(5, Math.round(((myClub.rep || 1) + 0.3) * 10) / 10); // promoted
-    } else if (myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level > league.level) {
-      myClub.rep = Math.max(1, Math.round(((myClub.rep || 1) - 0.4) * 10) / 10); // relegated
+    // Club reputation changes based on season outcome. Prestige is meant to track a club's
+    // standing/image over time, not spike on a single result — promotion alone (especially
+    // via the playoffs) barely moves it; going up as champions or sustained top-flight
+    // performance is what actually builds it.
+    const promoted  = !!(myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level < league.level);
+    const relegated = !!(myTransfer?.to && DATA.LEAGUES[myTransfer.to]?.level > league.level);
+    if (relegated) {
+      myClub.rep = clampRep((myClub.rep ?? 1) - 0.4); // relegated — image takes a real hit
+    } else if (promoted && pos === 1) {
+      myClub.rep = clampRep((myClub.rep ?? 1) + 0.2); // won the league outright and went up
+    } else if (promoted) {
+      myClub.rep = clampRep((myClub.rep ?? 1) + 0.1); // promoted, but that alone isn't much of a statement
     } else if (pos === 1) {
-      myClub.rep = Math.min(5, Math.round(((myClub.rep || 1) + 0.4) * 10) / 10); // champions
+      myClub.rep = clampRep((myClub.rep ?? 1) + 0.4); // champions in the same division — real pedigree
     } else if (pos <= (league.championsLeague || 0) && Math.random() < 0.40) {
-      myClub.rep = Math.min(5, Math.round(((myClub.rep || 1) + 0.2) * 10) / 10); // CL finish
+      myClub.rep = clampRep((myClub.rep ?? 1) + 0.2); // CL finish
     }
     // Prestige erosion from poor seasons
     if (!myTransfer) {
       const halfway = Math.ceil(table.length / 2);
       if (pos > halfway && Math.random() < 0.25) {
-        myClub.rep = Math.max(1, Math.round(((myClub.rep || 1) - 0.2) * 10) / 10); // bottom half
-      } else if ((myClub.rep || 1) >= 4 && pos > (league.championsLeague || 0) && Math.random() < 0.30) {
-        myClub.rep = Math.max(1, Math.round(((myClub.rep || 1) - 0.25) * 10) / 10); // big club missing CL
+        myClub.rep = clampRep((myClub.rep ?? 1) - 0.2); // bottom half
+      } else if ((myClub.rep ?? 1) >= 4 && pos > (league.championsLeague || 0) && Math.random() < 0.30) {
+        myClub.rep = clampRep((myClub.rep ?? 1) - 0.25); // big club missing CL
       }
     }
     let outcome = '';
@@ -6651,12 +6775,14 @@ const APP = (() => {
         // (tickPlayerDevelopment) — season-end only ages players down.
         if (p.age >= 33) p.ovr = Math.max(45, p.ovr - rand(1, 3));
         else if (p.age >= 31) p.ovr = Math.max(45, p.ovr - rand(0, 2));
-        p.value = DATA.calcValue(p.ovr, p.age);
-        p.contract = Math.max(1, p.contract - 1);
+        p.value = DATA.calcValue(p.ovr, p.age, club.league);
+        // Contracts now carry an absolute end date (tickContractExpiries handles
+        // actually releasing players once it passes) — nothing to decrement here.
         p.goals = p.assists = p.appearances = p.yellowCards = p.redCards = 0;
         p.seasonRating = 0; p.ratingCount = 0;
         p.listingPrice = null;
         p.inboxedThisSeason = false;
+        p.benchWeeks = 0;
         // Full pre-season recovery — injuries clear, fitness restored
         if (!p.injured) p.fitness = 100;
         else if ((p.injuryWeeks || 0) <= 0) { p.injured = false; p.injuryType = null; p.fitness = 80; }
@@ -6724,9 +6850,16 @@ const APP = (() => {
     gameState.currentDate = new Date(gameState.currentDate.getTime() + 7 * 86400000);
     tickFinances(1, false); // no league gameweek during preseason — no TV money
     tickInjuries();
+    tickContractExpiries();
     tickPlayerDevelopment(1);
+    tickGameTimeMorale();
     tickAIClubs();
     tickAITransfers();
+    if (gameState.tactics?.lineup) {
+      const aliveIds = new Set(gameState.myClub.players.map(p => p.id));
+      gameState.tactics.lineup = gameState.tactics.lineup.filter(id => aliveIds.has(id));
+      if (gameState.tactics.lineup.length < 11) gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());
+    }
     resolveNegotiationResponses();
     rollBiddingWars();
     checkIncomingOffers();
@@ -6784,6 +6917,16 @@ const APP = (() => {
      --------------------------------------------- */
   function fmtDate(d) {
     return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  }
+  // Contracts now always end on a window boundary (31 Jan / 30 Jun) — show the
+  // month so it's clear which window a deal actually lapses in, not just the year.
+  function fmtContractEnd(d) {
+    if (!d) return 'Free Agent';
+    return `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  function monthsUntil(target, from) {
+    if (!target) return Infinity;
+    return (target - from) / (30.44 * DAY_MS);
   }
   function compName(f) {
     if (f.type === 'european' && f.comp && gameState.european && gameState.european[f.comp])
@@ -7126,6 +7269,11 @@ const APP = (() => {
     Object.values(state.clubs).forEach(c => {   // migrate saves from before AI tactics/lineup existed
       if (!c.tactics) c.tactics = DATA.seedClubTactics(c);
       if (!c.lineup) c.lineup = [];
+      // migrate saves from before contracts were a window-aligned end date (used to be
+      // a plain "years left" integer) — rebuild a sensible end date from that count.
+      c.players.forEach(p => {
+        if (!p.contractEnd) p.contractEnd = DATA.contractEndAfterYears(state.currentDate, p.contract || 2);
+      });
     });
     gameState = state;
     running = false;

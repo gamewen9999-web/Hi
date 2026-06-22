@@ -308,11 +308,15 @@ const ENGINE = (() => {
     // treat it as a true synonym of ST rather than penalizing it for a gap in the
     // formation data.
     if ((playerPos === 'CF' && slotPos === 'ST') || (playerPos === 'ST' && slotPos === 'CF')) return 1.0;
+    // CDM/CM and CAM/CM are rotated near-interchangeably in real squads (deep-lying
+    // playmaker vs box-to-box, advanced playmaker vs central mid) — treat as synonyms too.
+    if ((playerPos === 'CDM' && slotPos === 'CM') || (playerPos === 'CM' && slotPos === 'CDM')) return 1.0;
+    if ((playerPos === 'CAM' && slotPos === 'CM') || (playerPos === 'CM' && slotPos === 'CAM')) return 1.0;
     const pd = POS_DEPTH[playerPos] ?? 5;
     const sd = POS_DEPTH[slotPos] ?? 5;
     const dist = Math.abs(pd - sd);
     if (dist === 0)   return 0.93;  // mirror pos e.g. RB↔LB, RW↔LW
-    if (dist <= 1)    return 0.88;  // adjacent e.g. CM↔CDM, ST↔CF, CM↔RM
+    if (dist <= 1)    return 0.88;  // adjacent e.g. CM↔RM, CF↔wing
     if (dist <= 2)    return 0.80;  // nearby zone e.g. CB↔CDM, CAM↔ST, RW↔CAM
     if (dist <= 3)    return 0.70;  // cross-zone e.g. CB↔CM, CDM↔CAM, CM↔ST
     if (dist <= 4.5)  return 0.58;  // major cross e.g. CB↔MID, CDM↔striker
@@ -548,7 +552,8 @@ const ENGINE = (() => {
     const hShots = Math.round((hScore * rand(3,5) + rand(1,5)) * hShotMult);
     const aShots = Math.round((aScore * rand(3,5) + rand(1,5)) * aShotMult);
 
-    const genRatings = (club, xi, won, drew) => {
+    const isBackline = (pos) => pos === 'GK' || ['CB','RB','LB','RWB','LWB'].includes(pos);
+    const genRatings = (club, xi, won, drew, conceded) => {
       const pool = xi
         ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
         : club.players.slice(0, 11);
@@ -561,13 +566,20 @@ const ENGINE = (() => {
           : ['RW','LW','CAM'].includes(p.pos) ? ((a.dribbling||65)+(a.passing||65)+(a.shooting||65)) / 3
           : ['CM','CDM','RM','LM'].includes(p.pos) ? ((a.passing||65)+(a.physical||65)+(a.defending||65)) / 3
           : ((a.defending||65)+(a.physical||65)+(a.pace||65)) / 3; // defenders
-        // Normalise: 65 = 6.0, 80 = 6.9, 50 = 5.1
-        let base = 4.0 + (relevantAvg / 100) * 6.0 + (won ? 0.4 : drew ? 0 : -0.3) + (Math.random() - 0.5) * 1.2;
-        events.filter(e => e.player?.id === p.id && e.type === 'goal').forEach(() => base += 0.8);
-        events.filter(e => e.assist?.id === p.id).forEach(() => base += 0.4);
-        events.filter(e => e.player?.id === p.id && e.type === 'yellow').forEach(() => base -= 0.2);
+        // Tighter normalisation so a routine game lands ~6.0-6.5 instead of 7.5+ —
+        // real match ratings cluster there, with 8+ reserved for genuinely standout
+        // games (goal involvement, a clean sheet) rather than just "decent and won".
+        let base = 6.5 + ((relevantAvg - 65) / 100) * 2.0 + (won ? 0.3 : drew ? 0 : -0.3) + (Math.random() - 0.5) * 1.3;
+        // Keepers and defenders are judged on the scoreline as much as their attributes.
+        if (isBackline(p.pos)) {
+          if (conceded === 0) base += 0.4;
+          else if (conceded >= 3) base -= 0.4;
+        }
+        events.filter(e => e.player?.id === p.id && e.type === 'goal').forEach(() => base += 0.7);
+        events.filter(e => e.assist?.id === p.id).forEach(() => base += 0.35);
+        events.filter(e => e.player?.id === p.id && e.type === 'yellow').forEach(() => base -= 0.25);
         events.filter(e => e.player?.id === p.id && e.type === 'red').forEach(() => base -= 1.0);
-        return { player: p, rating: Math.min(10, Math.max(4, Math.round(base * 10) / 10)) };
+        return { player: p, rating: Math.min(10, Math.max(3.0, Math.round(base * 10) / 10)) };
       });
     };
 
@@ -577,8 +589,8 @@ const ENGINE = (() => {
       homeScore: hScore, awayScore: aScore, events,
       stats: { possession: [hPoss, 100 - hPoss], shots: [hShots, aShots],
                shotsOnTarget: [Math.min(hShots, hScore + rand(0,3)), Math.min(aShots, aScore + rand(0,3))] },
-      homeRatings: genRatings(homeClub, hXI, hWon, drew),
-      awayRatings: genRatings(awayClub, aXI, !hWon && !drew, drew),
+      homeRatings: genRatings(homeClub, hXI, hWon, drew, aScore),
+      awayRatings: genRatings(awayClub, aXI, !hWon && !drew, drew, hScore),
     };
   }
 
@@ -851,7 +863,8 @@ const ENGINE = (() => {
       if (club.id === gameState.myClubId) return;
       club.players.forEach(p => {
         if (seen.has(p.id)) return;
-        const expiring = (p.contract || 4) <= 1 && !p.loyal;
+        const monthsLeft = p.contractEnd ? (p.contractEnd - gameState.currentDate) / (30.44 * 86400000) : 48;
+        const expiring = monthsLeft <= 12 && !p.loyal;
         const wantsMove = !!p.transferListed;
         // High-OVR expiring players often get extended — not all appear on market
         // OVR<70: always show if expiring; OVR70-80: 45% chance; OVR80+: 20% chance
