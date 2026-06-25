@@ -52,8 +52,6 @@ const APP = (() => {
     { country: 'France',  leagues: ['ligue_1'] },
   ];
 
-  const KO_DATE = new Date(2026, 1, 17);   // European knockout resolves after this
-
   const INJURY_TYPES = ENGINE.INJURY_TYPES;
   const FITNESS_DRAIN_STARTER = 13;   // fitness lost per match for starters
   const FITNESS_DRAIN_SUB     = 7;    // fitness lost for players who came on as subs
@@ -6917,7 +6915,8 @@ const APP = (() => {
     gameState.currentDate = new Date(seasonYear, 7, 9);
     ENGINE.setupEuropean(gameState);
     ENGINE.setupCups(gameState);
-    Object.values(gameState.european).forEach(comp => comp.koDate = KO_DATE);
+    const koDate = new Date(seasonYear + 1, 1, 17);   // European knockout resolves after this
+    Object.values(gameState.european).forEach(comp => comp.koDate = koDate);
     gameState.fixtures = ENGINE.generateSchedule(gameState);
     setBoardObjective(gameState);
     gameState.tactics.lineup = autoPickXI(gameState.myClub, activeTacticForm());

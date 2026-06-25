@@ -51,12 +51,13 @@ const ENGINE = (() => {
 
   function generateSchedule(gameState) {
     const fixtures = []; let fid = 0;
-    const seasonStart = new Date(2025, 7, 9);
+    const year = gameState.currentDate.getFullYear();
+    const seasonStart = new Date(year, 7, 9);
 
     // Top-flight leagues stretch to May 18 to run alongside European knockout rounds.
     // Lower leagues keep a natural 7-day weekly cadence.
-    const seasonEndTarget = new Date(2026, 4, 18); // May 18
-    const winterBreakStart = new Date(2025, 11, 21); // Dec 21
+    const seasonEndTarget = new Date(year + 1, 4, 18); // May 18
+    const winterBreakStart = new Date(year, 11, 21); // Dec 21
 
     Object.keys(DATA.LEAGUES).forEach(lid => {
       const leagueDef = DATA.LEAGUES[lid];
@@ -822,10 +823,11 @@ const ENGINE = (() => {
 
     // New UEFA format: a single "league phase" — every club sits in one table and
     // plays a fixed number of matches against different opponents (no groups).
+    const year = gameState.currentDate.getFullYear();
     const euDates = [
-      new Date(2025,8,16), new Date(2025,8,30), new Date(2025,9,21),
-      new Date(2025,10,4), new Date(2025,10,25), new Date(2025,11,9),
-      new Date(2026,0,20),  new Date(2026,0,28),
+      new Date(year,8,16), new Date(year,8,30), new Date(year,9,21),
+      new Date(year,10,4), new Date(year,10,25), new Date(year,11,9),
+      new Date(year+1,0,20), new Date(year+1,0,28),
     ];
     let eid = 100000;
 
@@ -858,12 +860,13 @@ const ENGINE = (() => {
 
   /* ---- DOMESTIC CUPS ---- */
   function setupCups(gameState) {
+    const year = gameState.currentDate.getFullYear();
     const cupDefs = [
-      { id:'fa_cup',         name:'FA Cup',          country:'England', date: new Date(2025,10,8)  },
-      { id:'copa_del_rey',   name:'Copa del Rey',    country:'Spain',   date: new Date(2025,10,22) },
-      { id:'coppa_italia',   name:'Coppa Italia',    country:'Italy',   date: new Date(2025,10,15) },
-      { id:'dfb_pokal',      name:'DFB-Pokal',       country:'Germany', date: new Date(2025,9,29)  },
-      { id:'coupe_de_france',name:'Coupe de France', country:'France',  date: new Date(2025,10,22) },
+      { id:'fa_cup',         name:'FA Cup',          country:'England', date: new Date(year,10,8)  },
+      { id:'copa_del_rey',   name:'Copa del Rey',    country:'Spain',   date: new Date(year,10,22) },
+      { id:'coppa_italia',   name:'Coppa Italia',    country:'Italy',   date: new Date(year,10,15) },
+      { id:'dfb_pokal',      name:'DFB-Pokal',       country:'Germany', date: new Date(year,9,29)  },
+      { id:'coupe_de_france',name:'Coupe de France', country:'France',  date: new Date(year,10,22) },
     ];
 
     gameState.cups = {};
