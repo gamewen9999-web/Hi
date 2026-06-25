@@ -409,12 +409,17 @@ const APP = (() => {
         $('btn-pause').classList.remove('hidden');
         $('btn-speed').classList.remove('hidden');
         $('btn-subs').classList.remove('hidden');
+        $('btn-tactics').classList.remove('hidden');
         running = false;
         runSimulation();
       });
       $('btn-subs').addEventListener('click', () => {
         if (!ui.match) return;
         showSubsModal();
+      });
+      $('btn-tactics').addEventListener('click', () => {
+        if (!ui.match) return;
+        showLiveTacticsModal();
       });
       $('btn-pause').addEventListener('click', () => {
         if (!ui.match) return;
@@ -4160,7 +4165,9 @@ const APP = (() => {
       currentHomeXI: [...homeXI], currentAwayXI: [...awayXI],
       currentTactics: { ...gameState.tactics },
       subsUsed: 0, subsMax: 5,
-      sim: { min: 0, idx: 0, hs: 0, as: 0, hSh: 0, aSh: 0, hSo: 0, aSo: 0 },
+      sim: { min: 0, idx: 0, hs: 0, as: 0, hSh: 0, aSh: 0, hSo: 0, aSo: 0, possHomeUnits: 0, possUnits: 0,
+             stoppage1: result.stoppage1, stoppage2: result.stoppage2, matchEnd: result.matchEnd,
+             homeManDown: false, awayManDown: false },
       simTimer: null, speed: 1,
     };
 
@@ -4190,6 +4197,7 @@ const APP = (() => {
     $('match-result-overlay').classList.add('hidden');
     $('btn-halftime').classList.add('hidden');
     $('btn-subs').classList.add('hidden');
+    $('btn-tactics').classList.add('hidden');
     $('halftime-panel').classList.add('hidden');
     $('match-events-inner').classList.remove('hidden');
     $('btn-simulate').classList.remove('hidden');
@@ -5002,13 +5010,21 @@ const APP = (() => {
     'A cross swings in but is dealt with comfortably.',
     'Neat one-two in midfield, but the final ball goes astray.',
     'The goalkeeper spreads himself to narrow the angle.',
-    'A free kick awarded on the edge of the box — wall set.',
     'Play settles into a tighter midfield pattern.',
     'The winger tries to drive inside but loses possession.',
     'Patient pressure building — probing for a gap in the defence.',
     'A header back to the keeper under real pressure.',
     'The tempo drops as both teams look to catch their breath.',
     'Time ticking away — both sides hunting for the decisive moment.',
+    'A scrappy passage of play — neither side able to find any rhythm.',
+    'The captain gestures for his side to push higher up the pitch.',
+    'A misplaced pass gifts possession straight back — sloppy from both sides.',
+    'The manager is on his feet on the touchline, barking instructions.',
+    'A heavy touch lets the defender step in and clear the danger.',
+    'Possession shuffled along the back line, probing for an opening.',
+    'A loose ball in midfield sparks a brief scramble before order returns.',
+    'The fourth official holds up the board — a stoppage for treatment.',
+    'Both benches are quiet — this game is settling into a pattern.',
   ];
   const CMNT_PRESS = [
     'CHANCE! The goalkeeper makes himself big and smothers the shot!',
@@ -5019,24 +5035,42 @@ const APP = (() => {
     'One-on-one with the keeper — shot blocked on the line!',
     'Dangerous cross whipped in — just cleared at the near post!',
     'Great pressing wins it back — the counter breaks but the defence holds!',
+    'A defender throws himself in front of the shot to block it!',
+    'The keeper races out to smother the through ball just in time!',
+    'A driving run into the box ends with a desperate last-ditch tackle!',
+    'The crowd rises as a long-range effort whistles just over the bar!',
   ];
 
   function addCommentary(min, events) {
+    const displayMin = formatMatchMinute(min, ui.match.sim.stoppage1);
     events.forEach(e => {
       const club = e.team === 'home' ? ui.match.home : ui.match.away;
       const nm = e.player ? esc(e.player.name) + ' (' + esc(club.name) + ')' : esc(club.name);
       let text = '';
       if (e.type === 'goal') {
-        const opts = ['GOAL! What a finish!', 'GOAL! Back of the net!', 'GOAL! The keeper had no chance!', 'GOAL! Unstoppable!'];
-        text = opts[rand(0, opts.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.name)}!` : '');
+        if (e.isPenalty) {
+          const opts = ['PENALTY SCORED! Calmly slotted away from twelve yards!', 'GOAL FROM THE SPOT! No way back for the keeper!', 'PENALTY CONVERTED! Ice cold under pressure!', 'SCORED! Sent the keeper the wrong way from the spot!'];
+          text = opts[rand(0, opts.length - 1)] + (e.player ? ` ${esc(e.player.name)} makes no mistake for ${esc(club.name)}!` : '');
+        } else {
+          const opts = ['GOAL! What a finish!', 'GOAL! Back of the net!', 'GOAL! The keeper had no chance!', 'GOAL! Unstoppable!', 'GOAL! A moment of real quality!', 'GOAL! The net bulges and the home end erupts!', 'GOAL! Clinical finishing on full display!'];
+          text = opts[rand(0, opts.length - 1)] + (e.player ? ` ${esc(e.player.name)} scores for ${esc(club.name)}!` : '');
+        }
       } else if (e.type === 'shot_saved') {
-        const opts = ['Great save!', 'What a stop from the keeper!', 'Denied! Brilliant save!', 'Keeper to the rescue!'];
-        text = nm + ' — ' + opts[rand(0, opts.length - 1)];
+        if (e.isPenalty) {
+          text = nm + ' — PENALTY SAVED! Brilliant stop from the spot, guessed right and held firm!';
+        } else {
+          const opts = ['Great save!', 'What a stop from the keeper!', 'Denied! Brilliant save!', 'Keeper to the rescue!', 'Superbly turned away — fingertip stuff!', 'Pushed onto the bar and away — outstanding!', 'Smothered at the second attempt!'];
+          text = nm + ' — ' + opts[rand(0, opts.length - 1)];
+        }
       } else if (e.type === 'shot_wide') {
-        const opts = ['Just wide!', 'Goes narrowly wide!', 'Across the face of goal!', 'So close, but over the bar!'];
-        text = nm + ' — ' + opts[rand(0, opts.length - 1)];
+        if (e.isPenalty) {
+          text = nm + ' — PENALTY MISSED! Blazes it over the bar — huge let-off!';
+        } else {
+          const opts = ['Just wide!', 'Goes narrowly wide!', 'Across the face of goal!', 'So close, but over the bar!', 'Drags it well off target!', 'Scuffed and well wide of the post!', 'Should have done better — fires into the stands!'];
+          text = nm + ' — ' + opts[rand(0, opts.length - 1)];
+        }
       } else if (e.type === 'shot_post') {
-        const opts = ['Off the post!', 'Strikes the woodwork!', 'Rattles the crossbar — incredible luck!'];
+        const opts = ['Off the post!', 'Strikes the woodwork!', 'Rattles the crossbar — incredible luck!', 'Cannons back off the upright!', 'So close — clatters the frame of the goal!'];
         text = nm + ' — ' + opts[rand(0, opts.length - 1)];
       } else if (e.type === 'sub') {
         const onN  = e.playerOn  ? esc(e.playerOn.name)  : '?';
@@ -5045,21 +5079,44 @@ const APP = (() => {
       } else if (e.type === 'yellow') {
         text = `Booked! ${e.player ? esc(e.player.name) + ' (' + esc(club.name) + ')' : esc(club.name)} is shown a yellow card.`;
       } else if (e.type === 'red') {
-        text = `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is off! ${esc(club.name)} down to ten men!`;
+        const opts = [
+          `RED CARD! ${e.player ? esc(e.player.name) : 'A player'} is off! ${esc(club.name)} down to ten men — a massive blow with the game still alive.`,
+          `SENT OFF! ${e.player ? esc(e.player.name) : 'A player'} sees red and trudges off down the tunnel. ${esc(club.name)} face the rest of the match a man short.`,
+          `RED CARD! The referee has no hesitation — straight off for ${e.player ? esc(e.player.name) : 'the player'}. ${esc(club.name)} will have to dig in with ten men.`,
+        ];
+        text = opts[rand(0, opts.length - 1)];
+      } else if (e.type === 'penalty_awarded') {
+        const opts = [
+          `PENALTY! ${e.player ? esc(e.player.name) : 'The defender'} brings the attacker down inside the box — ${esc(club.name)} have a golden chance!`,
+          `PENALTY AWARDED! Clumsy challenge in the area from ${e.player ? esc(e.player.name) : 'the defender'} — the referee points straight to the spot for ${esc(club.name)}!`,
+          `IT'S A PENALTY! No arguing with that one — ${esc(club.name)} will step up from twelve yards.`,
+        ];
+        text = opts[rand(0, opts.length - 1)];
+      } else if (e.type === 'free_kick') {
+        const opts = [
+          `Free kick to ${esc(club.name)} — a dangerous position just outside the box.`,
+          `Free kick awarded to ${esc(club.name)} after a foul in midfield.`,
+          `${esc(club.name)} will have a set-piece chance from the free kick.`,
+          `Free kick given away — ${esc(club.name)} look to make the most of the set piece.`,
+          `The whistle goes — free kick to ${esc(club.name)} in a useful area.`,
+        ];
+        text = opts[rand(0, opts.length - 1)];
       } else if (e.type === 'offside') {
-        const opts = ['Flag is up! Offside!', 'Caught offside — the linesman raises the flag.', 'Offside! The move comes to nothing.', 'It\'s offside, no goal.'];
+        const opts = ['Flag is up! Offside!', 'Caught offside — the linesman raises the flag.', 'Offside! The move comes to nothing.', 'It\'s offside, no goal.', 'The flag goes up just as the shot is struck.', 'Marginal call, but offside is given.'];
         text = (e.player ? esc(e.player.name) : 'A player') + ' — ' + opts[rand(0, opts.length-1)];
       } else if (e.type === 'tackle') {
         const nm2 = e.player ? esc(e.player.name) : esc(club.name);
         if (e.slide && !e.success) {
-          text = nm2 + ' — Slide tackle misses! Lucky not to give away more.';
+          const opts = ['Slide tackle misses! Lucky not to give away more.', 'Goes to ground but comes away with nothing — risky challenge.', 'Mistimed slide — fortunate the referee lets it go.'];
+          text = nm2 + ' — ' + opts[rand(0, opts.length - 1)];
         } else if (e.slide && e.success) {
-          text = nm2 + ' — Brilliant sliding tackle wins it cleanly!';
+          const opts = ['Brilliant sliding tackle wins it cleanly!', 'Perfectly timed slide — takes the ball and nothing else!', 'Last-ditch sliding challenge saves the day!'];
+          text = nm2 + ' — ' + opts[rand(0, opts.length - 1)];
         } else if (e.success) {
-          const opts = ['Wins the ball — great defending!', 'Timed to perfection, ball won!', 'Strong challenge wins possession.'];
+          const opts = ['Wins the ball — great defending!', 'Timed to perfection, ball won!', 'Strong challenge wins possession.', 'Reads it well and nicks the ball away.', 'Stands firm and comes away with the ball.'];
           text = nm2 + ' — ' + opts[rand(0, opts.length-1)];
         } else {
-          const opts = ['Caught in possession.', 'Battles but can\'t win the ball.', 'Physical duel in midfield.'];
+          const opts = ['Caught in possession.', 'Battles but can\'t win the ball.', 'Physical duel in midfield.', 'Outmuscled and loses out in the challenge.', 'Beaten for pace in the challenge.'];
           text = nm2 + ' — ' + opts[rand(0, opts.length-1)];
         }
       } else if (e.type === 'corner') {
@@ -5083,7 +5140,7 @@ const APP = (() => {
       if (ui.match.result.commentary) ui.match.result.commentary.push({ min, text, cls: e.type });
       const div = document.createElement('div');
       div.className = 'match-event commentary ' + e.type;
-      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
+      div.innerHTML = `<span class="event-min">${displayMin}</span><span class="event-desc">${text}</span>`;
       $('match-events-list').prepend(div);
     });
     if (!events.length && min % 5 === 0) {
@@ -5094,10 +5151,21 @@ const APP = (() => {
       const text = pool[idx];
       const div = document.createElement('div');
       div.className = 'match-event commentary';
-      div.innerHTML = `<span class="event-min">${min}'</span><span class="event-desc">${text}</span>`;
+      div.innerHTML = `<span class="event-min">${displayMin}</span><span class="event-desc">${text}</span>`;
       $('match-events-list').prepend(div);
       if (ui.match.result.commentary) ui.match.result.commentary.push({ min, text, cls: '' });
     }
+  }
+
+  // Raw sim ticks run continuously past 45/90 to make room for stoppage time —
+  // this converts a raw tick back into the "45+2'" / "90+4'" label a real broadcast
+  // clock would show, given how many minutes of first-half stoppage were added.
+  function formatMatchMinute(min, stoppage1) {
+    if (min <= 45) return min + "'";
+    if (min <= 45 + stoppage1) return `45+${min - 45}'`;
+    const adjusted = min - stoppage1;
+    if (adjusted <= 90) return adjusted + "'";
+    return `90+${adjusted - 90}'`;
   }
 
   /* ── SIMULATION LOOP: 1 real-second = 1 game-minute (1:60) ─ */
@@ -5108,6 +5176,7 @@ const APP = (() => {
     $('btn-pause').classList.remove('hidden');
     $('btn-speed').classList.remove('hidden');
     $('btn-subs').classList.remove('hidden');
+    $('btn-tactics').classList.remove('hidden');
     $('btn-pause').textContent = '⏸ Pause';
     $('match-status').textContent = 'LIVE';
 
@@ -5116,7 +5185,7 @@ const APP = (() => {
 
     function scheduleNext() {
       if (!running || !ui.match) return;
-      if (sim.min >= 90) { finishMatch(); return; }
+      if (sim.min >= sim.matchEnd) { finishMatch(); return; }
       ui.match.simTimer = setTimeout(tick, ui.match.speed === 2 ? 500 : 1000);
     }
 
@@ -5137,7 +5206,7 @@ const APP = (() => {
           if (e.team === 'home') { sim.hSh++; if (onTarget) sim.hSo++; }
           else { sim.aSh++; if (onTarget) sim.aSo++; }
         }
-        if (['goal', 'yellow', 'red', 'sub', 'injury'].includes(e.type)) addMatchEvent(e);
+        if (['goal', 'yellow', 'red', 'sub', 'injury', 'penalty_awarded'].includes(e.type)) addMatchEvent(e);
         addPitchDot(e);
         eventsThisMin.push(e);
         // Injury handling — apply state and auto-pause for user's team
@@ -5166,16 +5235,23 @@ const APP = (() => {
       }
 
       $('match-score').textContent = `${sim.hs} – ${sim.as}`;
-      $('match-time').textContent = sim.min + "'";
+      $('match-time').textContent = formatMatchMinute(sim.min, sim.stoppage1);
 
-      // Live stats — possession has no discrete events so it still interpolates toward
-      // the final tactics/overalls-driven split; shots and shots-on-target are instead
-      // counted directly off the same events that just fed the pitch dots above, so the
-      // numbers and the dots can never drift apart.
+      // Live stats — possession has no discrete events, so each minute we draw a few
+      // "who's got the ball" contests weighted toward the final tactics/overalls-driven
+      // split and track the running share. With only a few contests played so far, early
+      // minutes swing widely (small sample); the running share settles toward the true
+      // split as the match goes on, same as a real live possession tracker. Shots and
+      // shots-on-target are instead counted directly off the same events that just fed
+      // the pitch dots above, so the numbers and the dots can never drift apart.
       const r = ui.match.result;
-      const pct = sim.min / 90;
       const [ph]   = r.stats.possession;
-      const hPossLive  = Math.round(50 + (ph - 50) * pct);
+      const POSS_CONTESTS_PER_MIN = 3;
+      for (let i = 0; i < POSS_CONTESTS_PER_MIN; i++) {
+        sim.possUnits = (sim.possUnits || 0) + 1;
+        if (Math.random() * 100 < ph) sim.possHomeUnits = (sim.possHomeUnits || 0) + 1;
+      }
+      const hPossLive  = Math.round(sim.possHomeUnits / sim.possUnits * 100);
       const hShotsLive = sim.hSh, aShotsLive = sim.aSh;
       const hSoTLive   = sim.hSo, aSoTLive   = sim.aSo;
       $('s-possession-h').textContent = hPossLive + '%';
@@ -5189,6 +5265,14 @@ const APP = (() => {
       $('stat-sot').style.width = (hSoTLive / Math.max(1, hSoTLive + aSoTLive) * 100) + '%';
 
       if (eventsThisMin.some(e => e.type === 'yellow' || e.type === 'red')) showCard(eventsThisMin);
+
+      // A red card obviously costs the side a man for the rest of the match — re-sim
+      // the remainder with that team handicapped instead of letting it stay cosmetic.
+      const newReds = eventsThisMin.filter(e => e.type === 'red');
+      if (newReds.length) {
+        newReds.forEach(e => { if (e.team === 'home') sim.homeManDown = true; else sim.awayManDown = true; });
+        if (sim.min < sim.matchEnd) reSimFromMinute(sim.min);
+      }
 
       // AI substitutions at 60', 72', 82'
       const m2 = ui.match;
@@ -5215,7 +5299,7 @@ const APP = (() => {
               const subEv = { min: sim.min, type: 'sub', team: aiTeam, playerOff: offP, playerOn: onP };
               ev.push(subEv);
               ev.sort((a, b) => a.min - b.min);
-              if (sim.min < 90) reSimFromMinute(sim.min);
+              if (sim.min < sim.matchEnd) reSimFromMinute(sim.min);
               addMatchEvent(subEv);
               eventsThisMin.push(subEv);
             }
@@ -5225,7 +5309,7 @@ const APP = (() => {
 
       addCommentary(sim.min, eventsThisMin);
 
-      if (sim.min === 45) {
+      if (sim.min === 45 + sim.stoppage1) {
         $('match-status').textContent = 'HALF TIME';
         swapSides();
         running = false;
@@ -5234,6 +5318,7 @@ const APP = (() => {
         $('btn-pause').classList.add('hidden');
         $('btn-speed').classList.add('hidden');
         $('btn-subs').classList.add('hidden');
+        $('btn-tactics').classList.add('hidden');
         showHalftimePanel();
         return;
       }
@@ -5272,14 +5357,17 @@ const APP = (() => {
       icon = '+';
       const inj = INJURY_TYPES.find(t => t.id === e.injuryType);
       desc = (e.player ? esc(e.player.name) : '') + (inj ? ` <span class="text-muted">${inj.label}</span>` : '');
+    } else if (e.type === 'penalty_awarded') {
+      icon = 'Ⓟ';
+      desc = `Penalty awarded${e.player ? ' <span class="text-muted">— foul by ' + esc(e.player.name) + '</span>' : ''}`;
     } else {
-      icon = e.type === 'goal' ? '●' : e.type === 'yellow' ? '■' : '■';
+      icon = e.type === 'goal' ? (e.isPenalty ? 'Ⓟ' : '●') : e.type === 'yellow' ? '■' : '■';
       desc = e.player ? esc(e.player.name) : '';
       if (e.type === 'goal' && e.assist) desc += ` <span class="text-muted">(${esc(e.assist.name)})</span>`;
     }
     const div = document.createElement('div');
-    div.className = 'match-event ' + e.type;
-    div.innerHTML = `<span class="event-min">${e.min}'</span><span class="event-icon">${icon}</span><span class="event-desc">${desc}</span><span class="event-team">${esc(club.name)}</span>`;
+    div.className = 'match-event ' + e.type + (e.isPenalty ? ' penalty' : '');
+    div.innerHTML = `<span class="event-min">${formatMatchMinute(e.min, ui.match.sim.stoppage1)}</span><span class="event-icon">${icon}</span><span class="event-desc">${desc}</span><span class="event-team">${esc(club.name)}</span>`;
     $('match-events-list').prepend(div);
   }
   function addPitchDot(e) {
@@ -5296,7 +5384,9 @@ const APP = (() => {
       x = attRight ? 76 + Math.random() * 10 : 14 + Math.random() * 10;
       y = 30 + Math.random() * 40;
       cls = 'goal';
-    } else if (['shot_saved', 'shot_wide', 'shot_post'].includes(e.type)) {
+    } else if (e.type === 'shot_saved') {
+      // Off-target shots (wide/post) no longer get a dot — between those and every
+      // saved shot the pitch was too cluttered to read; on-target is the signal.
       const attRight = (e.team === 'home') ? !swapped : swapped;
       x = attRight ? 72 + Math.random() * 14 : 14 + Math.random() * 14;
       y = 25 + Math.random() * 50;
@@ -5306,6 +5396,12 @@ const APP = (() => {
       x = (e.team === 'home') === homeLeft ? 15 + Math.random() * 40 : 45 + Math.random() * 40;
       y = 15 + Math.random() * 70;
       cls = 'foul';
+    } else if (e.type === 'penalty_awarded') {
+      // Penalty spot for whichever side was awarded it — the team's own attacking end.
+      const attRight = (e.team === 'home') ? !swapped : swapped;
+      x = attRight ? 84 : 16;
+      y = 50;
+      cls = 'penalty';
     } else {
       return;
     }
@@ -5323,10 +5419,11 @@ const APP = (() => {
     $('btn-pause').classList.add('hidden');
     $('btn-speed').classList.add('hidden');
     $('btn-subs').classList.add('hidden');
+    $('btn-tactics').classList.add('hidden');
     const r = ui.match.result;
     const home = ui.match.home, away = ui.match.away;
     $('match-status').textContent = 'FULL TIME';
-    $('match-time').textContent = "90'";
+    $('match-time').textContent = formatMatchMinute(ui.match.sim.matchEnd, ui.match.sim.stoppage1);
 
     // stats bar
     const [ph, pa] = r.stats.possession;
@@ -5521,12 +5618,13 @@ const APP = (() => {
     const origTacStr = JSON.stringify(m.currentTactics);
     const origXI = m.myIsHome ? m.currentHomeXI.join(',') : m.currentAwayXI.join(',');
 
-    // Apply substitutions into result events at min 46
+    // Apply substitutions into result events right at the second-half kickoff
     if (m.htPendingSubs && m.htPendingSubs.length > 0) {
+      const kickoffMin = 45 + m.sim.stoppage1 + 1;
       m.htPendingSubs.forEach(sub => {
         const offP = myClub.players.find(p => p.id === sub.offId);
         const onP  = myClub.players.find(p => p.id === sub.onId);
-        m.result.events.push({ min: 46, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP });
+        m.result.events.push({ min: kickoffMin, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP });
         m.subsUsed++;
       });
       m.result.events.sort((a, b) => a.min - b.min);
@@ -5587,9 +5685,12 @@ const APP = (() => {
       awayTactics: m.myIsHome ? aiTactics : { ...m.currentTactics },
       homeSlotPositions: m.myIsHome ? mySlotPos : aiSlotPos,
       awaySlotPositions: m.myIsHome ? aiSlotPos : mySlotPos,
+      homeManDown: !!m.sim.homeManDown,
+      awayManDown: !!m.sim.awayManDown,
     });
-    // Use the new sim's early events as the remainder of the match (shift min by splitMinute)
-    const remainingMins = 90 - splitMinute;
+    // Use the new sim's early events as the remainder of the match (shift min by splitMinute).
+    // matchEnd (not a flat 90) accounts for this match's own already-fixed stoppage time.
+    const remainingMins = m.sim.matchEnd - splitMinute;
     const newRemainder = newResult.events
       .filter(e => e.min > 0 && e.min <= remainingMins)
       .map(e => ({ ...e, min: e.min + splitMinute }));
@@ -5619,7 +5720,8 @@ const APP = (() => {
   }
 
   function reSimSecondHalf() {
-    reSimFromMinute(45, 46);
+    const stoppage1 = ui.match.sim.stoppage1;
+    reSimFromMinute(45 + stoppage1, 45 + stoppage1 + 1);
     notify('2nd half tactics applied', 'info');
   }
 
@@ -5638,6 +5740,69 @@ const APP = (() => {
       const nameEl = p.el?.querySelector('.dot-name');
       if (nameEl) nameEl.textContent = shortName(newPlayer.name);
     });
+  }
+
+  /* =============================================
+     IN-MATCH LIVE TACTICS MODAL — same controls as the half-time tactics tab,
+     but reachable any time during play and applied immediately via reSimFromMinute
+     instead of waiting for the break.
+     ============================================= */
+  function showLiveTacticsModal() {
+    const m = ui.match;
+    if (!m) return;
+    const tac = { ...m.currentTactics };
+    let lineup = [...(m.myIsHome ? m.currentHomeXI : m.currentAwayXI)];
+    const pressLabels = { high: 'High Press', medium: 'Medium Block', low: 'Low Block' };
+    const styleLabels = { direct: 'Direct', balanced: 'Balanced', possession: 'Possession', counter: 'Counter', gegenpressing: 'Gegenpressing', longball: 'Long Ball' };
+
+    const render = () => {
+      const formBtns = Object.keys(DATA.FORMATIONS).map(f =>
+        `<button class="formation-btn ${f === tac.formation ? 'selected' : ''}" data-f="${f}">${DATA.FORMATIONS[f].name}</button>`
+      ).join('');
+      showModal(`
+        <div class="subs-modal-header">Tactics <span class="subs-used-badge">${formatMatchMinute(m.sim.min, m.sim.stoppage1)}</span></div>
+        <div class="ht-tac-section"><h4>Formation</h4><div class="formation-grid">${formBtns}</div></div>
+        <div class="ht-tac-section"><h4>Mentality</h4>
+          <div class="tac-btn-row">${['defensive','balanced','attacking'].map(mt =>
+            `<button class="tac-opt-btn ${mt===tac.mentality?'selected':''}" data-tac="mentality" data-v="${mt}">${cap(mt)}</button>`).join('')}</div>
+        </div>
+        <div class="ht-tac-section"><h4>Pressing</h4>
+          <div class="tac-btn-row">${['high','medium','low'].map(pr =>
+            `<button class="tac-opt-btn ${pr===tac.pressing?'selected':''}" data-tac="pressing" data-v="${pr}">${pressLabels[pr]}</button>`).join('')}</div>
+        </div>
+        <div class="ht-tac-section"><h4>Style</h4>
+          <div class="tac-btn-row">${['direct','balanced','possession','counter','gegenpressing','longball'].map(st =>
+            `<button class="tac-opt-btn ${st===tac.style?'selected':''}" data-tac="style" data-v="${st}">${styleLabels[st]}</button>`).join('')}</div>
+        </div>
+        <button id="live-tac-apply" class="btn-primary btn-lg" style="width:100%;margin-top:14px">Apply Tactics</button>
+      `);
+      document.querySelectorAll('.formation-btn[data-f]').forEach(b => b.addEventListener('click', () => {
+        tac.formation = b.dataset.f;
+        lineup = autoPickXI(gameState.myClub, b.dataset.f, []);
+        render();
+      }));
+      document.querySelectorAll('[data-tac]').forEach(b => b.addEventListener('click', () => {
+        tac[b.dataset.tac] = b.dataset.v;
+        render();
+      }));
+      $('live-tac-apply')?.addEventListener('click', () => {
+        const origTacStr = JSON.stringify(m.currentTactics);
+        const origXI = (m.myIsHome ? m.currentHomeXI : m.currentAwayXI).join(',');
+        m.currentTactics = { ...tac };
+        if (m.myIsHome) m.currentHomeXI = [...lineup]; else m.currentAwayXI = [...lineup];
+        const tacChanged    = JSON.stringify(m.currentTactics) !== origTacStr;
+        const lineupChanged = lineup.join(',') !== origXI;
+        if (tacChanged || lineupChanged) {
+          Object.assign(gameState.tactics, m.currentTactics);
+          gameState.tactics.lineup = [...lineup];
+          if (m.sim.min < m.sim.matchEnd) reSimFromMinute(m.sim.min);
+          updatePitchDotsAfterSubs();
+          notify('Tactics updated for the rest of the match', 'info');
+        }
+        closeModal();
+      });
+    };
+    render();
   }
 
   /* =============================================
@@ -5745,7 +5910,7 @@ const APP = (() => {
         const subEv = { min: m.sim.min, type: 'sub', team: m.myIsHome ? 'home' : 'away', playerOff: offP, playerOn: onP };
         m.result.events.push(subEv);
         m.result.events.sort((a, b) => a.min - b.min);
-        if (m.sim.min < 90) reSimFromMinute(m.sim.min);
+        if (m.sim.min < m.sim.matchEnd) reSimFromMinute(m.sim.min);
         addMatchEvent(subEv);
         updatePitchDotsAfterSubs();
         closeModal();
@@ -5773,9 +5938,9 @@ const APP = (() => {
         if (e.type === 'goal') { if (e.team === 'home') sim.hs++; else sim.as++; }
         if (e.min > startMin) { addMatchEvent(e); addPitchDot(e); }
       }
-      sim.min = 90;
+      sim.min = sim.matchEnd;
       $('match-score').textContent = `${sim.hs} – ${sim.as}`;
-      $('match-time').textContent = "90'";
+      $('match-time').textContent = formatMatchMinute(sim.matchEnd, sim.stoppage1);
       if ($('match-result-overlay').classList.contains('hidden')) finishMatch();
       // Stay on match screen — user clicks Continue ➔ to advance
       return;
@@ -6966,7 +7131,9 @@ const APP = (() => {
       currentAwayXI: ms.currentAwayXI || ms.awayXI,
       currentTactics: ms.currentTactics || { ...gameState.tactics },
       subsUsed: ms.subsUsed || 0, subsMax: ms.subsMax || 5,
-      sim: { ...ms.sim }, simTimer: null, speed: 1, gamePhase: ms.gamePhase || 1,
+      // Defaults backfill saves from before stoppage time/man-down existed.
+      sim: { stoppage1: 0, stoppage2: 0, matchEnd: 90, homeManDown: false, awayManDown: false, ...ms.sim },
+      simTimer: null, speed: 1, gamePhase: ms.gamePhase || 1,
     };
     showScreen('match');
     $('match-home-name').textContent = home.name;
@@ -6974,26 +7141,27 @@ const APP = (() => {
     setBadge('match-home-badge', home);
     setBadge('match-away-badge', away);
     $('match-score').textContent = `${ms.sim.hs} – ${ms.sim.as}`;
-    $('match-time').textContent = ms.sim.min + "'";
+    $('match-time').textContent = formatMatchMinute(ms.sim.min, ui.match.sim.stoppage1);
     $('match-status').textContent = ms.atHalfTime ? 'HALF TIME' : 'PAUSED';
     $('match-events-list').innerHTML = '';
     $('pitch-events').innerHTML = '';
     const ev = result.events;
-    for (let i = 0; i < ms.sim.idx && i < ev.length; i++) { if (['goal','yellow','red','sub'].includes(ev[i].type)) addMatchEvent(ev[i]); addPitchDot(ev[i]); }
+    for (let i = 0; i < ms.sim.idx && i < ev.length; i++) { if (['goal','yellow','red','sub','penalty_awarded'].includes(ev[i].type)) addMatchEvent(ev[i]); addPitchDot(ev[i]); }
     result.commentary.forEach(c => {
       const d = document.createElement('div');
       d.className = 'match-event commentary' + (c.cls ? ' ' + c.cls : '');
-      d.innerHTML = `<span class="event-min">${c.min}'</span><span class="event-desc">${c.text}</span>`;
+      d.innerHTML = `<span class="event-min">${formatMatchMinute(c.min, ui.match.sim.stoppage1)}</span><span class="event-desc">${c.text}</span>`;
       $('match-events-list').appendChild(d);
     });
     $('btn-simulate').classList.add('hidden');
     $('btn-pause').classList.add('hidden');
     $('btn-speed').classList.add('hidden');
     $('btn-subs').classList.add('hidden');
+    $('btn-tactics').classList.add('hidden');
     $('match-result-overlay').classList.add('hidden');
     $('halftime-panel').classList.add('hidden');
     $('match-events-inner').classList.remove('hidden');
-    if (ms.sim.min >= 90) {
+    if (ui.match.sim.min >= ui.match.sim.matchEnd) {
       finishMatch();
     } else if (ms.atHalfTime) {
       $('btn-halftime').classList.remove('hidden');
@@ -7247,7 +7415,7 @@ const APP = (() => {
         },
         sim: { ...ui.match.sim },
         gamePhase: ui.match.gamePhase || 1,
-        atHalfTime: ui.match.sim.min === 45,
+        atHalfTime: ui.match.sim.min === 45 + ui.match.sim.stoppage1,
       };
     } else {
       delete gameState.matchSave;

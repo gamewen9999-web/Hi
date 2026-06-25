@@ -1618,6 +1618,7 @@ select, input, button, textarea { font-family: inherit; }
 .pitch-event-dot.red    { background: var(--accent-red);  box-shadow: 0 0 8px rgba(255,77,77,0.7); }
 .pitch-event-dot.shot   { background: var(--accent-blue); box-shadow: 0 0 8px rgba(78,158,255,0.7); }
 .pitch-event-dot.foul   { background: #ff7c00; box-shadow: 0 0 8px rgba(255,124,0,0.7); }
+.pitch-event-dot.penalty { background: #c084fc; box-shadow: 0 0 10px rgba(192,132,252,0.8); }
 
 #match-stats-bar {
   background: var(--bg-card);

@@ -22,8 +22,11 @@ const ENGINE = (() => {
     return types[types.length - 1];
   }
   // Tired players get hurt more often. 1x at 95+ fitness, scaling up to ~7x near empty.
+  // Exponential rather than linear so genuinely fit players (90+) are rarely hurt
+  // while tired legs (sub-50) get hurt far more often, instead of both ends being
+  // squeezed toward the same 1x-4x band.
   function fatigueInjuryMult(fitness) {
-    return 1 + Math.max(0, (95 - (fitness ?? 80)) / 15);
+    return Math.pow(1.045, 80 - (fitness ?? 80));
   }
   function goalsFromXG(xg) {
     // Box-Muller normal distribution centred on xg, variance = xg
@@ -238,10 +241,16 @@ const ENGINE = (() => {
     const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2  };
     const hR   = effectiveRating(homeClub, homeXI, homeSlotPositions);
     const aR   = effectiveRating(awayClub, awayXI, awaySlotPositions);
-    const hAtk = hR * (offMod[hMen] || 1.0) * 1.1;
-    const hDef = hR * (defMod[hMen] || 1.0);
-    const aAtk = aR * (offMod[aMen] || 1.0);
-    const aDef = aR * (defMod[aMen] || 1.0);
+    // Cube the rating before taking the attack/defence ratio — a flat ratio of raw
+    // OVR barely separates an elite squad from a relegation-tier one (e.g. 89 vs 65
+    // nets almost the same xG split as 75 vs 70), which let quality get drowned out
+    // by noise over a season. Cubing preserves a 50/50 split for even matchups but
+    // makes a real quality gap translate into a decisive xG gap.
+    const hRp  = Math.pow(hR, 3), aRp = Math.pow(aR, 3);
+    const hAtk = hRp * (offMod[hMen] || 1.0) * 1.1;
+    const hDef = hRp * (defMod[hMen] || 1.0);
+    const aAtk = aRp * (offMod[aMen] || 1.0);
+    const aDef = aRp * (defMod[aMen] || 1.0);
     const hStr = hAtk / (hAtk + aDef);
     const aStr = aAtk / (aAtk + hDef);
     let homeXG = Math.max(0.20, 2.8 * hStr);
@@ -402,7 +411,10 @@ const ENGINE = (() => {
     const stylePoss  = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
     const hFA = formAttrs(hTac), aFA = formAttrs(aTac);
     const formBias = Math.max(-6, Math.min(6, ((hFA.att - hFA.def) - (aFA.att - aFA.def)) * 1.2));
-    const hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + formBias + rand(-5, 5))));
+    let hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + formBias + rand(-5, 5))));
+    // A red card visibly costs the man-down side the ball, not just chances.
+    if (opts.homeManDown) hPoss = Math.max(20, hPoss - 10);
+    if (opts.awayManDown) hPoss = Math.min(80, hPoss + 10);
 
     // Stat modifiers with OOP nerf — players out of position contribute less.
     // Shooting: avg team shooting vs 65 baseline shifts xG up to ±18%
@@ -428,14 +440,23 @@ const ENGINE = (() => {
     };
     const hFitMult = 0.80 + (avgFit(homeClub, hXI) / 100) * 0.20;
     const aFitMult = 0.80 + (avgFit(awayClub, aXI) / 100) * 0.20;
+    // A sending-off costs the man-down side a big chunk of their threat and hands
+    // the opponent a clear boost — this is what makes a red card "obviously" matter
+    // when the remainder of the match gets re-simulated with this flag set.
+    const hManDownMult = opts.homeManDown ? 0.72 : (opts.awayManDown ? 1.15 : 1.0);
+    const aManDownMult = opts.awayManDown ? 0.72 : (opts.homeManDown ? 1.15 : 1.0);
     // Effective xG after all stat adjustments
-    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod * hFitMult);
-    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod * aFitMult);
+    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod * hFitMult * hManDownMult);
+    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod * aFitMult * aManDownMult);
 
-    // Match-day noise: teams routinely over/underperform xG (range ×0.55–1.45)
-    const noise = () => 0.55 + Math.random() * 0.9;
-    const hScore = goalsFromXG(hEffXG * noise());
-    const aScore = goalsFromXG(aEffXG * noise());
+    // Match-day noise: teams routinely over/underperform xG, but the band is tighter
+    // than it used to be (was ×0.55-1.45) — that much randomness was washing out the
+    // rating-gap separation above and let weaker sides upset far too often.
+    const noise = () => 0.65 + Math.random() * 0.7;
+    // let, not const — a penalty or stoppage-time chance (below) can add to the
+    // final score/shot totals on top of what's rolled here.
+    let hScore = goalsFromXG(hEffXG * noise());
+    let aScore = goalsFromXG(aEffXG * noise());
 
     // Shot volume follows the team's actual output (hEffXG/aEffXG — already shaped by
     // ratings, formation, pressing and style above) rather than the scoreline, so a
@@ -450,12 +471,19 @@ const ENGINE = (() => {
       const press = PRESS_PRESET[tac.pressing] || PRESS_PRESET.medium;
       return (MEN_SHOT_VOL[tac.mentality] || 1.0) * (1 + press.ownBoost * 0.6);
     };
-    const hShots = Math.max(hScore, Math.round((hEffXG / 0.105) * tacShotVol(hTac) * (0.75 + Math.random() * 0.5)));
-    const aShots = Math.max(aScore, Math.round((aEffXG / 0.105) * tacShotVol(aTac) * (0.75 + Math.random() * 0.5)));
+    let hShots = Math.max(hScore, Math.round((hEffXG / 0.105) * tacShotVol(hTac) * (0.75 + Math.random() * 0.5)));
+    let aShots = Math.max(aScore, Math.round((aEffXG / 0.105) * tacShotVol(aTac) * (0.75 + Math.random() * 0.5)));
     // On target is roughly a third of total shots, floored at the actual goals scored
     // (a goal is always on target) and capped by total shots.
-    const hSOT = Math.max(hScore, Math.min(hShots, Math.round(hShots * (0.28 + Math.random() * 0.16))));
-    const aSOT = Math.max(aScore, Math.min(aShots, Math.round(aShots * (0.28 + Math.random() * 0.16))));
+    let hSOT = Math.max(hScore, Math.min(hShots, Math.round(hShots * (0.28 + Math.random() * 0.16))));
+    let aSOT = Math.max(aScore, Math.min(aShots, Math.round(aShots * (0.28 + Math.random() * 0.16))));
+
+    // Stoppage time — added on top of the regulation-time events below by shifting
+    // anything past minute 45 and slotting a little extra late drama into the gaps
+    // this creates, same as a broadcast added-time clock.
+    const stoppage1 = rand(1, 5);
+    const stoppage2 = rand(2, 7);
+    const matchEnd  = 90 + stoppage1 + stoppage2;
 
     const events = [];
 
@@ -490,9 +518,19 @@ const ENGINE = (() => {
     // Each tackle: defender vs attacker using physical+defending vs dribbling+pace
     // Ratios determine: success, foul, card type, slide tackle risk
     const simTackle = (tacklerClub, targetClub, min) => {
-      const midDefs = tacklerClub.players.filter(p => ['CDM','CM','CB','RB','LB'].includes(p.pos));
-      const tackler = midDefs.length ? pick(midDefs) : pick(tacklerClub.players);
-      const target  = pick(targetClub.players.filter(p => !['GK'].includes(p.pos)));
+      // Restricted to the actual starting XI — players who aren't even on the pitch
+      // (bench/reserves) must never be picked for a tackle, card, or injury.
+      const tacklerXI   = tacklerClub === homeClub ? hXI : aXI;
+      const targetXI    = targetClub  === homeClub ? hXI : aXI;
+      const tacklerPool = tacklerXI
+        ? tacklerXI.map(id => tacklerClub.players.find(p => p.id === id)).filter(Boolean)
+        : tacklerClub.players.slice(0, 11);
+      const targetPool  = targetXI
+        ? targetXI.map(id => targetClub.players.find(p => p.id === id)).filter(Boolean)
+        : targetClub.players.slice(0, 11);
+      const midDefs = tacklerPool.filter(p => ['CDM','CM','CB','RB','LB'].includes(p.pos));
+      const tackler = midDefs.length ? pick(midDefs) : pick(tacklerPool);
+      const target  = pick(targetPool.filter(p => p.pos !== 'GK'));
       if (!tackler || !target) return;
 
       const tDef  = (tackler.attrs?.defending || 65) + (tackler.attrs?.physical || 65);
@@ -518,10 +556,33 @@ const ENGINE = (() => {
         } else if (r < yellowP) {
           events.push({ min: min+1, type: 'yellow', team, player: tackler });
         }
-        // Bad tackles can injure the target — tired legs are slower to react, so a tired
-        // target is more likely to come off worse from the same tackle.
-        const injP = (isSlide ? 0.12 : 0.04) * (1 + Math.max(0, (90 - (target?.fitness ?? 80)) / 30));
+
         const targetTeam = tacklerClub === homeClub ? 'away' : 'home';
+        // A foul defending your own box is a penalty — slide tackles inside the area
+        // are the riskiest challenge in football, so they're weighted higher.
+        const inBoxP = isSlide ? 0.15 : 0.08;
+        if (Math.random() < inBoxP) {
+          const taker = pickScorer(targetClub, targetXI);
+          events.push({ min: min+1, type: 'penalty_awarded', team: targetTeam, player: tackler });
+          const pr = Math.random();
+          if (pr < 0.76) {
+            events.push({ min: min+2, type: 'goal', team: targetTeam, player: taker, isPenalty: true });
+            if (targetTeam === 'home') { hScore++; hShots++; hSOT++; } else { aScore++; aShots++; aSOT++; }
+          } else if (pr < 0.90) {
+            events.push({ min: min+2, type: 'shot_saved', team: targetTeam, player: taker, isPenalty: true });
+            if (targetTeam === 'home') { hShots++; hSOT++; } else { aShots++; aSOT++; }
+          } else {
+            events.push({ min: min+2, type: 'shot_wide', team: targetTeam, player: taker, isPenalty: true });
+            if (targetTeam === 'home') hShots++; else aShots++;
+          }
+        } else {
+          events.push({ min: min+1, type: 'free_kick', team: targetTeam, player: tackler });
+        }
+
+        // Bad tackles can injure the target — tired legs are slower to react, so a tired
+        // target is more likely to come off worse from the same tackle (shared curve
+        // with the standalone fatigue-injury roll below).
+        const injP = (isSlide ? 0.12 : 0.04) * fatigueInjuryMult(target?.fitness ?? 80);
         const alreadyHurt = events.some(ev => ev.type === 'injury' && ev.player?.id === target?.id);
         if (target && !target.injured && !alreadyHurt && Math.random() < injP) {
           const contactTypes = INJURY_TYPES.filter(t => t.severity === 'minor' || t.severity === 'moderate');
@@ -588,6 +649,36 @@ const ENGINE = (() => {
 
     events.sort((a, b) => a.min - b.min);
 
+    // Shift everything after the 45th minute to make room for first-half stoppage,
+    // then drop a little extra late drama into both stoppage windows — added time
+    // isn't just empty clock-padding, it can produce the chance that decides a match.
+    events.forEach(e => { if (e.min > 45) e.min += stoppage1; });
+    const addStoppageDrama = (windowStart, windowEnd) => {
+      if (windowEnd < windowStart) return;
+      for (let i = 0; i < rand(0, 2); i++) {
+        const min = rand(windowStart, windowEnd);
+        const homeHasBall = Math.random() * 100 < hPoss;
+        const team = homeHasBall ? 'home' : 'away';
+        const club = homeHasBall ? homeClub : awayClub;
+        const xi   = homeHasBall ? hXI : aXI;
+        const scorer = pickScorer(club, xi);
+        const r = Math.random();
+        if (r < 0.12) {
+          events.push({ min, type: 'goal', team, player: scorer, assist: Math.random() > 0.4 ? pickAssist(club, scorer, xi) : null });
+          if (team === 'home') { hScore++; hShots++; hSOT++; } else { aScore++; aShots++; aSOT++; }
+        } else if (r < 0.55) {
+          events.push({ min, type: 'shot_saved', team, player: scorer });
+          if (team === 'home') { hShots++; hSOT++; } else { aShots++; aSOT++; }
+        } else {
+          events.push({ min, type: Math.random() < 0.6 ? 'shot_wide' : 'shot_post', team, player: scorer });
+          if (team === 'home') hShots++; else aShots++;
+        }
+      }
+    };
+    addStoppageDrama(46, 45 + stoppage1);
+    addStoppageDrama(91 + stoppage1, matchEnd);
+    events.sort((a, b) => a.min - b.min);
+
     const isBackline = (pos) => pos === 'GK' || ['CB','RB','LB','RWB','LWB'].includes(pos);
     const genRatings = (club, xi, won, drew, conceded) => {
       const pool = xi
@@ -627,6 +718,7 @@ const ENGINE = (() => {
                shotsOnTarget: [hSOT, aSOT] },
       homeRatings: genRatings(homeClub, hXI, hWon, drew, aScore),
       awayRatings: genRatings(awayClub, aXI, !hWon && !drew, drew, hScore),
+      stoppage1, stoppage2, matchEnd,
     };
   }
 
