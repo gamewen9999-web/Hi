@@ -3,64 +3,65 @@
    ============================================= */
 
 const LEAGUES = {
-  premier_league: { name: 'Premier League', country: 'England', level: 1, championsLeague: 5, europaLeague: 2, conferenceLeague: 1, relegation: 3, autoPromotion: 0, playoffSpots: 0 },
-  championship:   { name: 'Championship',   country: 'England', level: 2, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3, autoPromotion: 2, playoffSpots: 4 },
-  league_one:     { name: 'League One',     country: 'England', level: 3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4, autoPromotion: 2, playoffSpots: 4 },
-  league_two:     { name: 'League Two',     country: 'England', level: 4, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 3, playoffSpots: 4 },
-  national_league:{ name: 'National League',country: 'England', level: 5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 1, playoffSpots: 4 },
-  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
-  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
-  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
-  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, championsLeague: 3, europaLeague: 3, conferenceLeague: 2, relegation: 3 },
+  // tvEqualShare: £m/season broadcast equal-share per club (real-world approx)
+  premier_league: { name: 'Premier League', country: 'England', level: 1, tvEqualShare: 110, championsLeague: 5, europaLeague: 2, conferenceLeague: 1, relegation: 3, autoPromotion: 0, playoffSpots: 0 },
+  championship:   { name: 'Championship',   country: 'England', level: 2, tvEqualShare: 9.5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 3, autoPromotion: 2, playoffSpots: 4 },
+  league_one:     { name: 'League One',     country: 'England', level: 3, tvEqualShare: 1.9, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 4, autoPromotion: 2, playoffSpots: 4 },
+  league_two:     { name: 'League Two',     country: 'England', level: 4, tvEqualShare: 1.3, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 3, playoffSpots: 4 },
+  national_league:{ name: 'National League',country: 'England', level: 5, tvEqualShare: 0.5, championsLeague: 0, europaLeague: 0, conferenceLeague: 0, relegation: 2, autoPromotion: 1, playoffSpots: 4 },
+  la_liga:        { name: 'La Liga',        country: 'Spain',   level: 1, tvEqualShare: 52,  championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  bundesliga:     { name: 'Bundesliga',     country: 'Germany', level: 1, tvEqualShare: 55,  championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  serie_a:        { name: 'Serie A',        country: 'Italy',   level: 1, tvEqualShare: 42,  championsLeague: 4, europaLeague: 3, conferenceLeague: 1, relegation: 3 },
+  ligue_1:        { name: 'Ligue 1',        country: 'France',  level: 1, tvEqualShare: 28,  championsLeague: 3, europaLeague: 3, conferenceLeague: 2, relegation: 3 },
 };
 
 const CLUBS_DATA = [
   // Premier League (2025/26)
-  { id:'man_city',    name:'Manchester City',   league:'premier_league', rep:5, color:'#6CABDD', budget:250, wage:5.2, sqRating:88 },
-  { id:'arsenal',     name:'Arsenal',            league:'premier_league', rep:5, color:'#EF0107', budget:200, wage:4.8, sqRating:86 },
-  { id:'liverpool',   name:'Liverpool',          league:'premier_league', rep:5, color:'#C8102E', budget:220, wage:5.0, sqRating:87 },
-  { id:'chelsea',     name:'Chelsea',            league:'premier_league', rep:5, color:'#034694', budget:240, wage:5.1, sqRating:85 },
-  { id:'man_utd',     name:'Manchester United',  league:'premier_league', rep:5, color:'#DA291C', budget:190, wage:4.6, sqRating:83 },
-  { id:'tottenham',   name:'Tottenham Hotspur',  league:'premier_league', rep:4, color:'#132257', budget:150, wage:3.8, sqRating:82 },
-  { id:'newcastle',   name:'Newcastle United',   league:'premier_league', rep:4, color:'#241F20', budget:160, wage:3.9, sqRating:81 },
-  { id:'aston_villa', name:'Aston Villa',        league:'premier_league', rep:4, color:'#95BFE5', budget:120, wage:3.2, sqRating:80 },
-  { id:'west_ham',    name:'West Ham United',    league:'premier_league', rep:3, color:'#7A263A', budget:80,  wage:2.5, sqRating:77 },
-  { id:'brighton',    name:'Brighton & Hove',    league:'premier_league', rep:3, color:'#0057B8', budget:70,  wage:2.2, sqRating:76 },
-  { id:'brentford',   name:'Brentford',          league:'premier_league', rep:3, color:'#D20000', budget:55,  wage:1.8, sqRating:75 },
-  { id:'wolves',      name:'Wolverhampton',      league:'premier_league', rep:3, color:'#FDB913', budget:60,  wage:2.0, sqRating:74 },
-  { id:'crystal',     name:'Crystal Palace',     league:'premier_league', rep:3, color:'#1B458F', budget:45,  wage:1.7, sqRating:74 },
-  { id:'fulham',      name:'Fulham',             league:'premier_league', rep:3, color:'#CC0000', budget:55,  wage:1.8, sqRating:74 },
-  { id:'everton',     name:'Everton',            league:'premier_league', rep:3, color:'#003399', budget:40,  wage:1.5, sqRating:72 },
-  { id:'nottm_forest',name:'Nottingham Forest',  league:'premier_league', rep:3, color:'#DD0000', budget:55,  wage:1.7, sqRating:75 },
-  { id:'bournemouth', name:'Bournemouth',        league:'premier_league', rep:3, color:'#DA291C', budget:40,  wage:1.4, sqRating:73 },
-  { id:'leeds',       name:'Leeds United',       league:'premier_league', rep:3, color:'#1D428A', budget:45,  wage:1.6, sqRating:73 },
-  { id:'burnley',     name:'Burnley',            league:'premier_league', rep:3, color:'#6C1D45', budget:35,  wage:1.4, sqRating:72 },
-  { id:'sunderland',  name:'Sunderland',         league:'premier_league', rep:3, color:'#EB172B', budget:40,  wage:1.6, sqRating:73 },
+  { id:'man_city',    name:'Manchester City',   league:'premier_league', rep:5, color:'#6CABDD', budget:150, wage:4.2, sqRating:88 },
+  { id:'arsenal',     name:'Arsenal',            league:'premier_league', rep:5, color:'#EF0107', budget:120, wage:3.8, sqRating:86 },
+  { id:'liverpool',   name:'Liverpool',          league:'premier_league', rep:5, color:'#C8102E', budget:130, wage:4.0, sqRating:87 },
+  { id:'chelsea',     name:'Chelsea',            league:'premier_league', rep:5, color:'#034694', budget:140, wage:4.0, sqRating:85 },
+  { id:'man_utd',     name:'Manchester United',  league:'premier_league', rep:5, color:'#DA291C', budget:110, wage:3.6, sqRating:83 },
+  { id:'tottenham',   name:'Tottenham Hotspur',  league:'premier_league', rep:4, color:'#132257', budget:90,  wage:3.0, sqRating:82 },
+  { id:'newcastle',   name:'Newcastle United',   league:'premier_league', rep:4, color:'#241F20', budget:95,  wage:3.1, sqRating:81 },
+  { id:'aston_villa', name:'Aston Villa',        league:'premier_league', rep:4, color:'#95BFE5', budget:70,  wage:2.5, sqRating:80 },
+  { id:'west_ham',    name:'West Ham United',    league:'premier_league', rep:3, color:'#7A263A', budget:48,  wage:2.0, sqRating:77 },
+  { id:'brighton',    name:'Brighton & Hove',    league:'premier_league', rep:3, color:'#0057B8', budget:42,  wage:1.75,sqRating:76 },
+  { id:'brentford',   name:'Brentford',          league:'premier_league', rep:3, color:'#D20000', budget:32,  wage:1.4, sqRating:75 },
+  { id:'wolves',      name:'Wolverhampton',      league:'premier_league', rep:3, color:'#FDB913', budget:36,  wage:1.6, sqRating:74 },
+  { id:'crystal',     name:'Crystal Palace',     league:'premier_league', rep:3, color:'#1B458F', budget:28,  wage:1.35,sqRating:74 },
+  { id:'fulham',      name:'Fulham',             league:'premier_league', rep:3, color:'#CC0000', budget:32,  wage:1.4, sqRating:74 },
+  { id:'everton',     name:'Everton',            league:'premier_league', rep:3, color:'#003399', budget:24,  wage:1.2, sqRating:72 },
+  { id:'nottm_forest',name:'Nottingham Forest',  league:'premier_league', rep:3, color:'#DD0000', budget:32,  wage:1.35,sqRating:75 },
+  { id:'bournemouth', name:'Bournemouth',        league:'premier_league', rep:3, color:'#DA291C', budget:24,  wage:1.1, sqRating:73 },
+  { id:'leeds',       name:'Leeds United',       league:'premier_league', rep:3, color:'#1D428A', budget:27,  wage:1.25,sqRating:73 },
+  { id:'burnley',     name:'Burnley',            league:'premier_league', rep:3, color:'#6C1D45', budget:20,  wage:1.1, sqRating:72 },
+  { id:'sunderland',  name:'Sunderland',         league:'premier_league', rep:3, color:'#EB172B', budget:24,  wage:1.25,sqRating:73 },
   // Championship (2025/26)
-  { id:'leicester',   name:'Leicester City',     league:'championship',   rep:3, color:'#003090', budget:25,  wage:0.551, sqRating:72 },
-  { id:'ipswich',     name:'Ipswich Town',       league:'championship',   rep:2, color:'#3A64A3', budget:16,  wage:0.443, sqRating:70 },
-  { id:'southampton', name:'Southampton',        league:'championship',   rep:2, color:'#D71920', budget:16,  wage:0.467, sqRating:70 },
-  { id:'sheff_utd',   name:'Sheffield United',   league:'championship',   rep:3, color:'#EE2737', budget:14,  wage:0.429, sqRating:70 },
-  { id:'middlesbrough',name:'Middlesbrough',     league:'championship',   rep:3, color:'#E32221', budget:13,  wage:0.38, sqRating:69 },
-  { id:'coventry',    name:'Coventry City',      league:'championship',   rep:3, color:'#58ABDF', budget:12,  wage:0.345, sqRating:69 },
-  { id:'west_brom',   name:'West Bromwich Albion',league:'championship',  rep:3, color:'#122F67', budget:12,  wage:0.324, sqRating:68 },
-  { id:'stoke',       name:'Stoke City',         league:'championship',   rep:3, color:'#E03A3E', budget:11,  wage:0.314, sqRating:68 },
-  { id:'norwich',     name:'Norwich City',       league:'championship',   rep:3, color:'#00A650', budget:11,  wage:0.331, sqRating:68 },
-  { id:'derby',       name:'Derby County',       league:'championship',   rep:3, color:'#000000', budget:11,  wage:0.307, sqRating:68 },
-  { id:'sheff_wed',   name:'Sheffield Wednesday',league:'championship',   rep:3, color:'#1B4FA3', budget:9,   wage:0.243, sqRating:66 },
-  { id:'millwall',    name:'Millwall',           league:'championship',   rep:2, color:'#001D5E', budget:9,   wage:0.252, sqRating:66 },
-  { id:'blackburn',   name:'Blackburn Rovers',   league:'championship',   rep:2, color:'#009EE0', budget:8,   wage:0.207, sqRating:65 },
-  { id:'bristol_city',name:'Bristol City',       league:'championship',   rep:2, color:'#E21C38', budget:9,   wage:0.25, sqRating:66 },
-  { id:'watford',     name:'Watford',            league:'championship',   rep:2, color:'#FBEE23', budget:8,   wage:0.226, sqRating:65 },
-  { id:'swansea',     name:'Swansea City',       league:'championship',   rep:2, color:'#FFFFFF', budget:8,   wage:0.217, sqRating:65 },
-  { id:'qpr',         name:'Queens Park Rangers',league:'championship',   rep:2, color:'#1D5BA4', budget:8,   wage:0.222, sqRating:65 },
-  { id:'hull',        name:'Hull City',          league:'championship',   rep:2, color:'#F5A12D', budget:8,   wage:0.216, sqRating:65 },
-  { id:'preston',     name:'Preston North End',  league:'championship',   rep:2, color:'#FFFFFF', budget:7,   wage:0.19, sqRating:64 },
-  { id:'birmingham',  name:'Birmingham City',    league:'championship',   rep:2, color:'#0000FF', budget:9,   wage:0.234, sqRating:66 },
-  { id:'oxford',      name:'Oxford United',      league:'championship',   rep:2, color:'#FFD700', budget:6,   wage:0.168, sqRating:63 },
-  { id:'portsmouth',  name:'Portsmouth',         league:'championship',   rep:2, color:'#001489', budget:8,   wage:0.216, sqRating:65 },
-  { id:'wrexham',     name:'Wrexham',            league:'championship',   rep:2, color:'#D6001C', budget:10,  wage:0.243, sqRating:66 },
-  { id:'charlton',    name:'Charlton Athletic',  league:'championship',   rep:2, color:'#D4021D', budget:7,   wage:0.181, sqRating:64 },
+  { id:'leicester',   name:'Leicester City',     league:'championship',   rep:3, color:'#003090', budget:22,  wage:0.47, sqRating:72 },
+  { id:'ipswich',     name:'Ipswich Town',       league:'championship',   rep:2, color:'#3A64A3', budget:14,  wage:0.38, sqRating:70 },
+  { id:'southampton', name:'Southampton',        league:'championship',   rep:2, color:'#D71920', budget:14,  wage:0.40, sqRating:70 },
+  { id:'sheff_utd',   name:'Sheffield United',   league:'championship',   rep:3, color:'#EE2737', budget:12,  wage:0.365,sqRating:70 },
+  { id:'middlesbrough',name:'Middlesbrough',     league:'championship',   rep:3, color:'#E32221', budget:11,  wage:0.32, sqRating:69 },
+  { id:'coventry',    name:'Coventry City',      league:'championship',   rep:3, color:'#58ABDF', budget:10,  wage:0.29, sqRating:69 },
+  { id:'west_brom',   name:'West Bromwich Albion',league:'championship',  rep:3, color:'#122F67', budget:10,  wage:0.275,sqRating:68 },
+  { id:'stoke',       name:'Stoke City',         league:'championship',   rep:3, color:'#E03A3E', budget:9,   wage:0.265,sqRating:68 },
+  { id:'norwich',     name:'Norwich City',       league:'championship',   rep:3, color:'#00A650', budget:9,   wage:0.28, sqRating:68 },
+  { id:'derby',       name:'Derby County',       league:'championship',   rep:3, color:'#000000', budget:9,   wage:0.26, sqRating:68 },
+  { id:'sheff_wed',   name:'Sheffield Wednesday',league:'championship',   rep:3, color:'#1B4FA3', budget:8,   wage:0.207,sqRating:66 },
+  { id:'millwall',    name:'Millwall',           league:'championship',   rep:2, color:'#001D5E', budget:8,   wage:0.214,sqRating:66 },
+  { id:'blackburn',   name:'Blackburn Rovers',   league:'championship',   rep:2, color:'#009EE0', budget:7,   wage:0.176,sqRating:65 },
+  { id:'bristol_city',name:'Bristol City',       league:'championship',   rep:2, color:'#E21C38', budget:8,   wage:0.213,sqRating:66 },
+  { id:'watford',     name:'Watford',            league:'championship',   rep:2, color:'#FBEE23', budget:7,   wage:0.192,sqRating:65 },
+  { id:'swansea',     name:'Swansea City',       league:'championship',   rep:2, color:'#FFFFFF', budget:7,   wage:0.184,sqRating:65 },
+  { id:'qpr',         name:'Queens Park Rangers',league:'championship',   rep:2, color:'#1D5BA4', budget:7,   wage:0.189,sqRating:65 },
+  { id:'hull',        name:'Hull City',          league:'championship',   rep:2, color:'#F5A12D', budget:7,   wage:0.184,sqRating:65 },
+  { id:'preston',     name:'Preston North End',  league:'championship',   rep:2, color:'#FFFFFF', budget:6,   wage:0.162,sqRating:64 },
+  { id:'birmingham',  name:'Birmingham City',    league:'championship',   rep:2, color:'#0000FF', budget:8,   wage:0.199,sqRating:66 },
+  { id:'oxford',      name:'Oxford United',      league:'championship',   rep:2, color:'#FFD700', budget:5,   wage:0.143,sqRating:63 },
+  { id:'portsmouth',  name:'Portsmouth',         league:'championship',   rep:2, color:'#001489', budget:7,   wage:0.184,sqRating:65 },
+  { id:'wrexham',     name:'Wrexham',            league:'championship',   rep:2, color:'#D6001C', budget:9,   wage:0.207,sqRating:66 },
+  { id:'charlton',    name:'Charlton Athletic',  league:'championship',   rep:2, color:'#D4021D', budget:6,   wage:0.154,sqRating:64 },
   // League One (2025/26)
   { id:'cardiff',     name:'Cardiff City',       league:'league_one',     rep:2, color:'#0070B5', budget:7.5,   wage:0.132, sqRating:62 },
   { id:'luton',       name:'Luton Town',         league:'league_one',     rep:2, color:'#F78F1E', budget:8,   wage:0.129, sqRating:62 },
@@ -507,8 +508,8 @@ const LEAGUE_VALUE_MULTS = {
   premier_league:  1.00,
   championship:    1.00,
   league_one:      2.10,
-  league_two:      2.45,
-  national_league: 2.45,
+  league_two:      2.20,
+  national_league: 1.80,
   european:        1.00,
 };
 
@@ -580,20 +581,22 @@ function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league', 
     : rand(0, 4); // 27-29: fading but not necessarily zero yet
   const pot  = Math.min(93, ovr + potGap);
 
-  const value = calcValue(ovr, age, leagueKey);
+  const value = calcValue(ovr, age, leagueKey, pot);
   // Wage in game units (p.wage / 1000 = £m/wk for display)
   // Base formula calibrated for PL/Champ: OVR 60=£3.8k, OVR 70=£16k, OVR 75=£33k, OVR 80=£69k, OVR 85=£140k
   // League mult scales down wages for lower divisions to match real market rates:
   //   L1 avg player (OVR 59, mult 0.92) = ~£2.8k/wk → squad wage bill ~£3.5m/yr (real L1: £3-12m) ✓
   //   L2 avg player (OVR 52, mult 1.30) = ~£0.9k/wk → squad wage bill ~£1m/yr (real L2: £1.5-4m) ✓
-  //   NL avg player (OVR 47, mult 0.40) = ~£300/wk (floor) → squad bill ~£0.35m/yr (real NL: £0.3-2m) ✓
+  //   NL avg player (OVR 47, mult 0.40) = ~£100-200/wk (no artificial floor) → squad bill ~£0.15-0.3m/yr ✓
   // (OVR averages dropped 2026-06-22 when the Championship→lower-league rating gap was
   // widened; mults above were recomputed so these £/wk targets stayed the same.)
-  const wageBase = ovr >= 60
-    ? Math.pow(1.155, ovr - 60) * 3.8
-    : Math.pow(0.80, 60 - ovr) * 3.8;
+  // Steeper curve above OVR 82 so elite players (85+) earn realistic £200-700k/wk.
+  const wageBase = ovr >= 82
+    ? Math.pow(1.155, 22) * 5.5 * Math.pow(1.25, ovr - 82)
+    : ovr >= 60 ? Math.pow(1.155, ovr - 60) * 5.5
+    : Math.pow(0.80, 60 - ovr) * 5.5;
   const leagueMult = LEAGUE_WAGE_MULTS[leagueKey] ?? 1.0;
-  const wage = Math.min(350, Math.max(0.3, Math.round(wageBase * leagueMult * (0.75 + rand(0, 50) / 100) * 10) / 10));
+  const wage = Math.min(900, Math.max(0.25, Math.round(wageBase * leagueMult * (0.75 + rand(0, 50) / 100) * 10) / 10));
 
   return {
     id, firstName, lastName,
@@ -605,7 +608,7 @@ function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league', 
     pot,
     attrs,
     value,
-    wage: Math.max(0.5, wage),
+    wage,
     contractEnd: randomContractEnd(GAME_START_DATE),
     transferListed: rand(0, 99) < 3,
     loyal: rand(0, 99) < 60,
@@ -625,22 +628,21 @@ function generatePlayer(id, pos, clubRating, age, leagueKey = 'premier_league', 
   };
 }
 
-function calcValue(ovr, age, leagueKey = 'premier_league') {
-  // Calibrated vs Transfermarkt tier anchors (2025-26): NL squads ~£0.5-3m, L2 avg €4m,
-  // L1 avg €10m, Championship €14-210m, PL €200m-1.3bn.
-  // OVR 50 = £24k, 55 = £72k, 60 = £220k, 65 = £750k, 70 = £2.6m, 75 = £8.8m,
-  // 80 = £18.5m, 85 = £39m, 88 = £61m at PL OVR scale (age multiplier pushes young stars
-  // higher); lower leagues apply LEAGUE_VALUE_MULTS on top since their OVR scale was
-  // lowered to widen the inter-division rating gap (see LEAGUE_WAGE_MULTS comment).
-  // Anchors: Bradford-type L1 club ~£7m squad, Champ median ~£50m, PL bottom ~£170m.
+function calcValue(ovr, age, leagueKey = 'premier_league', pot = null) {
+  // Steeper curve above OVR 75 to reflect real Transfermarkt elite valuations.
+  // OVR 75 = £12m, 80 = £28m, 85 = £76m, 88 = £143m, 90 = £210m, 95 = £570m at PL scale (age 25).
+  // Below 60: sharper decay (0.72/pt) keeps lower-league values realistic without needing huge mults.
   const leagueMult = LEAGUE_VALUE_MULTS[leagueKey] ?? 1.0;
-  const base = ovr >= 60
-    ? (ovr <= 75
-        ? 0.18 * Math.pow(1.296, ovr - 60)
-        : 0.18 * Math.pow(1.296, 15) * Math.pow(1.16, ovr - 75))
-    : 0.18 * Math.pow(0.80, 60 - ovr);
-  const ageMult = age < 20 ? 1.5 : age < 23 ? 1.3 : age < 27 ? 1.1 : age < 30 ? 1.0 : age < 32 ? 0.55 : age < 34 ? 0.3 : 0.12;
-  return Math.max(0.003, Math.round(base * ageMult * leagueMult * 100) / 100);
+  const base = ovr >= 75
+    ? 0.18 * Math.pow(1.296, 15) * Math.pow(1.22, ovr - 75)
+    : ovr >= 60
+      ? 0.18 * Math.pow(1.296, ovr - 60)
+      : 0.18 * Math.pow(0.76, 60 - ovr);
+  const ageMult = age < 20 ? 1.6 : age < 23 ? 1.35 : age < 27 ? 1.1 : age < 30 ? 1.0 : age < 32 ? 0.55 : age < 34 ? 0.3 : 0.12;
+  // Potential premium: high-ceiling young players command a premium above their current OVR.
+  const potGap = pot != null ? Math.max(0, pot - ovr) : 0;
+  const potMult = 1 + potGap / 30 * (age < 23 ? 1.0 : age < 27 ? 0.5 : age < 30 ? 0.15 : 0);
+  return Math.max(0.003, Math.round(base * ageMult * potMult * leagueMult * 100) / 100);
 }
 
 // Real players for key squad slots, keyed by club id. Each entry is a compact tuple:
@@ -673,8 +675,6 @@ const REAL_PLAYERS = {
     ["Savio","Moreira","RW",21,"Brazilian",82,88],
     ["Erling","Haaland","ST",25,"Norwegian",91,92],
     ["Omar","Marmoush","ST",26,"Egyptian",83,85],
-    ["Stefan","Ortega","GK",33,"German",78,78],
-    ["Vitor","Reis","CB",19,"Brazilian",71,84],
     ["Claudio","Echeverri","CAM",20,"Argentine",75,87],
   ],
   arsenal: [
@@ -816,6 +816,7 @@ const REAL_PLAYERS = {
     ["Antonin","Kinsky","GK",22,"Czech",74,82],
     ["Luka","Vuskovic","CB",18,"Croatian",68,84],
     ["Will","Lankshear","ST",19,"English",65,78],
+    ["Conor","Gallagher","CM",25,"English",79,80],
   ],
   newcastle: [
     ["Nick","Pope","GK",33,"English",82,82],
@@ -1159,7 +1160,6 @@ const REAL_PLAYERS = {
     ["Max","Weiss","GK",21,"German",70,77],
     ["Maxime","Esteve","CB",23,"French",75,79],
     ["Axel","Tuanzebe","CB",27,"English",72,72],
-    ["Bobby","Thomas","CB",21,"English",68,73],
     ["Connor","Roberts","RB",30,"Welsh",73,73],
     ["Quentin","Merlin","LB",23,"French",74,79],
     ["Josh","Cullen","CM",29,"Irish",75,75],
@@ -1210,7 +1210,6 @@ const REAL_PLAYERS = {
     ["Tom","Watson","RW",18,"English",62,76],
   ],
   leicester: [
-    ["Mads","Hermansen","GK",25,"Danish",76,80],
     ["Wout","Faes","CB",27,"Belgian",73,73],
     ["Caleb","Okoli","CB",24,"Italian",70,73],
     ["Ricardo","Pereira","RB",31,"Portuguese",74,74],
@@ -1232,22 +1231,16 @@ const REAL_PLAYERS = {
     ["Sam","Morsy","CDM",33,"Egyptian",70,70],
     ["Jens","Cajuste","CM",25,"Swedish",70,72],
     ["Conor","Chaplin","CAM",27,"English",71,71],
-    ["Omari","Hutchinson","RW",21,"English",73,79],
     ["Jack","Clarke","LW",24,"English",73,76],
     ["George","Hirst","ST",26,"English",68,68],
   ],
   southampton: [
-    ["Aaron","Ramsdale","GK",27,"English",76,76],
     ["Jan","Bednarek","CB",29,"Polish",70,70],
     ["Taylor","Harwood-Bellis","CB",23,"English",73,77],
-    ["Kyle","Walker-Peters","RB",28,"English",73,73],
     ["Ryan","Manning","LB",29,"Irish",68,68],
     ["Flynn","Downes","CDM",26,"English",70,71],
     ["Shea","Charles","CM",21,"Northern Irish",67,73],
-    ["Mateus","Fernandes","CAM",21,"Portuguese",71,77],
-    ["Tyler","Dibling","RW",19,"English",72,82],
     ["Cameron","Archer","ST",23,"English",71,74],
-    ["Adam","Armstrong","ST",28,"English",70,70],
   ],
   sheff_utd: [
     ["Michael","Cooper","GK",28,"English",68,68],
@@ -1314,13 +1307,11 @@ const REAL_PLAYERS = {
     ["Bae","Jun-ho","RW",23,"South Korean",67,70],
   ],
   norwich: [
-    ["Angus","Gunn","GK",29,"English",68,68],
     ["Shane","Duffy","CB",33,"Irish",67,67],
     ["Sam","McCallum","LB",25,"English",66,67],
     ["Jack","Stacey","RB",28,"Welsh",66,66],
     ["Gabriel","Sara","CM",25,"Brazilian",71,73],
     ["Marcelino","Nunez","CM",25,"Chilean",68,70],
-    ["Borja","Sainz","RW",24,"Spanish",70,72],
     ["Josh","Sargent","ST",25,"American",69,70],
     ["Emmanuel","Dennis","LW",27,"Nigerian",67,67],
     ["Sammie","Szmodics","CAM",28,"English",71,71],
@@ -1429,7 +1420,6 @@ const REAL_PLAYERS = {
     ["Ethan","Laird","RB",23,"English",64,67],
     ["Marc","Leonard","CM",21,"English",65,71],
     ["Tomoki","Iwata","CDM",27,"Japanese",65,65],
-    ["Jay","Stansfield","ST",23,"English",67,71],
     ["Alfie","May","ST",30,"English",64,64],
     ["Emil","Hansson","LW",21,"Norwegian",65,71],
   ],
@@ -1534,7 +1524,6 @@ const REAL_PLAYERS = {
     ["Javi","Galan","LB",29,"Spanish",77,77],
     ["Pablo","Barrios","CM",22,"Spanish",81,86],
     ["Koke","Resurreccion","CM",33,"Spanish",79,79],
-    ["Conor","Gallagher","CM",25,"English",79,80],
     ["Rodrigo","Riquelme","LW",24,"Spanish",75,77],
     ["Samuel","Lino","LW",25,"Brazilian",76,77],
     ["Giuliano","Simeone","RW",24,"Argentine",78,80],
@@ -1800,6 +1789,7 @@ const REAL_PLAYERS = {
     ["Jhon","Solis","RW",20,"Colombian",63,73],
     ["Antal","Bjorn","ST",20,"Norwegian",62,71],
     ["Bojan","Sankovic","GK",24,"Serbian",65,69],
+    ["Vitor","Reis","CB",19,"Brazilian",71,84],
   ],
   alaves: [
     ["Antonio","Sivera","GK",28,"Spanish",68,68],
@@ -1824,7 +1814,6 @@ const REAL_PLAYERS = {
     ["Jorge","Saenz","CB",27,"Spanish",67,67],
     ["Ander","Garitano","GK",23,"Spanish",62,69],
     ["Hugo","Novoa","RB",22,"Spanish",66,73],
-    ["Mathieu","Gorgelin","GK",33,"French",65,65],
     ["Salim","El Jebari","RW",21,"Spanish",64,71],
     ["Carlos","Benavidez","CM",20,"Spanish",62,71],
     ["Nahuel","Tasso","CB",23,"Argentine",63,69],
@@ -2003,7 +1992,6 @@ const REAL_PLAYERS = {
     ["David","Costas","CB",27,"Spanish",68,68],
     ["Javi","Mier","RB",25,"Spanish",67,67],
     ["Alberto","Reina","CM",26,"Spanish",62,62],
-    ["Borja","Sainz","LW",25,"Spanish",70,72],
     ["Ilyas","Chaira","RW",21,"Moroccan",63,68],
     ["Leo","Tomas","GK",24,"Spanish",61,61],
     ["Aitor","Llorente","GK",30,"Spanish",61,61],
@@ -3602,13 +3590,11 @@ const REAL_PLAYERS = {
     ["Tomas","Araujo","CB",22,"Portuguese",76,80],
     ["Nicolas","Otamendi","CB",37,"Argentine",75,75],
     ["Florentino","Luis","CDM",25,"Portuguese",77,79],
-    ["Orkun","Kokcu","CM",24,"Turkish",79,81],
     ["Andreas","Schjelderup","CAM",20,"Norwegian",76,84],
     ["Kerem","Akturkoglu","LW",27,"Turkish",76,76],
     ["Vangelis","Pavlidis","ST",26,"Greek",79,79],
   ],
   sporting_cp: [
-    ["Franco","Israel","GK",24,"Uruguayan",75,78],
     ["Goncalo","Inacio","CB",24,"Portuguese",80,82],
     ["Ousmane","Diomande","CB",21,"Ivorian",78,84],
     ["Geny","Catamo","RW",24,"Mozambican",76,77],
@@ -3616,19 +3602,20 @@ const REAL_PLAYERS = {
     ["Pedro","Goncalves","CAM",27,"Portuguese",80,80],
     ["Francisco","Trincao","LW",25,"Portuguese",78,79],
     ["Geovany","Quenda","RW",18,"Portuguese",79,90],
+    ["Zeno","Debast","CB",21,"Belgian",76,82],
+    ["Morten","Hjulmand","CDM",26,"Danish",78,80],
+    ["Fotis","Ioannidis","ST",25,"Greek",74,76],
   ],
   porto: [
     ["Diogo","Costa","GK",26,"Portuguese",82,82],
     ["Nehuen","Perez","CB",25,"Argentine",76,77],
     ["Martim","Fernandes","RB",20,"Portuguese",73,80],
-    ["Joao","Mario","LB",24,"Portuguese",75,77],
     ["Victor","Froholdt","CM",21,"Danish",75,80],
     ["Alan","Varela","CDM",24,"Argentine",78,80],
-    ["Pepe","Rodrigues","CB",24,"Portuguese",75,77],
     ["Samu","Aghehowa","ST",20,"Spanish",78,86],
+    ["Borja","Sainz","RW",24,"Spanish",73,75],
   ],
   ajax: [
-    ["Diant","Ramaj","GK",24,"German",73,76],
     ["Youri","Baas","CB",23,"Dutch",73,75],
     ["Kenneth","Taylor","CM",23,"Dutch",75,78],
     ["Branco","van den Boomen","CM",27,"Dutch",73,73],
@@ -3636,18 +3623,14 @@ const REAL_PLAYERS = {
     ["Mika","Godts","LW",20,"Belgian",73,81],
   ],
   psv: [
-    ["Olivier","Boscagli","CB",28,"French",75,75],
     ["Armando","Obispo","CB",25,"Dutch",73,75],
-    ["Jordan","Teze","RB",25,"Dutch",75,76],
     ["Sergino","Dest","RB",24,"American",75,76],
     ["Joey","Veerman","CAM",26,"Dutch",78,78],
     ["Ismael","Saibari","CAM",24,"Moroccan",75,77],
     ["Ricardo","Pepi","ST",22,"American",76,80],
-    ["Johan","Bakayoko","RW",22,"Belgian",76,81],
   ],
   feyenoord: [
     ["Justin","Bijlow","GK",27,"Dutch",76,76],
-    ["David","Hancko","CB",27,"Slovakian",78,79],
     ["Gernot","Trauner","CB",33,"Austrian",73,73],
     ["Quilindschy","Hartman","LB",23,"Dutch",75,79],
     ["Calvin","Stengs","RW",27,"Dutch",76,76],
@@ -3659,19 +3642,21 @@ const REAL_PLAYERS = {
     ["Davinson","Sanchez","CB",29,"Colombian",77,77],
     ["Abdulkerim","Bardakci","CB",28,"Turkish",75,75],
     ["Lucas","Torreira","CDM",29,"Uruguayan",76,76],
-    ["Hakim","Ziyech","RW",32,"Moroccan",76,76],
     ["Yunus","Akgun","LW",26,"Turkish",75,75],
     ["Mauro","Icardi","ST",32,"Argentine",80,80],
     ["Victor","Osimhen","ST",26,"Nigerian",84,84],
+    ["Ilkay","Gundogan","CM",35,"German",82,82],
+    ["Leroy","Sane","LW",29,"German",84,85],
   ],
   fenerbahce: [
     ["Tarik","Cetin","GK",21,"Turkish",73,78],
     ["Milan","Skriniar","CB",30,"Slovakian",79,79],
     ["Jayden","Oosterwolde","LB",23,"Dutch",75,78],
     ["Sebastian","Szymanski","CAM",26,"Polish",78,78],
-    ["Dusan","Tadic","CAM",36,"Serbian",78,78],
     ["Youssef","En-Nesyri","ST",28,"Moroccan",79,79],
     ["Irfan Can","Kahveci","CAM",28,"Turkish",75,75],
+    ["Ederson","Moraes","GK",32,"Brazilian",84,84],
+    ["Jhon","Duran","ST",21,"Colombian",79,86],
   ],
   celtic: [
     ["Kasper","Schmeichel","GK",38,"Danish",76,76],
@@ -3688,7 +3673,6 @@ const REAL_PLAYERS = {
     ["Jack","Butland","GK",32,"English",73,73],
     ["John","Souttar","CB",28,"Scottish",72,72],
     ["James","Tavernier","RB",33,"English",76,76],
-    ["Ridvan","Yilmaz","LB",24,"Turkish",73,75],
     ["Nicolas","Raskin","CM",24,"Belgian",74,76],
     ["Hamza","Igamane","ST",21,"Moroccan",74,79],
     ["Danilo","Pereira","ST",24,"Brazilian",73,75],
@@ -3706,7 +3690,6 @@ const REAL_PLAYERS = {
     ["Joaquin","Seys","RB",24,"Belgian",72,73],
     ["Hans","Vanaken","CM",33,"Belgian",78,78],
     ["Christos","Tzolis","ST",23,"Greek",75,77],
-    ["Ferran","Jutgla","ST",27,"Spanish",73,73],
   ],
   shakhtar: [
     ["Dmytro","Riznyk","GK",24,"Ukrainian",72,75],
@@ -3728,10 +3711,12 @@ const REAL_PLAYERS = {
     ["Wilfred","Ndidi","CDM",28,"Nigerian",75,75],
     ["Rafa","Silva","CAM",32,"Portuguese",75,75],
     ["Ciro","Immobile","ST",35,"Italian",77,77],
+    ["Orkun","Kokcu","CM",24,"Turkish",79,81],
+    ["Vaclav","Cerny","RW",27,"Czech",73,73],
+    ["Ridvan","Yilmaz","LB",23,"Turkish",73,75],
   ],
   anderlecht: [
     ["Colin","Coosemans","GK",32,"Belgian",72,72],
-    ["Zeno","Debast","CB",21,"Belgian",76,82],
     ["Killian","Sardella","RB",24,"Belgian",72,72],
     ["Kasper","Dolberg","ST",27,"Danish",75,75],
     ["Thorgan","Hazard","LW",32,"Belgian",75,75],
@@ -3762,7 +3747,6 @@ const REAL_PLAYERS = {
   ],
   dinamo_zagreb: [
     ["Dominik","Livakovic","GK",30,"Croatian",78,78],
-    ["Bartol","Franjic","CB",21,"Croatian",70,75],
   ],
   young_boys: [
     ["Anthony","Racioppi","GK",24,"Swiss",70,73],
@@ -3770,7 +3754,6 @@ const REAL_PLAYERS = {
   ],
   slavia_prague: [
     ["Jindrich","Stanek","GK",31,"Czech",72,72],
-    ["Vaclav","Cerny","RW",27,"Czech",73,73],
     ["Mojmir","Chytil","ST",25,"Czech",72,73],
   ],
   sparta_prague: [
@@ -3828,7 +3811,6 @@ const REAL_PLAYERS = {
     ["Oscar","Vilhelmsson","GK",24,"Swedish",68,70],
   ],
   slovan: [
-    ["Dominik","Greif","GK",29,"Slovakian",72,72],
   ],
   lech_poznan: [
     ["Filip","Bednarek","CB",31,"Polish",70,70],
@@ -3866,10 +3848,13 @@ function buildRealPlayer(entry, club) {
   p.nationality = nationality;
   p.ovr = ovr;
   p.pot = Math.max(ovr, pot != null ? pot : ovr);
-  p.value = calcValue(p.ovr, p.age, club.league);
-  const wageBase = p.ovr >= 60 ? Math.pow(1.155, p.ovr - 60) * 3.8 : Math.pow(0.80, 60 - p.ovr) * 3.8;
+  p.value = calcValue(p.ovr, p.age, club.league, p.pot);
+  const wageBase = p.ovr >= 82
+    ? Math.pow(1.155, 22) * 5.5 * Math.pow(1.25, p.ovr - 82)
+    : p.ovr >= 60 ? Math.pow(1.155, p.ovr - 60) * 5.5
+    : Math.pow(0.80, 60 - p.ovr) * 5.5;
   const leagueMult = LEAGUE_WAGE_MULTS[club.league] ?? 1.0;
-  p.wage = Math.max(0.5, Math.min(350, Math.round(wageBase * leagueMult * (0.85 + rand(0, 20) / 100) * 10) / 10));
+  p.wage = Math.max(0.25, Math.min(900, Math.round(wageBase * leagueMult * (0.85 + rand(0, 20) / 100) * 10) / 10));
   return p;
 }
 
@@ -4024,7 +4009,7 @@ const CLUB_BADGES = {
   "liverpool": "https://upload.wikimedia.org/wikipedia/en/thumb/0/0c/Liverpool_FC.svg/250px-Liverpool_FC.svg.png",
   "chelsea": "https://upload.wikimedia.org/wikipedia/en/thumb/c/cc/Chelsea_FC.svg/250px-Chelsea_FC.svg.png",
   "man_utd": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7a/Manchester_United_FC_crest.svg/250px-Manchester_United_FC_crest.svg.png",
-  "tottenham": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/367.png",
+  "tottenham": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Tottenham_Hotspur.svg/250px-Tottenham_Hotspur.svg.png",
   "newcastle": "https://upload.wikimedia.org/wikipedia/en/thumb/5/56/Newcastle_United_Logo.svg/250px-Newcastle_United_Logo.svg.png",
   "aston_villa": "https://upload.wikimedia.org/wikipedia/en/thumb/9/9a/Aston_Villa_FC_new_crest.svg/250px-Aston_Villa_FC_new_crest.svg.png",
   "west_ham": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c2/West_Ham_United_FC_logo.svg/250px-West_Ham_United_FC_logo.svg.png",
@@ -4046,10 +4031,10 @@ const CLUB_BADGES = {
   "middlesbrough": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2c/Middlesbrough_FC_crest.svg/250px-Middlesbrough_FC_crest.svg.png",
   "coventry": "https://upload.wikimedia.org/wikipedia/en/thumb/7/7b/Coventry_City_FC_crest.svg/250px-Coventry_City_FC_crest.svg.png",
   "west_brom": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8b/West_Bromwich_Albion.svg/250px-West_Bromwich_Albion.svg.png",
-  "stoke": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5e/Stoke_City_FC_crest_2001.svg/250px-Stoke_City_FC_crest_2001.svg.png",
+  "stoke": "https://upload.wikimedia.org/wikipedia/en/thumb/b/bf/Stoke_City_FC_crest_2026.svg/250px-Stoke_City_FC_crest_2026.svg.png",
   "norwich": "https://upload.wikimedia.org/wikipedia/en/thumb/1/17/Norwich_City_FC_logo.svg/250px-Norwich_City_FC_logo.svg.png",
   "derby": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/Derby_County_crest.svg/250px-Derby_County_crest.svg.png",
-  "sheff_wed": "https://upload.wikimedia.org/wikipedia/en/thumb/8/88/Sheffield_Wednesday_badge.svg/250px-Sheffield_Wednesday_badge.svg.png",
+  "sheff_wed": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b8/Sheffield_Wednesday_FC_2026_crest.svg/250px-Sheffield_Wednesday_FC_2026_crest.svg.png",
   "millwall": "https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Millwall_FC_crest.svg/250px-Millwall_FC_crest.svg.png",
   "blackburn": "https://upload.wikimedia.org/wikipedia/en/thumb/0/0f/Blackburn_Rovers.svg/250px-Blackburn_Rovers.svg.png",
   "bristol_city": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f5/Bristol_City_crest.svg/250px-Bristol_City_crest.svg.png",
@@ -4143,7 +4128,7 @@ const CLUB_BADGES = {
   "real_sociedad": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f1/Real_Sociedad_logo.svg/250px-Real_Sociedad_logo.svg.png",
   "betis": "https://upload.wikimedia.org/wikipedia/en/thumb/1/13/Real_betis_logo.svg/250px-Real_betis_logo.svg.png",
   "valencia": "https://upload.wikimedia.org/wikipedia/en/thumb/c/ce/Valenciacf.svg/250px-Valenciacf.svg.png",
-  "athletic": "https://a.espncdn.com/i/teamlogos/soccer/500/93.png",
+  "athletic": "https://upload.wikimedia.org/wikipedia/en/thumb/9/98/Club_Athletic_Bilbao_logo.svg/250px-Club_Athletic_Bilbao_logo.svg.png",
   "getafe": "https://upload.wikimedia.org/wikipedia/en/thumb/4/46/Getafe_logo.svg/250px-Getafe_logo.svg.png",
   "osasuna": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/CA_Osasuna_2024_crest.svg/250px-CA_Osasuna_2024_crest.svg.png",
   "girona": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f7/Girona_FC_Logo.svg/250px-Girona_FC_Logo.svg.png",
@@ -4195,7 +4180,7 @@ const CLUB_BADGES = {
   "cremonese": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e1/US_Cremonese_logo.svg/250px-US_Cremonese_logo.svg.png",
   "psg": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a7/Paris_Saint-Germain_F.C..svg/250px-Paris_Saint-Germain_F.C..svg.png",
   "marseille": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Olympique_de_Marseille_2026_logo.svg/250px-Olympique_de_Marseille_2026_logo.svg.png",
-  "lyon": "https://upload.wikimedia.org/wikipedia/en/thumb/6/62/OL_Lyonnes.svg/250px-OL_Lyonnes.svg.png",
+  "lyon": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/Olympique_Lyonnais_logo.svg/250px-Olympique_Lyonnais_logo.svg.png",
   "monaco": "https://upload.wikimedia.org/wikipedia/en/thumb/c/cf/LogoASMonacoFC2021.svg/250px-LogoASMonacoFC2021.svg.png",
   "lille": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3f/Lille_OSC_2018_logo.svg/250px-Lille_OSC_2018_logo.svg.png",
   "nice": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2e/OGC_Nice_logo.svg/250px-OGC_Nice_logo.svg.png",
