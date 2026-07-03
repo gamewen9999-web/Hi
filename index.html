@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Football Manager</title>
-  <link rel="stylesheet" href="style.css?v=20260608d">
+  <link rel="stylesheet" href="style.css?v=20260626a">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -27,7 +27,7 @@
           <div class="game-logo">
             <div class="logo-emblem"><svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="21" fill="rgba(0,208,132,0.08)" stroke="#00d084" stroke-width="2"/><polygon points="24,15 31,20.5 28.5,28 19.5,28 17,20.5" fill="rgba(0,208,132,0.28)" stroke="#00d084" stroke-width="1.5" stroke-linejoin="round"/><line x1="24" y1="15" x2="24" y2="3.5" stroke="#00d084" stroke-width="1.5" stroke-linecap="round"/><line x1="31" y1="20.5" x2="41.5" y2="15" stroke="#00d084" stroke-width="1.5" stroke-linecap="round"/><line x1="28.5" y1="28" x2="36.5" y2="36.5" stroke="#00d084" stroke-width="1.5" stroke-linecap="round"/><line x1="19.5" y1="28" x2="11.5" y2="36.5" stroke="#00d084" stroke-width="1.5" stroke-linecap="round"/><line x1="17" y1="20.5" x2="6.5" y2="15" stroke="#00d084" stroke-width="1.5" stroke-linecap="round"/></svg></div>
             <h1 class="game-title">FOOTBALL<span>MANAGER</span></h1>
-            <p class="game-subtitle">Beta 1.4.3</p>
+            <p class="game-subtitle">Beta 1.5.4</p>
           </div>
           <div id="home-menu" class="home-menu"></div>
         </div>
@@ -106,8 +106,11 @@
           <button class="snav-btn" data-view="transfers">
             <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,4.5 13,4.5 10.5,2"/><polyline points="13,11.5 3,11.5 5.5,14"/></svg></span><span>Transfers</span>
           </button>
+          <button class="snav-btn" data-view="facilities">
+            <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="8" width="5" height="7" rx="0.5"/><rect x="6" y="5" width="4" height="10" rx="0.5"/><rect x="10.5" y="2" width="4.5" height="13" rx="0.5"/><line x1="0" y1="15" x2="16" y2="15"/></svg></span><span>Facilities</span>
+          </button>
           <button class="snav-btn" data-view="scout">
-            <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/><line x1="6.5" y1="3.5" x2="6.5" y2="4.5"/><line x1="6.5" y1="8.5" x2="6.5" y2="9.5"/><line x1="3.5" y1="6.5" x2="4.5" y2="6.5"/><line x1="8.5" y1="6.5" x2="9.5" y2="6.5"/></svg></span><span>Scout</span>
+            <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10" y1="10" x2="14.5" y2="14.5"/></svg></span><span>Scout</span>
           </button>
           <button class="snav-btn" data-view="european">
             <span class="snav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><polygon points="8,1 10,6 15.5,6.5 11.5,10 13,15.5 8,12.5 3,15.5 4.5,10 0.5,6.5 6,6"/></svg></span><span>European</span>
@@ -190,21 +193,62 @@
           </div>
         </div>
         <div id="match-controls">
-          <button id="btn-simulate" class="btn-primary btn-lg">▶ Start Match</button>
-          <button id="btn-halftime" class="btn-primary btn-lg hidden">▶ Second Half</button>
-          <button id="btn-pause" class="btn-secondary btn-lg hidden">⏸ Pause</button>
+          <button id="btn-simulate" class="btn-primary btn-lg">
+            <svg class="btn-icon" viewBox="0 0 10 10"><polygon points="2,1 9,5 2,9" fill="currentColor"/></svg> Start Match
+          </button>
+          <button id="btn-halftime" class="btn-primary btn-lg hidden">
+            <svg class="btn-icon" viewBox="0 0 10 10"><polygon points="2,1 9,5 2,9" fill="currentColor"/></svg> Second Half
+          </button>
+          <button id="btn-pause" class="btn-secondary btn-lg hidden">
+            <svg class="btn-icon" viewBox="0 0 10 10"><rect x="1" y="1" width="3" height="8" fill="currentColor"/><rect x="6" y="1" width="3" height="8" fill="currentColor"/></svg> Pause
+          </button>
           <button id="btn-speed" class="btn-secondary btn-lg hidden">2×</button>
-          <button id="btn-subs" class="btn-secondary btn-lg hidden">⇄ Subs</button>
-          <button id="btn-tactics" class="btn-secondary btn-lg hidden">⚙ Tactics</button>
+          <button id="btn-subs" class="btn-secondary btn-lg hidden">
+            <span class="btn-sub-icon"><span class="sub-on-arrow">▲</span><span class="sub-off-arrow">▼</span></span> Subs
+          </button>
+          <button id="btn-tactics" class="btn-secondary btn-lg hidden">
+            <svg class="btn-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="1" y1="5" x2="13" y2="5"/><line x1="1" y1="9" x2="13" y2="9"/><line x1="5" y1="5" x2="5" y2="13"/><line x1="9" y1="5" x2="9" y2="13"/></svg> Tactics
+          </button>
+        </div>
+        <div id="penalty-shootout-overlay" class="hidden">
+          <div class="pen-box">
+            <div class="pen-header">PENALTY SHOOTOUT</div>
+            <div class="pen-scoreboard">
+              <span class="pen-team" id="pen-team-home"></span>
+              <span class="pen-score" id="pen-score-display">0 – 0</span>
+              <span class="pen-team" id="pen-team-away"></span>
+            </div>
+            <div class="pen-dots-area">
+              <div class="pen-dots-row" id="pen-dots-home"></div>
+              <div class="pen-dots-row" id="pen-dots-away"></div>
+            </div>
+            <div class="pen-commentary" id="pen-commentary"></div>
+            <div id="pen-picker-section">
+              <div class="pen-picker-title">Choose your 5 penalty takers in order</div>
+              <div class="pen-picker-lists">
+                <div id="pen-squad-list" class="pen-squad-list"></div>
+                <div class="pen-selected-area">
+                  <div class="pen-selected-label">Order</div>
+                  <div id="pen-selected-list" class="pen-selected-list"></div>
+                </div>
+              </div>
+              <button id="pen-start-btn" class="btn-primary btn-lg" disabled style="width:100%;margin-top:12px">Start Shootout</button>
+            </div>
+            <button id="pen-continue-btn" class="btn-primary btn-lg hidden" style="width:100%;margin-top:12px">Continue ➔</button>
+          </div>
         </div>
         <div id="match-result-overlay" class="hidden">
           <div class="result-box">
-            <h2>Full Time</h2>
-            <div class="result-score-big" id="result-score-big"></div>
-            <div class="result-teams" id="result-teams"></div>
-            <div id="result-scorers" class="result-scorers"></div>
-            <div id="player-ratings-section" class="player-ratings-section"></div>
-            <button class="btn-primary btn-lg" id="btn-continue-after-match">Continue ➔</button>
+            <div class="result-scroll-content">
+              <h2>Full Time</h2>
+              <div class="result-score-big" id="result-score-big"></div>
+              <div class="result-teams" id="result-teams"></div>
+              <div id="result-scorers" class="result-scorers"></div>
+              <div id="player-ratings-section" class="player-ratings-section"></div>
+            </div>
+            <div class="result-footer">
+              <button class="btn-primary btn-lg" id="btn-continue-after-match">Continue ➔</button>
+            </div>
           </div>
         </div>
       </div>

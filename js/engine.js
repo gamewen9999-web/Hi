@@ -29,10 +29,11 @@ const ENGINE = (() => {
     return Math.pow(1.045, 80 - (fitness ?? 80));
   }
   function goalsFromXG(xg) {
-    // Box-Muller normal distribution centred on xg, variance = xg
-    const u1 = Math.random(), u2 = Math.random();
-    const z = Math.sqrt(-2 * Math.log(u1 || 1e-9)) * Math.cos(2 * Math.PI * u2);
-    return Math.max(0, Math.round(xg + Math.sqrt(Math.max(xg, 0.5)) * z));
+    // Poisson distribution — realistic goal model (variance = mean, no fat tails)
+    const L = Math.exp(-Math.max(0, xg));
+    let k = 0, p = 1;
+    do { k++; p *= Math.random(); } while (p > L);
+    return k - 1;
   }
 
   /* ---- ROUND-ROBIN SCHEDULE ---- */
@@ -118,6 +119,33 @@ const ENGINE = (() => {
     return club.sqRating || 70;
   }
 
+  // Chemistry: how well 11 players work together as a unit.
+  // Two components:
+  //   - Positional fit: average OOP factor across the XI (0.35–1.0).
+  //     A team with everyone in their natural slot scores ~1.0; a patchwork lineup drags it down.
+  //   - Nationality cohesion: a large same-nationality group is a proxy for shared tactical
+  //     language and automatic understanding (e.g. 7 Brazilians playing together).
+  // Output: multiplier 0.92–1.07 applied to effective xG.
+  function chemistryFactor(club, xi, slotPositions) {
+    if (!xi || xi.length < 11) return 1.0;
+    let oopSum = 0, count = 0;
+    const natCounts = {};
+    xi.forEach((id, i) => {
+      const p = club.players.find(pl => pl.id === id);
+      if (!p) return;
+      oopSum += oopFactor(p.pos, (slotPositions && slotPositions[i]) || p.pos);
+      count++;
+      const nat = p.nationality || 'Unknown';
+      natCounts[nat] = (natCounts[nat] || 0) + 1;
+    });
+    if (!count) return 1.0;
+    const avgOop   = oopSum / count;
+    const maxGroup = Math.max(0, ...Object.values(natCounts));
+    const natBonus = maxGroup >= 7 ? 0.025 : maxGroup >= 5 ? 0.015 : maxGroup >= 3 ? 0.006 : 0;
+    // avgOop=0.35 (extreme OOP) → ~0.94, avgOop=1.0 (all natural) → ~1.05+cohesion
+    return Math.min(1.07, 0.89 + avgOop * 0.16 + natBonus);
+  }
+
   // Formation tactical attributes: att = attacking weight (0–4), def = defensive weight (0–4).
   // Baseline is 2 = neutral. Each point of advantage in a matchup = ±5% xG swing.
   const FORM_ATTRS = {
@@ -172,10 +200,42 @@ const ENGINE = (() => {
   function deriveAITactics(club) {
     const rep = club.rep || 3;
     return {
-      mentality: 'balanced',
-      pressing: rep >= 4 ? 'high'   : rep >= 2 ? 'medium' : 'low',
-      style:    rep >= 4 ? 'possession' : rep >= 3 ? 'balanced' : rep >= 2 ? 'direct' : 'counter',
+      mentality:    'balanced',
+      pressing:     rep >= 4 ? 'high'   : rep >= 2 ? 'medium' : 'low',
+      style:        rep >= 4 ? 'possession' : rep >= 3 ? 'balanced' : rep >= 2 ? 'direct' : 'counter',
+      cornerTaking: rep >= 4 ? 'far-post' : 'drilled',
+      freeKick:     rep >= 4 ? 'shoot' : 'cross',
+      cornerDefense: rep >= 3 ? 'zonal' : 'mixed',
+      timeWasting:  false,
+      playSetPieces: rep <= 2,
     };
+  }
+
+  // xG contribution from dead-ball situations (corners + free kicks).
+  // Shaped by delivery type, free kick approach, physical threat, and "play for set pieces" flag.
+  // The opposing defense multiplier is applied on the receiving side via spDefenseMult().
+  function setPieceXG(tac, club, xi, slotPos) {
+    const physAvg  = avgStat(club, xi, 'physical', slotPos);
+    const passAvg  = avgStat(club, xi, 'passing',  slotPos);
+    const shootAvg = avgStat(club, xi, 'shooting', slotPos);
+
+    // Corner delivery: far-post is the most dangerous aerial delivery
+    const CORNER_MULT = { 'near-post': 0.92, 'far-post': 1.15, 'short': 0.68, 'drilled': 1.0 };
+    const cornerXG = 0.08 * (CORNER_MULT[tac.cornerTaking || 'far-post'] || 1.0) * (physAvg / 72);
+
+    // Free kick: direct shots are higher risk/reward; short builds possession but lower xG
+    const FK_MULT = { shoot: 1.10, cross: 1.0, short: 0.78 };
+    const fkXG = 0.05 * (FK_MULT[tac.freeKick || 'cross'] || 1.0) * ((passAvg + shootAvg) / 140);
+
+    const base = cornerXG + fkXG;
+    return tac.playSetPieces ? base * 1.5 : base;
+  }
+
+  // Multiplier applied to the OPPONENT's set piece xG based on your defensive scheme.
+  // Zonal marking is harder to beat; man marking is riskier.
+  function spDefenseMult(tac) {
+    const DEF = { zonal: 0.82, man: 0.96, mixed: 0.88 };
+    return DEF[tac.cornerDefense || 'mixed'] || 0.88;
   }
 
   // Build a custom formation from def/mid/att counts (must sum to 10).
@@ -239,22 +299,23 @@ const ENGINE = (() => {
     // 1. Base xG from starting-XI ratings + mentality (home gets 1.1× advantage).
     const offMod = { attacking: 1.25, balanced: 1.0, defensive: 0.75 };
     const defMod = { attacking: 0.85, balanced: 1.0, defensive: 1.2  };
-    const hR   = effectiveRating(homeClub, homeXI, homeSlotPositions);
-    const aR   = effectiveRating(awayClub, awayXI, awaySlotPositions);
-    // Cube the rating before taking the attack/defence ratio — a flat ratio of raw
-    // OVR barely separates an elite squad from a relegation-tier one (e.g. 89 vs 65
-    // nets almost the same xG split as 75 vs 70), which let quality get drowned out
-    // by noise over a season. Cubing preserves a 50/50 split for even matchups but
-    // makes a real quality gap translate into a decisive xG gap.
-    const hRp  = Math.pow(hR, 3), aRp = Math.pow(aR, 3);
-    const hAtk = hRp * (offMod[hMen] || 1.0) * 1.1;
-    const hDef = hRp * (defMod[hMen] || 1.0);
-    const aAtk = aRp * (offMod[aMen] || 1.0);
-    const aDef = aRp * (defMod[aMen] || 1.0);
+    // Separate attack and defense ratings so a team's scoring threat reflects its
+    // forwards' quality, and conceding reflects its defenders+GK quality.
+    const hAttR = attackRating(homeClub, homeXI, homeSlotPositions);
+    const aAttR = attackRating(awayClub,  awayXI, awaySlotPositions);
+    const hDefR = defenseRating(homeClub, homeXI, homeSlotPositions);
+    const aDefR = defenseRating(awayClub,  awayXI, awaySlotPositions);
+    // Raise to 3.5 so a genuine 10-OVR gap shows up decisively in the scoreline.
+    const hAtkP = Math.pow(hAttR, 3.5), aAtkP = Math.pow(aAttR, 3.5);
+    const hDefP = Math.pow(hDefR, 3.5), aDefP = Math.pow(aDefR, 3.5);
+    const hAtk = hAtkP * (offMod[hMen] || 1.0) * 1.1;
+    const hDef = hDefP * (defMod[hMen] || 1.0);
+    const aAtk = aAtkP * (offMod[aMen] || 1.0);
+    const aDef = aDefP * (defMod[aMen] || 1.0);
     const hStr = hAtk / (hAtk + aDef);
     const aStr = aAtk / (aAtk + hDef);
-    let homeXG = Math.max(0.20, 2.8 * hStr);
-    let awayXG = Math.max(0.20, 2.5 * aStr);
+    let homeXG = Math.max(0.15, 2.4 * hStr);
+    let awayXG = Math.max(0.15, 2.1 * aStr);
 
     // 2. Formation matchup — each 1-pt advantage = ±5% xG (capped at ±25%).
     if (hTac.formation || aTac.formation) {
@@ -349,6 +410,66 @@ const ENGINE = (() => {
     return pool.reduce((s, x) => s + x.stat, 0) / pool.length;
   }
 
+  // Get the starting GK from an XI, falling back to the squad's first GK.
+  function findGK(club, xi) {
+    const pool = xi ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean) : club.players.slice(0, 11);
+    return pool.find(p => p.pos === 'GK') || null;
+  }
+
+  // Position-weighted stat average: attackers count more for shooting/dribbling,
+  // defenders count more for defending, etc.
+  // posWeights: { GK, DEF, MID, ATT } multipliers (missing groups get weight 1).
+  function avgStatWeighted(club, xi, attr, slotPositions, posWeights) {
+    const pool = xi
+      ? xi.map((id, i) => {
+          const p = club.players.find(x => x.id === id);
+          if (!p) return null;
+          const oop    = slotPositions ? oopFactor(p.pos, slotPositions[i]) : 1.0;
+          const w      = posWeights[posGroup(p.pos)] ?? 1.0;
+          return { stat: (p.attrs?.[attr] || 65) * oop, w };
+        }).filter(Boolean)
+      : club.players.slice(0, 11).map(p => ({ stat: p.attrs?.[attr] || 65, w: posWeights[posGroup(p.pos)] ?? 1.0 }));
+    if (!pool.length) return 65;
+    const wSum  = pool.reduce((s, x) => s + x.w,        0);
+    const vSum  = pool.reduce((s, x) => s + x.stat * x.w, 0);
+    return wSum > 0 ? vSum / wSum : 65;
+  }
+
+  // Attack-facing effective rating: forwards and attacking mids count most.
+  // Used as the "attack" side of the xG ratio so a team's scoring threat reflects
+  // its attackers' quality rather than a diluted all-11 average.
+  function attackRating(club, xi, slotPositions) {
+    if (!xi || !xi.length) return effectiveRating(club, xi, slotPositions);
+    // GK barely contributes to attack; defenders a little; mids build play; attackers dominate.
+    const W = { GK: 0.05, DEF: 0.20, MID: 0.75, ATT: 1.50 };
+    let wSum = 0, vSum = 0;
+    xi.forEach((id, i) => {
+      const p = club.players.find(x => x.id === id);
+      if (!p) return;
+      const oop = slotPositions ? oopFactor(p.pos, slotPositions[i]) : 1.0;
+      const w = W[posGroup(p.pos)] ?? 1.0;
+      vSum += (p.ovr || 60) * oop * w;
+      wSum += w;
+    });
+    return wSum > 0 ? Math.round(vSum / wSum) : effectiveRating(club, xi, slotPositions);
+  }
+
+  // Defense-facing effective rating: GK and defenders count most.
+  function defenseRating(club, xi, slotPositions) {
+    if (!xi || !xi.length) return effectiveRating(club, xi, slotPositions);
+    const W = { GK: 1.80, DEF: 1.50, MID: 0.80, ATT: 0.10 };
+    let wSum = 0, vSum = 0;
+    xi.forEach((id, i) => {
+      const p = club.players.find(x => x.id === id);
+      if (!p) return;
+      const oop = slotPositions ? oopFactor(p.pos, slotPositions[i]) : 1.0;
+      const w = W[posGroup(p.pos)] ?? 1.0;
+      vSum += (p.ovr || 60) * oop * w;
+      wSum += w;
+    });
+    return wSum > 0 ? Math.round(vSum / wSum) : effectiveRating(club, xi, slotPositions);
+  }
+
   function pickScorer(club, xi) {
     const pool = xi
       ? xi.map(id => club.players.find(p => p.id === id)).filter(Boolean)
@@ -376,11 +497,13 @@ const ENGINE = (() => {
       : club.players).filter(p => p.id !== scorer.id);
     if (!pool.length) return null;
     const w = pool.map(p => {
-      if (['CAM','CM'].includes(p.pos)) return 9;
-      if (['RW','LW','RM','LM'].includes(p.pos)) return 7;
-      if (['CDM','RB','LB'].includes(p.pos)) return 3;
-      if (['ST','CF'].includes(p.pos)) return 2;
-      return 1;
+      const posW = ['CAM','CM'].includes(p.pos)       ? 9
+                 : ['RW','LW','RM','LM'].includes(p.pos) ? 7
+                 : ['CDM','RB','LB'].includes(p.pos)  ? 3
+                 : ['ST','CF'].includes(p.pos)         ? 2
+                 : 1;
+      // Scale by passing stat so creative playmakers assist more than plodding defenders.
+      return posW * (0.60 + (p.attrs?.passing || 65) / 163);
     });
     const total = w.reduce((a, b) => a + b, 0);
     let r = Math.random() * total;
@@ -400,35 +523,64 @@ const ENGINE = (() => {
     const hStyle = hTac.style || 'balanced';
     const aStyle = aTac.style || 'balanced';
 
-    // Possession: who's actually rated stronger on the day (hStr), passing quality,
-    // play style, and formation shape (a more attack-weighted formation plays with
-    // a higher line and sees more of the ball) — computed up front so the tackle
-    // simulation below can use it to decide which side is chasing the ball.
+    // Possession: driven primarily by passing quality and overall rating gap, then shaped
+    // by play style and pressing. A possession team vs a long-ball side should produce
+    // realistic 65/35-ish splits; evenly-matched teams should hover around 50/50 ± a few.
+    const hR   = effectiveRating(homeClub, hXI, hSlotPos);
+    const aR   = effectiveRating(awayClub,  aXI, aSlotPos);
     const hPassAvg = avgStat(homeClub, hXI, 'passing', hSlotPos);
     const aPassAvg = avgStat(awayClub, aXI, 'passing', aSlotPos);
-    const passBias  = (hPassAvg - aPassAvg) / (hPassAvg + aPassAvg) * 12;
-    const STYLE_POSS = { direct: -8, balanced: 0, possession: 10 };
-    const stylePoss  = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
+    // Passing gap is the single biggest real-world possession driver.
+    const passBias = (hPassAvg - aPassAvg) / Math.max(1, hPassAvg + aPassAvg) * 22;
+    // Rating gap: superior team naturally sees more of the ball.
+    const ratingBias = (hR - aR) * 0.28;
+    // Style: possession teams hoard the ball; long-ball/counter sides don't want it.
+    const STYLE_POSS = {
+      direct: -7, balanced: 0, possession: 14,
+      counter: -9, gegenpressing: 5, longball: -11,
+    };
+    const stylePoss = (STYLE_POSS[hStyle] || 0) - (STYLE_POSS[aStyle] || 0);
+    // Pressing: winning the ball high gives you more of it; sitting deep cedes it.
+    const PRESS_POSS = { high: 5, medium: 0, low: -5 };
+    const pressBias = (PRESS_POSS[hTac.pressing || 'medium'] || 0) - (PRESS_POSS[aTac.pressing || 'medium'] || 0);
     const hFA = formAttrs(hTac), aFA = formAttrs(aTac);
-    const formBias = Math.max(-6, Math.min(6, ((hFA.att - hFA.def) - (aFA.att - aFA.def)) * 1.2));
-    let hPoss = Math.min(75, Math.max(25, Math.round(40 + hStr * 20 + passBias + stylePoss + formBias + rand(-5, 5))));
+    const formBias = Math.max(-5, Math.min(5, ((hFA.att - hFA.def) - (aFA.att - aFA.def)) * 1.0));
+    // Less randomness — possession is largely a structured pattern, not a coin flip.
+    let hPoss = Math.min(78, Math.max(22, Math.round(50 + passBias + ratingBias + stylePoss + pressBias + formBias + rand(-3, 3))));
     // A red card visibly costs the man-down side the ball, not just chances.
-    if (opts.homeManDown) hPoss = Math.max(20, hPoss - 10);
-    if (opts.awayManDown) hPoss = Math.min(80, hPoss + 10);
+    if (opts.homeManDown) hPoss = Math.max(18, hPoss - 12);
+    if (opts.awayManDown) hPoss = Math.min(82, hPoss + 12);
 
-    // Stat modifiers with OOP nerf — players out of position contribute less.
-    // Shooting: avg team shooting vs 65 baseline shifts xG up to ±18%
-    const hShootMod = 0.82 + (avgStat(homeClub, hXI, 'shooting', hSlotPos) / 65) * 0.18;
-    const aShootMod = 0.82 + (avgStat(awayClub, aXI, 'shooting', aSlotPos) / 65) * 0.18;
-    // GK reflexes of the keeper reduces goals conceded
-    const hGKMod = 1.0 - ((avgStat(homeClub, hXI, 'gkReflexes', hSlotPos) - 65) / 65) * 0.10;
-    const aGKMod = 1.0 - ((avgStat(awayClub, aXI, 'gkReflexes', aSlotPos) - 65) / 65) * 0.10;
-    // Passing: better passing team creates more chances (±8% xG)
-    const hPassMod = 0.96 + (avgStat(homeClub, hXI, 'passing', hSlotPos) / 65) * 0.04;
-    const aPassMod = 0.96 + (avgStat(awayClub, aXI, 'passing', aSlotPos) / 65) * 0.04;
-    // Physical: higher physicality wins more duels, boosts xG slightly (±5%)
-    const hPhysMod = 0.975 + (avgStat(homeClub, hXI, 'physical', hSlotPos) / 65) * 0.025;
-    const aPhysMod = 0.975 + (avgStat(awayClub, aXI, 'physical', aSlotPos) / 65) * 0.025;
+    // Shooting: weighted heavily toward attackers (ATT 3×, MID 1×, DEF 0.3×, GK 0.05×)
+    // so a team's strike force quality drives goal conversion, not the defenders' low shooting.
+    const SHOOT_W = { GK: 0.05, DEF: 0.30, MID: 1.0, ATT: 3.0 };
+    const hShootMod = 0.82 + (avgStatWeighted(homeClub, hXI, 'shooting', hSlotPos, SHOOT_W) / 65) * 0.18;
+    const aShootMod = 0.82 + (avgStatWeighted(awayClub, aXI, 'shooting', aSlotPos, SHOOT_W) / 65) * 0.18;
+    // GK reflexes: use ONLY the actual keeper's stats — averaging across 11 players was
+    // returning a number well below 65 because outfield players have gkReflexes of 5–20,
+    // which was making the mod > 1.0 (i.e. accidentally boosting rather than reducing xG).
+    const hGK = findGK(homeClub, hXI);
+    const aGK = findGK(awayClub,  aXI);
+    const hGKMod = 1.0 - (((hGK?.attrs?.gkReflexes || 65) - 65) / 65) * 0.14;
+    const aGKMod = 1.0 - (((aGK?.attrs?.gkReflexes || 65) - 65) / 65) * 0.14;
+    // GK positioning: further small bonus on top of reflexes for elite keepers
+    const hGKPosMod = 1.0 - (((hGK?.attrs?.gkPositioning || 65) - 65) / 65) * 0.06;
+    const aGKPosMod = 1.0 - (((aGK?.attrs?.gkPositioning || 65) - 65) / 65) * 0.06;
+    // Defending: defenders' and defensive-mids' defending stat reduces opponent xG (±10%)
+    const DEF_W = { GK: 0.20, DEF: 3.0, MID: 0.80, ATT: 0.05 };
+    const hDefendMod = 1.0 - ((avgStatWeighted(homeClub, hXI, 'defending', hSlotPos, DEF_W) - 65) / 65) * 0.10;
+    const aDefendMod = 1.0 - ((avgStatWeighted(awayClub, aXI, 'defending', aSlotPos, DEF_W) - 65) / 65) * 0.10;
+    // Passing: midfielders and attackers drive chance creation (±8% xG)
+    const PASS_W = { GK: 0.20, DEF: 0.40, MID: 2.0, ATT: 1.2 };
+    const hPassMod = 0.96 + (avgStatWeighted(homeClub, hXI, 'passing', hSlotPos, PASS_W) / 65) * 0.04;
+    const aPassMod = 0.96 + (avgStatWeighted(awayClub, aXI, 'passing', aSlotPos, PASS_W) / 65) * 0.04;
+    // Dribbling: attackers' dribbling creates extra openings (±5%)
+    const DRIB_W = { GK: 0.0, DEF: 0.10, MID: 0.80, ATT: 3.0 };
+    const hDribMod = 0.975 + (avgStatWeighted(homeClub, hXI, 'dribbling', hSlotPos, DRIB_W) / 65) * 0.025;
+    const aDribMod = 0.975 + (avgStatWeighted(awayClub, aXI, 'dribbling', aSlotPos, DRIB_W) / 65) * 0.025;
+    // Physical: higher physicality wins more duels, boosts xG slightly (±4%)
+    const hPhysMod = 0.980 + (avgStat(homeClub, hXI, 'physical', hSlotPos) / 65) * 0.020;
+    const aPhysMod = 0.980 + (avgStat(awayClub, aXI, 'physical', aSlotPos) / 65) * 0.020;
     // Pace: faster team presses harder, slightly reduces opponent xG (±4%)
     const hPaceMod = 1.0 - ((avgStat(awayClub, aXI, 'pace', aSlotPos) - 65) / 65) * 0.04;
     const aPaceMod = 1.0 - ((avgStat(homeClub, hXI, 'pace', hSlotPos) - 65) / 65) * 0.04;
@@ -445,14 +597,33 @@ const ENGINE = (() => {
     // when the remainder of the match gets re-simulated with this flag set.
     const hManDownMult = opts.homeManDown ? 0.72 : (opts.awayManDown ? 1.15 : 1.0);
     const aManDownMult = opts.awayManDown ? 0.72 : (opts.homeManDown ? 1.15 : 1.0);
-    // Effective xG after all stat adjustments
-    const hEffXG = Math.max(0.15, homeXG * hShootMod * hPassMod * hPhysMod * aGKMod * hPaceMod * hFitMult * hManDownMult);
-    const aEffXG = Math.max(0.15, awayXG * aShootMod * aPassMod * aPhysMod * hGKMod * aPaceMod * aFitMult * aManDownMult);
+    // Chemistry: teams with players in their natural positions and good national cohesion
+    // perform above their individual ratings; patchwork lineups are punished.
+    const hChem = chemistryFactor(homeClub, hXI, hSlotPos);
+    const aChem = chemistryFactor(awayClub,  aXI, aSlotPos);
 
-    // Match-day noise: teams routinely over/underperform xG, but the band is tighter
-    // than it used to be (was ×0.55-1.45) — that much randomness was washing out the
-    // rating-gap separation above and let weaker sides upset far too often.
-    const noise = () => 0.65 + Math.random() * 0.7;
+    // Set pieces: dead-ball xG bonus shaped by tactics, aerial stats and opponent defence.
+    // "Play for set pieces" boosts this 1.5× but slightly penalises open-play output.
+    const hSPXG = setPieceXG(hTac, homeClub, hXI, hSlotPos) * spDefenseMult(aTac);
+    const aSPXG = setPieceXG(aTac, awayClub, aXI, aSlotPos) * spDefenseMult(hTac);
+    const hSPOpenPenalty = hTac.playSetPieces ? 0.95 : 1.0;
+    const aSPOpenPenalty = aTac.playSetPieces ? 0.95 : 1.0;
+
+    // Time wasting: the wasting team plays more conservatively (−8% own xG);
+    // opponent gets even less space and time (−20% opp xG).
+    const hTWself = hTac.timeWasting ? 0.92 : 1.0;
+    const hTWopp  = hTac.timeWasting ? 0.80 : 1.0;
+    const aTWself = aTac.timeWasting ? 0.92 : 1.0;
+    const aTWopp  = aTac.timeWasting ? 0.80 : 1.0;
+
+    // Effective xG: open play × all modifiers, then set piece xG added on top.
+    const hOpenXG = homeXG * hShootMod * hDribMod * hPassMod * hPhysMod * aGKMod * aGKPosMod * aDefendMod * hPaceMod * hFitMult * hManDownMult * hChem * hSPOpenPenalty * aTWopp;
+    const aOpenXG = awayXG * aShootMod * aDribMod * aPassMod * aPhysMod * hGKMod * hGKPosMod * hDefendMod * aPaceMod * aFitMult * aManDownMult * aChem * aSPOpenPenalty * hTWopp;
+    const hEffXG = Math.max(0.15, hOpenXG * hTWself + hSPXG);
+    const aEffXG = Math.max(0.15, aOpenXG * aTWself + aSPXG);
+
+    // Match-day noise: narrow band so ratings/chemistry drive outcomes, luck is secondary.
+    const noise = () => 0.85 + Math.random() * 0.30;
     // let, not const — a penalty or stoppage-time chance (below) can add to the
     // final score/shot totals on top of what's rolled here.
     let hScore = goalsFromXG(hEffXG * noise());
@@ -551,9 +722,12 @@ const ENGINE = (() => {
         const yellowP = isSlide ? 0.38 : 0.18;
         const redP    = isSlide ? 0.06 : 0.02;
         const r = Math.random();
+        let cardGiven = null;
         if (r < redP) {
+          cardGiven = 'red';
           events.push({ min: min+1, type: 'red',    team, player: tackler });
         } else if (r < yellowP) {
+          cardGiven = 'yellow';
           events.push({ min: min+1, type: 'yellow', team, player: tackler });
         }
 
@@ -563,7 +737,7 @@ const ENGINE = (() => {
         const inBoxP = isSlide ? 0.15 : 0.08;
         if (Math.random() < inBoxP) {
           const taker = pickScorer(targetClub, targetXI);
-          events.push({ min: min+1, type: 'penalty_awarded', team: targetTeam, player: tackler });
+          events.push({ min: min+1, type: 'penalty_awarded', team: targetTeam, player: tackler, cardGiven });
           const pr = Math.random();
           if (pr < 0.76) {
             events.push({ min: min+2, type: 'goal', team: targetTeam, player: taker, isPenalty: true });
@@ -723,7 +897,7 @@ const ENGINE = (() => {
   }
 
   /* ---- RESULT PROCESSING ---- */
-  function recordResult(gameState, fixture, hScore, aScore) {
+  function recordResult(gameState, fixture, hScore, aScore, opts = {}) {
     const isLeague = !fixture.type || fixture.type === 'league';
     const isEuropean = fixture.type === 'european';
 
@@ -757,9 +931,24 @@ const ENGINE = (() => {
       }
     }
 
+    // Track appearances for players who actually played — starters + subs who came on.
+    // Only done when XI data is available (user's match or bulk sim with lineup).
+    const trackApps = (xi, subbedOnIds) => {
+      if (!xi) return;
+      const played = new Set([...xi, ...(subbedOnIds || [])]);
+      played.forEach(id => {
+        // Find the player object across both clubs
+        const p = gameState.clubs[fixture.home]?.players.find(x => x.id === id)
+               || gameState.clubs[fixture.away]?.players.find(x => x.id === id);
+        if (p) p.appearances = (p.appearances || 0) + 1;
+      });
+    };
+    trackApps(opts.homeXI, opts.homeSubbedOn);
+    trackApps(opts.awayXI, opts.awaySubbedOn);
+
     (fixture.events || []).forEach(ev => {
       if (ev.type === 'goal') {
-        if (ev.player) { ev.player.goals = (ev.player.goals||0)+1; ev.player.appearances = (ev.player.appearances||0)+1; }
+        if (ev.player) ev.player.goals = (ev.player.goals||0)+1;
         if (ev.assist) ev.assist.assists = (ev.assist.assists||0)+1;
       } else if (ev.type === 'yellow' && ev.player) {
         ev.player.yellowCards = (ev.player.yellowCards||0)+1;
@@ -794,7 +983,7 @@ const ENGINE = (() => {
       awaySlotPositions: aXI ? slotPos(a) : null,
     });
     f.played = true; f.homeScore = r.homeScore; f.awayScore = r.awayScore; f.events = r.events;
-    recordResult(gameState, f, r.homeScore, r.awayScore);
+    recordResult(gameState, f, r.homeScore, r.awayScore, { homeXI: hXI, awayXI: aXI });
   }
 
   function simulateSameDay(gameState, referenceFixture) {
@@ -830,7 +1019,8 @@ const ENGINE = (() => {
           .forEach(simF);
       });
     }
-    gameState.currentDate = new Date(next.date);
+    // Do NOT advance currentDate here — leave it at the just-played match date so
+    // the dashboard advance buttons (+1 Day / ⏩ Match) are visible between matches.
   }
 
   function getNextFixture(gameState) {
@@ -846,10 +1036,17 @@ const ENGINE = (() => {
         if (f && (!euroNext || f.date < euroNext.date)) euroNext = f;
       });
     }
-    if (!leagueNext && !euroNext) return null;
-    if (!leagueNext) return euroNext;
-    if (!euroNext) return leagueNext;
-    return leagueNext.date <= euroNext.date ? leagueNext : euroNext;
+    let cupNext = null;
+    if (gameState.cups) {
+      Object.values(gameState.cups).forEach(cup => {
+        if (cup.winner) return;
+        const f = cup.fixtures.find(f => !f.played && (f.home === myId || f.away === myId));
+        if (f && (!cupNext || f.date < cupNext.date)) cupNext = f;
+      });
+    }
+    const candidates = [leagueNext, euroNext, cupNext].filter(Boolean);
+    if (!candidates.length) return null;
+    return candidates.reduce((a, b) => a.date <= b.date ? a : b);
   }
 
   function getLeagueTable(gameState, leagueId) {
@@ -975,11 +1172,20 @@ const ENGINE = (() => {
         fixtures.push({ id: cid++, comp: cup.id, compName: cup.name,
           home: participants[i], away: participants[i+1],
           date: new Date(cup.date), played: false, homeScore: null, awayScore: null,
-          type: 'cup', stage: 'R1' });
+          type: 'cup', stage: 'R1', roundIdx: 0 });
       }
 
       gameState.cups[cup.id] = {
         name: cup.name, country: cup.country, stage: 'R1',
+        currentRound: 0,
+        roundDates: [
+          new Date(cup.date),
+          new Date(cup.date.getFullYear(), cup.date.getMonth()+1, cup.date.getDate()),
+          new Date(cup.date.getFullYear(), cup.date.getMonth()+2, cup.date.getDate()),
+          new Date(cup.date.getFullYear(), cup.date.getMonth()+3, cup.date.getDate()),
+          new Date(cup.date.getFullYear(), cup.date.getMonth()+4, cup.date.getDate()),
+          new Date(cup.date.getFullYear(), cup.date.getMonth()+5, cup.date.getDate()),
+        ],
         fixtures, remaining: [...participants], winner: null,
       };
     });
@@ -1083,6 +1289,45 @@ const ENGINE = (() => {
     return { decision: 'reject' };
   }
 
+  // Deterministic effective xG preview — all multipliers from simulateMatch but no randomness.
+  // Used by the tactics panel to show live xG as options change.
+  function previewEffectiveXG(homeClub, awayClub, hTac, aTac, hXI, aXI, hSlotPos, aSlotPos) {
+    const { homeXG, awayXG } = calcMatchXG(homeClub, awayClub, hTac, aTac, hXI, aXI, hSlotPos, aSlotPos);
+    const SHOOT_W = { GK: 0.05, DEF: 0.30, MID: 1.0, ATT: 3.0 };
+    const hShootMod = 0.82 + (avgStatWeighted(homeClub, hXI, 'shooting', hSlotPos, SHOOT_W) / 65) * 0.18;
+    const aShootMod = 0.82 + (avgStatWeighted(awayClub, aXI, 'shooting', aSlotPos, SHOOT_W) / 65) * 0.18;
+    const hGK = findGK(homeClub, hXI);
+    const aGK = findGK(awayClub,  aXI);
+    const hGKMod    = 1.0 - (((hGK?.attrs?.gkReflexes || 65) - 65) / 65) * 0.14;
+    const aGKMod    = 1.0 - (((aGK?.attrs?.gkReflexes || 65) - 65) / 65) * 0.14;
+    const hGKPosMod = 1.0 - (((hGK?.attrs?.gkPositioning || 65) - 65) / 65) * 0.06;
+    const aGKPosMod = 1.0 - (((aGK?.attrs?.gkPositioning || 65) - 65) / 65) * 0.06;
+    const DEF_W = { GK: 0.20, DEF: 3.0, MID: 0.80, ATT: 0.05 };
+    const hDefendMod = 1.0 - ((avgStatWeighted(homeClub, hXI, 'defending', hSlotPos, DEF_W) - 65) / 65) * 0.10;
+    const aDefendMod = 1.0 - ((avgStatWeighted(awayClub, aXI, 'defending', aSlotPos, DEF_W) - 65) / 65) * 0.10;
+    const PASS_W = { GK: 0.20, DEF: 0.40, MID: 2.0, ATT: 1.2 };
+    const hPassMod  = 0.96 + (avgStatWeighted(homeClub, hXI, 'passing', hSlotPos, PASS_W) / 65) * 0.04;
+    const aPassMod  = 0.96 + (avgStatWeighted(awayClub, aXI, 'passing', aSlotPos, PASS_W) / 65) * 0.04;
+    const DRIB_W = { GK: 0.0, DEF: 0.10, MID: 0.80, ATT: 3.0 };
+    const hDribMod  = 0.975 + (avgStatWeighted(homeClub, hXI, 'dribbling', hSlotPos, DRIB_W) / 65) * 0.025;
+    const aDribMod  = 0.975 + (avgStatWeighted(awayClub, aXI, 'dribbling', aSlotPos, DRIB_W) / 65) * 0.025;
+    const hPhysMod  = 0.980 + (avgStat(homeClub, hXI, 'physical', hSlotPos) / 65) * 0.020;
+    const aPhysMod  = 0.980 + (avgStat(awayClub, aXI, 'physical', aSlotPos) / 65) * 0.020;
+    const hChem = chemistryFactor(homeClub, hXI, hSlotPos);
+    const aChem = chemistryFactor(awayClub,  aXI, aSlotPos);
+    const hSPXG = setPieceXG(hTac, homeClub, hXI, hSlotPos) * spDefenseMult(aTac);
+    const aSPXG = setPieceXG(aTac, awayClub, aXI, aSlotPos) * spDefenseMult(hTac);
+    const hSPOpen = hTac.playSetPieces ? 0.95 : 1.0;
+    const aSPOpen = aTac.playSetPieces ? 0.95 : 1.0;
+    const hTWself = hTac.timeWasting ? 0.92 : 1.0;
+    const hTWopp  = hTac.timeWasting ? 0.80 : 1.0;
+    const aTWself = aTac.timeWasting ? 0.92 : 1.0;
+    const aTWopp  = aTac.timeWasting ? 0.80 : 1.0;
+    const hEff = Math.max(0.15, homeXG * hShootMod * hDribMod * hPassMod * hPhysMod * aGKMod * aGKPosMod * aDefendMod * hChem * hSPOpen * aTWopp * hTWself + hSPXG);
+    const aEff = Math.max(0.15, awayXG * aShootMod * aDribMod * aPassMod * aPhysMod * hGKMod * hGKPosMod * hDefendMod * aChem * aSPOpen * hTWopp * aTWself + aSPXG);
+    return { hEff, aEff };
+  }
+
   return {
     generateSchedule, simulateMatch, calcMatchXG, recordResult,
     simulateSameDay, continueToNextFixture, simBulkFixture,
@@ -1091,7 +1336,7 @@ const ENGINE = (() => {
     getTransferMarket, isTransferWindowOpen,
     startNegotiation, evaluateFeeOffer, evaluateWageOffer, roundFee,
     buildCustomFormation, deriveAITactics, FORM_ATTRS, PRESS_PRESET, STYLE_ATK,
-    oopFactor, posGroup, INJURY_TYPES,
+    oopFactor, posGroup, INJURY_TYPES, previewEffectiveXG,
   };
 
 })();
